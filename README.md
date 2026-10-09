@@ -218,13 +218,26 @@ What the guide forced, and what we did about it:
   happens until the trigger price is reached and warns that a gap past the limit may not fill.
 - **Order validity** is DAY or IOC only, as 021 offers.
 
+## Restarts
+
+Everything that matters is in SQLite (`DATABASE_URL`): the send log, the audit log, standing rules, cards and plans
+waiting for approval, plan reports, the Discipline profile, goal and history. After a restart:
+
+- A card or plan that was waiting is still there, with the same fingerprint, so approving it still has to match
+  exactly; one that expired meanwhile is refused as expired, and one already sent cannot be approved again.
+- An order that was mid-send is looked up in the broker's order book, never re-sent (see "No client order id").
+- A plan that was running cannot continue where it stopped. It is marked halted and its report says so: steps not
+  yet sent are never sent, and any step already sent is in the order book.
+
+Checked by restarting the app on the same database file in tests, and by breaking each part on purpose (4 of 4
+caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart starts clean, by design.
+
 ## Not built yet (future scope)
 
 - The orders websocket (live fills). Order state is read over REST, which the guide calls the source of truth,
   and orders from 021's own app are found by polling every 5 seconds.
 - A local speech-to-text model (voice uses Groq today), spoken replies, and regional languages.
 - F&O orders. Orders are equity only; the option chain is read-only.
-- Pending cards and plans are held in memory (rules, the audit log and the send log are in SQLite).
 - Authentication (single demo user) and Co-Captain co-approval.
 
 ## Demo controls

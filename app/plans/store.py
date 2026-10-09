@@ -1,22 +1,61 @@
 """Plans, their original requests (so a stale plan can be re-quoted) and their live reports.
 
-In memory, like pending order cards. A restart loses a plan that was waiting for approval or
-still running; steps that had already been sent are safe (they are in the execution log and the
-broker's order book), and steps that had not been sent are simply never sent.
+With a database, every change is written through to SQLite and loaded back at startup, so a plan waiting for
+approval survives a restart unchanged (same plan hash). A plan that was RUNNING when the app stopped cannot pick
+up where it left off: `PlanService.recover` marks it halted at startup and says why. Steps that had already been
+sent are safe (they are in the execution log and the broker's order book); steps not yet sent are never sent.
+Without a database (tests) it is in memory only.
 """
 
 from app.api_models import ProposePlanRequest
+from app.db import Database
 from app.schemas import Plan, PlanReport, PlanState
+
+KEEP = 200  # plans loaded back at startup, newest first
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS plans (
+    id         TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    data       TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS plan_requests (
+    plan_id TEXT PRIMARY KEY,
+    data    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS plan_reports (
+    plan_id TEXT PRIMARY KEY,
+    data    TEXT NOT NULL
+);
+"""
 
 
 class PlanStore:
-    def __init__(self) -> None:
+    def __init__(self, db: Database | None = None) -> None:
+        self._db = db
         self._plans: dict[str, Plan] = {}
         self._requests: dict[str, ProposePlanRequest] = {}
         self._reports: dict[str, PlanReport] = {}
+        if db is not None:
+            db.conn.executescript(_SCHEMA)
+            for row in db.query("SELECT data FROM plans ORDER BY created_at DESC LIMIT ?", (KEEP,)):
+                plan = Plan.model_validate_json(row["data"])
+                self._plans[plan.id] = plan
+            for row in db.query("SELECT plan_id, data FROM plan_requests"):
+                if row["plan_id"] in self._plans:
+                    self._requests[row["plan_id"]] = ProposePlanRequest.model_validate_json(row["data"])
+            for row in db.query("SELECT plan_id, data FROM plan_reports"):
+                if row["plan_id"] in self._plans:
+                    self._reports[row["plan_id"]] = PlanReport.model_validate_json(row["data"])
+
+    def _write(self, sql: str, params: tuple) -> None:
+        if self._db is not None:
+            self._db.execute(sql, params)
 
     def put(self, plan: Plan) -> Plan:
         self._plans[plan.id] = plan
+        self._write("INSERT OR REPLACE INTO plans (id, created_at, data) VALUES (?, ?, ?)",
+                    (plan.id, plan.created_at.isoformat(), plan.model_dump_json(round_trip=True)))
         return plan
 
     def get(self, plan_id: str) -> Plan | None:
@@ -34,12 +73,16 @@ class PlanStore:
 
     def put_request(self, plan_id: str, request: ProposePlanRequest) -> None:
         self._requests[plan_id] = request
+        self._write("INSERT OR REPLACE INTO plan_requests (plan_id, data) VALUES (?, ?)",
+                    (plan_id, request.model_dump_json(round_trip=True)))
 
     def request(self, plan_id: str) -> ProposePlanRequest | None:
         return self._requests.get(plan_id)
 
     def put_report(self, report: PlanReport) -> PlanReport:
         self._reports[report.plan_id] = report
+        self._write("INSERT OR REPLACE INTO plan_reports (plan_id, data) VALUES (?, ?)",
+                    (report.plan_id, report.model_dump_json(round_trip=True)))
         return report
 
     def report(self, plan_id: str) -> PlanReport | None:

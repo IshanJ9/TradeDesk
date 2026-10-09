@@ -129,6 +129,7 @@ def create_app(
             sorted({r.condition.instrument_key for r in app.state.rule_store.list(RuleStatus.ACTIVE)})
         )
         # Crash recovery: anything that was mid-send when we last stopped gets looked up, not re-sent.
+        app.state.plans.recover()  # a plan whose runner stopped with the app is halted, never resumed blindly
         try:
             await app.state.executor.reconcile()
             await app.state.rule_engine.recover()
@@ -155,7 +156,8 @@ def create_app(
 
     app = FastAPI(title="TradeDesk-AI", version="0.1.0", lifespan=lifespan)
     the_broker = broker or make_broker(settings)
-    hub, store, db = EventHub(), PendingStore(), Database(settings.database_url)
+    hub, db = EventHub(), Database(settings.database_url)
+    store = PendingStore(db)  # cards waiting for approval survive a restart
     audit = AuditLog(db, clock, hub)
     builder = OrderBuilder(the_broker, settings, clock)
     executor = Executor(
@@ -199,7 +201,7 @@ def create_app(
         llm = FallbackLLM(llm, RuleBasedLLM(renderers))
     rule_store = RuleStore(db)
     rules = RuleService(rule_store, the_broker.read_only(), cards, builder.limits, audit, hub, settings, clock)
-    plan_store = PlanStore()
+    plan_store = PlanStore(db)  # plans and their reports survive a restart
     plans = PlanService(
         plan_store,
         PlanBuilder(builder, the_broker.read_only(), settings, clock),

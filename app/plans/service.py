@@ -325,6 +325,26 @@ class PlanService:
             task.cancel()
         await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
+    def recover(self) -> list[str]:
+        """At startup: a plan that was approved or running when the app stopped has lost its runner. It is marked
+        HALTED, and its report says so. Steps already sent stay in the send log and are reconciled like any other
+        order; steps not yet sent are never sent. Returns the ids of the plans it halted."""
+        halted = []
+        for plan in self._store.all():
+            if plan.state not in (PlanState.APPROVED, PlanState.RUNNING) or plan.id in self._tasks:
+                continue
+            report = self._store.report(plan.id) or self._initial_report(plan)
+            note = (" The app restarted while this plan was running, so it stopped there: steps not yet sent were "
+                    "not sent, and any step already sent is in your order book.")
+            self._store.put_report(PlanReport(
+                plan_id=plan.id, state=PlanState.HALTED, legs=report.legs,
+                summary=render_report(plan, PlanState.HALTED, report.legs) + note,
+            ))
+            self._set_state(plan, PlanState.HALTED)
+            self._audit.record(AuditKind.PLAN_LEG_RESULT, "system", f"Plan halted by a restart: {plan.title}", subject_id=plan.id)
+            halted.append(plan.id)
+        return halted
+
     async def _run(self, plan: Plan) -> None:
         results = {r.index: r for r in self._store.report(plan.id).legs}
         sent: dict[int, Order] = {}

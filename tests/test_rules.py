@@ -449,13 +449,14 @@ async def test_rules_survive_a_restart_and_still_fire_once(tmp_path):
     assert loaded.id == rule.id and loaded.status is RuleStatus.ACTIVE
     assert loaded.condition.trigger_price == paise(3800) and loaded.order_template.quantity == 5
     await second.tick("NSE:TCS", 3799)
-    assert len(second.s.pending.all()) == 1
+    [card] = second.s.pending.all()
     second.s.db.close()
 
     third = file_env(tmp_path)  # restarted again after it fired
     assert third.s.rule_store.get(rule.id).status is RuleStatus.FIRED
     await third.tick("NSE:TCS", 3700)
-    assert third.s.pending.all() == []  # does not fire a second time
+    # the card it made survives the restart (cards are saved), and the rule does not fire a second time
+    assert [p.id for p in third.s.pending.all()] == [card.id]
     third.s.db.close()
 
 
