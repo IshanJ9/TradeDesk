@@ -5,7 +5,11 @@
     covers every step, its caps, and the failure policy).
  2. It is claimed (PENDING -> APPROVED) before any `await`, so a double click cannot run it twice.
  3. Everything that may have changed is re-checked for *every* step: locks, the stocks, the shares
-    to be sold, and price drift. A drifted plan is replaced by a fresh one and nothing runs.
+    to be sold, the trader's own hard limits, and price drift. A drifted plan is replaced by a fresh
+    one and nothing runs.
+
+Every step is also checked against the trader's own limits (app/risk/guard.py) when the plan is made,
+counting the plan's earlier steps as orders, so a 3-step plan is 3 orders toward "orders a day".
  4. Then the steps run in order in the background, each through the same executor as a single
     order (write-ahead log, no blind retry, audit trail).
 
@@ -46,6 +50,7 @@ from app.orders.owned import delivery_owned
 from app.plans.builder import PlanBuilder, PlanNeedsClarification
 from app.plans.readback import leg_label, plan_readback, render_report
 from app.plans.store import PlanStore
+from app.risk.guard import NoRiskGuard, RiskGuard
 from app.schemas import (
     AuditKind,
     Instrument,
@@ -118,7 +123,9 @@ class PlanService:
         hub: EventHub,
         settings: Settings,
         clock: Callable[[], datetime],
+        risk: RiskGuard | None = None,
     ):
+        self._risk = risk or NoRiskGuard()
         self._store = store
         self._builder = builder
         self._orders = orders
@@ -158,6 +165,12 @@ class PlanService:
                 ChatReply(text=blocked.message, cards=[NoticeCard(level="blocked", message=blocked.message)]),
                 blocked.message,
             )
+
+        checked = await self._with_risk_warnings(plan)
+        if isinstance(checked, str):  # a hard limit the trader switched on: no plan card
+            self._audit.record(AuditKind.LIMIT_BLOCKED, "system", checked, data={"reason": "RISK_LIMIT"})
+            return PlanProposal("blocked", ChatReply(text=checked, cards=[NoticeCard(level="blocked", message=checked)]), checked)
+        plan = checked
 
         self._store.put(plan)
         self._store.put_request(plan.id, req)
@@ -225,8 +238,25 @@ class PlanService:
         self._audit.record(AuditKind.APPROVAL_REFUSED, "user", f"Trader declined plan: {plan.title}", subject_id=plan.id)
         return rejected
 
+    async def _with_risk_warnings(self, plan: Plan) -> Plan | str:
+        """Each step checked against the trader's own limits, counting the plan's earlier steps as orders.
+        Returns the plan with warnings on its steps (warnings are not part of the plan hash), or the block message."""
+        legs = []
+        for leg in plan.legs:
+            verdict = await self._risk.check(leg.order, "preview", extra_orders=leg.index)
+            if verdict.block:
+                return f"Step {leg.index + 1}: {verdict.block}"
+            if verdict.warnings:
+                leg = leg.model_copy(update={"order": leg.order.model_copy(update={"warnings": [*verdict.warnings, *leg.order.warnings]})})
+            legs.append(leg)
+        return plan.model_copy(update={"legs": legs})
+
     async def _recheck(self, plan: Plan) -> None:
         """Re-validate every step against the account as it is now."""
+        for leg in plan.legs:  # limits can be crossed between the card and the click
+            verdict = await self._risk.check(leg.order, "approve", extra_orders=leg.index)
+            if verdict.block:
+                raise OrderBlocked(RejectionReason.RISK_CHECK, f"Step {leg.index + 1}: {verdict.block}")
         locks = await self._broker.get_account_locks()
         holdings = await delivery_owned(self._broker)  # holdings + today's delivery buys
         worst_drift: tuple[float, int, int, int] | None = None
@@ -260,6 +290,10 @@ class PlanService:
             fresh = await self._builder.build(request)
         except (OrderBlocked, PlanNeedsClarification) as exc:
             self._void(plan, getattr(exc, "message", str(exc)))
+        checked = await self._with_risk_warnings(fresh)
+        if isinstance(checked, str):
+            self._void(plan, checked)
+        fresh = checked
         self._set_state(plan, PlanState.REQUOTE_REQUIRED)
         self._store.put(fresh)
         self._store.put_request(fresh.id, request)

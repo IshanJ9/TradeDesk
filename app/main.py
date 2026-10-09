@@ -190,7 +190,13 @@ def create_app(
     )
     cards = CardService(builder, store, hub, audit, risk)
     tools = build_tools()
-    llm = make_llm(settings, {name: t.render for name, t in tools.items()})
+    renderers = {name: t.render for name, t in tools.items()}
+    llm = make_llm(settings, renderers)
+    if settings.llm_provider not in ("", "rules"):  # a provider outage falls back to the keyword stand-in
+        from app.llm.fallback import FallbackLLM
+        from app.llm.rules import RuleBasedLLM
+
+        llm = FallbackLLM(llm, RuleBasedLLM(renderers))
     rule_store = RuleStore(db)
     rules = RuleService(rule_store, the_broker.read_only(), cards, builder.limits, audit, hub, settings, clock)
     plan_store = PlanStore()
@@ -204,6 +210,7 @@ def create_app(
         hub,
         settings,
         clock,
+        risk,  # every plan step is checked against the trader's own limits too
     )
     app.state.cards = cards
     app.state.rule_store = rule_store

@@ -13,7 +13,9 @@ const SUGGESTIONS = [
   "Buy 10 Infosys at 1450",
   "Sell half my Infosys and buy ITC with the money",
   "Buy 5 TCS if it falls below 3800",
-  "Alert me if HDFC Bank drops 3% from my buy price",
+  "Exit all my losing intraday positions",
+  "Rebalance so no stock exceeds 20%",
+  "Tell me when any of my holdings falls 3% in a day",
   "Show me NIFTY options near the money",
 ];
 
