@@ -37,6 +37,7 @@ from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
 from app.schemas import RuleStatus
+from app.voice.api import router as voice_router  # voice-live: transcription only
 
 log = logging.getLogger("tradedesk")
 
@@ -213,4 +214,5 @@ def create_app(
 
     app.include_router(rest)
     app.include_router(ws_router)
+    app.include_router(voice_router)  # voice-live: editable text, never an order action
     return app

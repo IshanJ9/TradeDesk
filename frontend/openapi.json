@@ -781,6 +781,56 @@
           }
         }
       }
+    },
+    "/api/voice/transcribe": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Transcribe",
+        "operationId": "transcribe_api_voice_transcribe_post",
+        "requestBody": {
+          "content": {
+            "audio/webm": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/ogg": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/mp4": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcript"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1104,6 +1154,7 @@
       "AuditKind": {
         "type": "string",
         "enum": [
+          "VOICE_TRANSCRIBED",
           "USER_MESSAGE",
           "LLM_INTENT",
           "RESOLUTION",
@@ -3802,6 +3853,35 @@
         ],
         "title": "TraceEvent",
         "description": "One step of the assistant's work, for the live activity panel (see app/trace.py).\n\n`detail` is a short sentence for people. It never holds keys, passwords or raw broker replies."
+      },
+      "Transcript": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "seconds"
+        ],
+        "title": "Transcript"
       },
       "ValidationError": {
         "properties": {
