@@ -19,7 +19,7 @@ from app.broker.mock import MockBroker
 from app.config import Settings
 from app.db import Database
 from app.events import EventHub
-from app.history.store import InMemoryActivityStore
+from app.history.sqlite_store import SqliteActivityStore  # voice-live: durable activity
 from app.orders.approval import ApprovalService
 from app.llm.copilot import Copilot
 from app.llm.factory import make_llm
@@ -42,6 +42,10 @@ from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
 from app.schemas import RuleStatus
+from app.voice.api import router as voice_router  # voice-live: transcription only
+from app.sync.external import run_external_sync  # voice-live: uses the existing broker session
+from app.sync.dev import router as sync_dev_router  # voice-live: demo-only trace sample
+from app.sync.api import router as activity_router  # voice-live: restore saved activity on refresh
 
 log = logging.getLogger("tradedesk")
 
@@ -131,6 +135,9 @@ def create_app(
         except BrokerTimeout:
             log.warning("broker unreachable at startup; unresolved executions and rules stay as they are")
         tasks = [asyncio.create_task(_tick_bridge(app))]
+        # voice-live: participates in the same cancellation/shutdown as the other tasks.
+        if settings.external_sync_interval is not None:
+            tasks.append(asyncio.create_task(run_external_sync(app, settings.external_sync_interval)))
         tasks.append(asyncio.create_task(app.state.discipline.run()))  # risk-goals: 20-second reports
         if settings.reconcile_interval:
             tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval)))
@@ -172,7 +179,7 @@ def create_app(
     app.state.builder = builder
     app.state.executor = executor
     # Shared hooks for the parallel workstreams (each owner replaces only their own line):
-    history = InMemoryActivityStore()  # voice-live: database-backed store + order sync
+    history = SqliteActivityStore(db)  # voice-live: database-backed store + order sync
     profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
     risk = ProfileGuard(the_broker.read_only(), profile_store, clock)  # risk-goals
     app.state.history = history
@@ -232,6 +239,9 @@ def create_app(
 
     app.include_router(rest)
     app.include_router(ws_router)
+    app.include_router(voice_router)  # voice-live: editable text, never an order action
+    app.include_router(sync_dev_router)  # voice-live: returns 404 outside demo mode
+    app.include_router(activity_router)  # voice-live: read-only persisted history
     app.include_router(risk_router)  # risk-goals
     from app.demo import router as demo_router  # demo controls: 404 unless DEMO_MODE and the mock broker
 

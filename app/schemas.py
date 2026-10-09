@@ -226,6 +226,7 @@ class RuleBasis(str, Enum):
 
 
 class AuditKind(str, Enum):
+    VOICE_TRANSCRIBED = "VOICE_TRANSCRIBED"  # voice-live: metadata only, no transcript
     USER_MESSAGE = "USER_MESSAGE"
     LLM_INTENT = "LLM_INTENT"
     RESOLUTION = "RESOLUTION"

@@ -5,6 +5,8 @@ import { resolveAmbiguity, type Msg } from "../lib/useChat";
 import type { Card } from "../lib/types";
 import { api } from "../lib/api";
 import { Banner, Button, Chip } from "./ui";
+import { MicButton } from "./MicButton";
+import { transcriptParts } from "../lib/voice";
 
 const SUGGESTIONS = [
   "What's my P&L today and which positions are down more than 5%?",
@@ -72,6 +74,8 @@ function CardView({ card, onReveal, onPick }: { card: Card; onReveal: (id: strin
 
 export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
   const [text, setText] = useState("");
+  const [fromVoice, setFromVoice] = useState(false);
+  const [voiceActive, setVoiceActive] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
@@ -80,8 +84,9 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
   }, [messages, busy]);
 
   const submit = async (value = text) => {
-    if (!value.trim() || busy) return;
+    if (!value.trim() || busy || voiceActive) return;
     setText("");
+    setFromVoice(false);
     await send(value);
     fieldRef.current?.focus();
   };
@@ -113,7 +118,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
                 <li key={s}>
                   <button
                     onClick={() => void submit(s)}
-                    disabled={busy}
+                    disabled={busy || voiceActive}
                     className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-left text-[13px] text-ink transition-colors hover:border-strong hover:bg-surface2 disabled:opacity-50"
                   >
                     {s}
@@ -158,7 +163,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
         onSubmit={(e) => { e.preventDefault(); void submit(); }}
         className="border-t border-line bg-surface px-4 py-3"
       >
-        <div className="mx-auto flex max-w-[40rem] items-end gap-2">
+        <div className="mx-auto grid max-w-[40rem] grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-2">
           <label htmlFor="ask" className="sr-only">Ask or describe an order</label>
           <textarea
             id="ask"
@@ -168,14 +173,29 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
             onKeyDown={onKey}
             rows={1}
             placeholder={offline ? "Reconnecting… you can still type" : "Ask, or describe an order"}
-            className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-strong bg-paper px-3.5 py-2.5 text-[14px] text-ink placeholder:text-muted"
+            aria-describedby={fromVoice ? "voice-review" : undefined}
+            className="max-h-32 min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-strong bg-paper px-3.5 py-2.5 text-[14px] text-ink placeholder:text-muted"
           />
-          <Button variant="primary" type="submit" disabled={busy || !text.trim()} className="h-[42px]">
+          <MicButton disabled={busy || offline} onActive={setVoiceActive} onTranscript={(transcript) => {
+            setText((draft) => draft.trim() ? `${draft}\n${transcript}` : transcript);
+            setFromVoice(true);
+            fieldRef.current?.focus();
+          }} />
+          <Button variant="primary" type="submit" disabled={busy || voiceActive || !text.trim()} className="h-[44px] shrink-0">
             Send
           </Button>
         </div>
+        {fromVoice && <div className="mx-auto mt-2 max-w-[40rem]">
+          <p id="voice-review" className="text-xs text-[var(--warn-ink)]">From voice: check the numbers before sending</p>
+          <p aria-label="Draft with numbers highlighted" className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">
+            {transcriptParts(text).map((part, i) => part.number
+              ? <mark key={i} className="rounded bg-[var(--warn-bg)] px-0.5 font-semibold text-[var(--warn-ink)]">{part.text}</mark>
+              : <span key={i}>{part.text}</span>)}
+          </p>
+        </div>}
         <p className="mx-auto mt-1.5 max-w-[40rem] text-[11px] text-muted">
           Enter to send &middot; Shift+Enter for a new line &middot; Facts from your account, not advice.
+          {" "}Voice uses Groq transcription.
         </p>
       </form>
     </div>

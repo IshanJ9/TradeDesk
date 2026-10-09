@@ -334,6 +334,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transcribe */
+        post: operations["transcribe_api_voice_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/trace-sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trace Sample */
+        post: operations["trace_sample_api_dev_trace_sample_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/external": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** External Activity */
+        get: operations["external_activity_api_activity_external_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile": {
         parameters: {
             query?: never;
@@ -573,7 +624,7 @@ export interface components {
          * AuditKind
          * @enum {string}
          */
-        AuditKind: "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
+        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
         /** ChaosStatus */
         ChaosStatus: {
             /**
@@ -853,6 +904,18 @@ export interface components {
              * @default
              */
             message: string;
+        };
+        /** ExternalActivity */
+        ExternalActivity: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Orders */
+            orders: components["schemas"]["Order"][];
+            /** Attribution Pending */
+            attribution_pending: boolean;
         };
         /**
          * ExternalOrderEvent
@@ -1985,6 +2048,23 @@ export interface components {
             /** Ms */
             ms: number | null;
         };
+        /** TraceSampleReply */
+        TraceSampleReply: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Demo
+             * @default true
+             */
+            demo: boolean;
+        };
+        /** Transcript */
+        Transcript: {
+            /** Text */
+            text: string;
+            /** Seconds */
+            seconds: number | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2609,6 +2689,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"])[];
+                };
+            };
+        };
+    };
+    transcribe_api_voice_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "audio/webm": string;
+                "audio/ogg": string;
+                "audio/mp4": string;
+                "audio/wav": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transcript"];
+                };
+            };
+        };
+    };
+    trace_sample_api_dev_trace_sample_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceSampleReply"];
+                };
+            };
+        };
+    };
+    external_activity_api_activity_external_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalActivity"];
                 };
             };
         };
