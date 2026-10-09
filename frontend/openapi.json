@@ -831,6 +831,27 @@
           }
         }
       }
+    },
+    "/api/dev/trace-sample": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Trace Sample",
+        "operationId": "trace_sample_api_dev_trace_sample_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceSampleReply"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3853,6 +3874,26 @@
         ],
         "title": "TraceEvent",
         "description": "One step of the assistant's work, for the live activity panel (see app/trace.py).\n\n`detail` is a short sentence for people. It never holds keys, passwords or raw broker replies."
+      },
+      "TraceSampleReply": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "demo": {
+            "type": "boolean",
+            "title": "Demo",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "run_id",
+          "demo"
+        ],
+        "title": "TraceSampleReply"
       },
       "Transcript": {
         "properties": {

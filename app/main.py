@@ -39,6 +39,7 @@ from app.rules.store import RuleStore
 from app.schemas import RuleStatus
 from app.voice.api import router as voice_router  # voice-live: transcription only
 from app.sync.external import run_external_sync  # voice-live: uses the existing broker session
+from app.sync.dev import router as sync_dev_router  # voice-live: demo-only trace sample
 
 log = logging.getLogger("tradedesk")
 
@@ -219,4 +220,5 @@ def create_app(
     app.include_router(rest)
     app.include_router(ws_router)
     app.include_router(voice_router)  # voice-live: editable text, never an order action
+    app.include_router(sync_dev_router)  # voice-live: returns 404 outside demo mode
     return app

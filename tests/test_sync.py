@@ -295,3 +295,37 @@ async def test_fake021_same_login_and_partial_fills(rig):
         assert app.state.history.orders_on(event.order.created_at.astimezone(timezone(timedelta(hours=5, minutes=30))).date())[0].source == "external"
     finally:
         await adapter.close()
+
+
+@pytest.mark.parametrize("demo", [False, True])
+async def test_trace_sample_is_demo_only_and_never_calls_broker(demo):
+    from app.api_models import TraceEvent
+    from unittest.mock import Mock
+
+    app = create_app(Settings(broker="mock", llm_provider="rules", demo_mode=demo,
+                             ticker_interval=None, external_sync_interval=None, reconcile_interval=None))
+    broker, copilot, approvals = Mock(), Mock(), Mock()
+    app.state.broker, app.state.copilot, app.state.approvals = broker, copilot, approvals
+    queue = app.state.hub.subscribe()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/api/dev/trace-sample")
+            assert response.status_code == (200 if demo else 404)
+            if demo:
+                assert response.json()["demo"] is True
+                run_id = response.json()["run_id"]
+                trace = [queue.get_nowait() for _ in range(queue.qsize())]
+                assert len(trace) == 8
+                assert all(isinstance(event, TraceEvent) and event.run_id == run_id for event in trace)
+                assert [event.seq for event in trace] == list(range(1, 9))
+                assert trace[-1].status == "blocked"
+                assert all("DEMO DATA" in event.detail for event in trace if event.status != "start")
+                second = await client.post("/api/dev/trace-sample")
+                assert second.json()["run_id"] != run_id
+            else:
+                assert queue.empty()
+            assert broker.mock_calls == copilot.mock_calls == approvals.mock_calls == []
+            assert app.state.db.query("SELECT * FROM executions") == []
+            assert app.state.audit.list() == []
+    finally:
+        app.state.db.close()
