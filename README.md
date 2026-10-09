@@ -43,6 +43,10 @@ Never edit `frontend/src/lib/types.gen.ts` by hand.
 
 ## The assistant (LLM)
 
+The full system prompt, every tool definition the model receives, and the fixed replies that code substitutes for the
+model are in [PROMPT.md](PROMPT.md). It is generated from the code (`scripts/gen_prompt_md.py`), and a test fails if it
+ever differs from what the model really receives.
+
 The chat runs behind `app/llm/types.py::LLMClient`. `LLM_PROVIDER=rules` (the default) uses a built-in
 keyword parser that makes the same tool calls a real model would, so everything works without a provider.
 Bedrock is supported (see below). To add another provider: write one class with `async complete(system, messages, tools) -> LLMTurn`
