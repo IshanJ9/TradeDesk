@@ -33,6 +33,9 @@ from app.plans.builder import PlanBuilder
 from app.plans.service import PlanAssistant, PlanService
 from app.plans.store import PlanStore
 from app.risk.guard import NoRiskGuard
+# risk-goals: profile/goal persistence and routes (guard is wired in Step 3).
+from app.risk.api import router as risk_router
+from app.risk.store import ProfileStore
 from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
@@ -170,6 +173,7 @@ def create_app(
     risk = NoRiskGuard()  # risk-goals: the trader's own limits
     app.state.history = history
     app.state.risk = risk
+    app.state.profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
     cards = CardService(builder, store, hub, audit, risk)
     tools = build_tools()
     llm = make_llm(settings, {name: t.render for name, t in tools.items()})
@@ -213,4 +217,5 @@ def create_app(
 
     app.include_router(rest)
     app.include_router(ws_router)
+    app.include_router(risk_router)  # risk-goals
     return app
