@@ -233,4 +233,7 @@ def create_app(
     app.include_router(rest)
     app.include_router(ws_router)
     app.include_router(risk_router)  # risk-goals
+    from app.demo import router as demo_router  # demo controls: 404 unless DEMO_MODE and the mock broker
+
+    app.include_router(demo_router)
     return app

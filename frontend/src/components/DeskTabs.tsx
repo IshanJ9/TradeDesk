@@ -89,14 +89,14 @@ export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dis
 
   return (
     <Section title="Activity">
-      <div role="tablist" aria-label="Activity" className="mb-2 flex gap-1 border-b border-line">
+      <div role="tablist" aria-label="Activity" className="scroll-quiet mb-2 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map(([key, label]) => (
           <button
             key={key}
             role="tab"
             aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-medium ${tab === key ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink"}`}
+            onClick={(e) => { setTab(key); e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" }); }}
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-medium ${tab === key ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink"}`}
           >
             {label}
           </button>

@@ -123,6 +123,11 @@ after every step:
 Not verified live: a sell actually filling (our checks ran after market hours, so 021 accepted the orders but
 did not fill them; they were cancelled), and the sandbox's own rate limits (429) in practice.
 
+A sandbox behaviour to know about: four 1-share orders that 021 reported as `Cancelled` at the time were reported
+by 021 as `Executed` about half an hour later, shortly before the sandbox cleared the day's orders at 17:00 IST.
+The app shows 021's own status field and filled quantity (fills are read per order id), so it reported exactly
+what 021 said each time. In this sandbox, a cancel confirmed by 021 is not necessarily final.
+
 What the guide forced, and what we did about it:
 
 - **No client order id.** `POST /orders` has no idempotency field. Duplicate-send protection is therefore
@@ -158,7 +163,15 @@ What the guide forced, and what we did about it:
 - The orders websocket (live fills). Order state is read over REST, which the guide calls the source of truth.
 - F&O orders. Orders are equity only; the option chain is read-only.
 - Pending cards and plans are held in memory (rules, the audit log and the send log are in SQLite).
-- Demo and chaos switches, authentication (single demo user), and Co-Captain co-approval.
+- Authentication (single demo user) and Co-Captain co-approval.
+
+## Demo controls
+
+With `DEMO_MODE=true` and `BROKER=mock`, a **Demo** menu in the header makes the judged failure cases happen on
+demand (`app/demo.py`): a price jump after a card was shown, the next order's reply lost or its request lost, the
+broker unreachable, a stock whose name carries a prompt-injection attempt, two losing intraday positions, and
+021's Anchor lock. They change the fake market only; the cards, approval checks and send log run as always. With
+any other broker, or with demo mode off, the routes answer 404 (tested), so they can never touch a real account.
 
 ### Bedrock chat
 
