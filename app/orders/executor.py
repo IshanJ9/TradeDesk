@@ -3,9 +3,11 @@
 Guarantees
 - Write-ahead: a row keyed by `client_order_id` is inserted BEFORE the broker is called. The
   primary key makes a second send of the same order impossible, even if a caller has a bug.
-- No blind retry: on a timeout the order is never re-sent. We look for it in the broker's
-  order book (`get_order(client_order_id)`) and report SENT only if we find it. If we can't
-  tell, the outcome is UNKNOWN and a background reconcile keeps checking.
+- No blind retry: on a timeout the order is never re-sent. The broker has no client order id for us
+  to look up, so we read its order book for ONE order that looks exactly like what we sent (see
+  `app/broker/matching.py`) and report SENT only if we find it. If we can't tell (nothing there yet,
+  or several identical orders), the outcome is UNKNOWN and a background reconcile keeps checking.
+  'Never placed' is only ever concluded after a clean read of the book plus a grace period.
 - Everything is audited: request, response, timeout, reconcile.
 """
 
@@ -29,11 +31,13 @@ from app.events import EventHub
 from app.pending import PendingStore
 from app.schemas import (
     AuditKind,
+    MatchKind,
     Order,
     OrderAction,
     OrderStatus,
     PendingOrder,
     PendingState,
+    SentOrderSpec,
     fmt_rupees,
 )
 
@@ -56,7 +60,7 @@ class Executor:
         *,
         reconcile_attempts: int = 3,
         reconcile_delay: float = 0.2,
-        grace_seconds: float = 30.0,
+        grace_seconds: float = 120.0,
     ):
         self._broker = broker
         self._db = db
@@ -164,10 +168,28 @@ class Executor:
                 return found
         return None
 
+    def _claimed_order_ids(self) -> set[str]:
+        """Broker order ids that already belong to one of our sends; never attribute them twice."""
+        rows = self._db.query("SELECT broker_order_id FROM executions WHERE broker_order_id IS NOT NULL")
+        return {r["broker_order_id"] for r in rows}
+
+    async def _match(self, spec: SentOrderSpec, subject_id: str) -> Order | None:
+        """The one order in the book that looks like `spec`, or None. Several look-alikes: None, and say so."""
+        result = await self._broker.find_sent_order(spec, self._claimed_order_ids())
+        if result.kind is MatchKind.AMBIGUOUS:
+            self._audit.record(
+                AuditKind.RECONCILE,
+                "system",
+                "Several identical orders are in the order book, so we can't tell which one is ours. "
+                "Left as unknown; nothing was re-sent.",
+                subject_id=subject_id,
+            )
+        return result.order
+
     async def _find(self, p: PendingOrder) -> Order | None:
-        """Did the broker act on this request? For a new order, look it up by client order id."""
+        """Did the broker act on this request? A new order is matched by what it looks like."""
         if p.action is OrderAction.PLACE:
-            return await self._broker.get_order(p.client_order_id)
+            return await self._match(SentOrderSpec.from_pending(p, self._started_at(p.client_order_id)), p.id)
         target = next((o for o in await self._broker.get_orders() if o.order_id == p.target_order_id), None)
         if target is None:
             return None
@@ -182,7 +204,8 @@ class Executor:
         """Re-check executions whose outcome is unresolved. Returns how many were resolved.
 
         Used at startup (crash recovery) and periodically. A new order that the broker's order
-        book doesn't contain after the grace period is marked NOT_SENT; it is never re-sent.
+        book doesn't contain after the grace period is marked NOT_SENT; it is never re-sent. If
+        look-alike orders make the match ambiguous, the row stays UNKNOWN (never guessed at).
         """
         rows = self._db.query(
             "SELECT * FROM executions WHERE status IN (?, ?) AND action = ?", (*UNRESOLVED, OrderAction.PLACE.value)
@@ -190,10 +213,16 @@ class Executor:
         resolved = 0
         for row in rows:
             cid = row["client_order_id"]
+            spec_json = json.loads(row["detail"]).get("spec")
+            if spec_json is None:
+                continue
             try:
-                order = await self._broker.get_order(cid)
+                result = await self._broker.find_sent_order(SentOrderSpec(**spec_json), self._claimed_order_ids())
             except BrokerTimeout:
                 break  # broker unreachable: leave everything as it is
+            order = result.order
+            if result.kind is MatchKind.AMBIGUOUS:
+                continue
             if order is not None:
                 status = "REJECTED" if order.status is OrderStatus.REJECTED else "SENT"
                 self._finish(cid, status, order.order_id)
@@ -213,11 +242,22 @@ class Executor:
                 self._audit.record(
                     AuditKind.RECONCILE,
                     "system",
-                    f"Resolved {cid}: the broker has no such order, so it was never placed",
+                    f"Resolved {cid}: after {int(age)}s the order book still has no such order, so it was never placed",
                     subject_id=row["pending_id"],
                 )
                 resolved += 1
         return resolved
+
+    async def order_for(self, client_order_id: str) -> Order | None:
+        """The broker order that our send `client_order_id` became, if we know its id."""
+        row = self._db.query("SELECT broker_order_id FROM executions WHERE client_order_id = ?", (client_order_id,))
+        if not row or not row[0]["broker_order_id"]:
+            return None
+        return await self._broker.get_order(row[0]["broker_order_id"])
+
+    def _started_at(self, client_order_id: str) -> datetime:
+        row = self._db.query("SELECT created_at FROM executions WHERE client_order_id = ?", (client_order_id,))
+        return datetime.fromisoformat(row[0]["created_at"])
 
     def unresolved(self) -> list[dict]:
         rows = self._db.query("SELECT * FROM executions WHERE status IN (?, ?)", UNRESOLVED)
@@ -228,7 +268,11 @@ class Executor:
     # ------------------------------------------------------------------ #
 
     def _begin(self, p: PendingOrder) -> None:
-        now = self._clock().isoformat()
+        now = self._clock()
+        detail: dict = {"order_hash": p.order_hash, "summary": self._describe(p)}
+        if p.action is OrderAction.PLACE:  # what the order will look like on the wire, for reconcile
+            detail["spec"] = SentOrderSpec.from_pending(p, now).model_dump(mode="json")
+        now = now.isoformat()
         try:
             self._db.execute(
                 "INSERT INTO executions (client_order_id, pending_id, action, status, created_at, updated_at, detail)"
@@ -240,7 +284,7 @@ class Executor:
                     "SENDING",
                     now,
                     now,
-                    json.dumps({"order_hash": p.order_hash, "summary": self._describe(p)}),
+                    json.dumps(detail),
                 ),
             )
         except sqlite3.IntegrityError as exc:

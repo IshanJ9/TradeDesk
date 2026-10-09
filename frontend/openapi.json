@@ -1435,17 +1435,6 @@
           "validity": {
             "$ref": "#/components/schemas/Validity",
             "default": "DAY"
-          },
-          "validity_minutes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validity Minutes"
           }
         },
         "additionalProperties": false,
@@ -1854,10 +1843,6 @@
             "type": "string",
             "title": "Order Id"
           },
-          "client_order_id": {
-            "type": "string",
-            "title": "Client Order Id"
-          },
           "instrument": {
             "$ref": "#/components/schemas/Instrument"
           },
@@ -1901,6 +1886,18 @@
               }
             ],
             "title": "Limit Price"
+          },
+          "trigger_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Price"
           },
           "product": {
             "$ref": "#/components/schemas/Product",
@@ -1954,7 +1951,6 @@
         "type": "object",
         "required": [
           "order_id",
-          "client_order_id",
           "instrument",
           "side",
           "quantity",
@@ -1962,6 +1958,7 @@
           "avg_fill_price",
           "order_type",
           "limit_price",
+          "trigger_price",
           "product",
           "validity",
           "status",
@@ -2034,6 +2031,19 @@
             ],
             "title": "Amount Paise"
           },
+          "fraction_of_holding": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction Of Holding"
+          },
           "order_type": {
             "anyOf": [
               {
@@ -2056,6 +2066,18 @@
             ],
             "title": "Limit Price"
           },
+          "trigger_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Price"
+          },
           "product": {
             "$ref": "#/components/schemas/Product",
             "default": "CNC"
@@ -2063,19 +2085,6 @@
           "validity": {
             "$ref": "#/components/schemas/Validity",
             "default": "DAY"
-          },
-          "validity_minutes": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 60.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validity Minutes"
           },
           "target_order_id": {
             "anyOf": [
@@ -2148,6 +2157,19 @@
             ],
             "title": "Amount Paise"
           },
+          "fraction_of_holding": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction Of Holding"
+          },
           "order_type": {
             "anyOf": [
               {
@@ -2170,6 +2192,18 @@
             ],
             "title": "Limit Price"
           },
+          "trigger_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Price"
+          },
           "product": {
             "$ref": "#/components/schemas/Product",
             "default": "CNC"
@@ -2177,19 +2211,6 @@
           "validity": {
             "$ref": "#/components/schemas/Validity",
             "default": "DAY"
-          },
-          "validity_minutes": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 60.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validity Minutes"
           },
           "target_order_id": {
             "anyOf": [
@@ -2211,11 +2232,12 @@
           "side",
           "quantity",
           "amount_paise",
+          "fraction_of_holding",
           "order_type",
           "limit_price",
+          "trigger_price",
           "product",
           "validity",
-          "validity_minutes",
           "target_order_id"
         ],
         "title": "OrderIntent",
@@ -2238,7 +2260,8 @@
         "type": "string",
         "enum": [
           "LIMIT",
-          "MARKET"
+          "MARKET",
+          "STOP_LIMIT"
         ],
         "title": "OrderType"
       },
@@ -2385,6 +2408,18 @@
             ],
             "title": "Protection Price"
           },
+          "trigger_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Price"
+          },
           "product": {
             "$ref": "#/components/schemas/Product",
             "default": "CNC"
@@ -2392,17 +2427,6 @@
           "validity": {
             "$ref": "#/components/schemas/Validity",
             "default": "DAY"
-          },
-          "validity_minutes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validity Minutes"
           },
           "target_order_id": {
             "anyOf": [
@@ -2493,9 +2517,9 @@
           "order_type",
           "limit_price",
           "protection_price",
+          "trigger_price",
           "product",
           "validity",
-          "validity_minutes",
           "target_order_id",
           "client_order_id",
           "charges",
@@ -2849,17 +2873,6 @@
           "validity": {
             "$ref": "#/components/schemas/Validity",
             "default": "DAY"
-          },
-          "validity_minutes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validity Minutes"
           }
         },
         "additionalProperties": false,
@@ -3640,8 +3653,7 @@
         "type": "string",
         "enum": [
           "DAY",
-          "IOC",
-          "MINUTES"
+          "IOC"
         ],
         "title": "Validity"
       }

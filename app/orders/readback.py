@@ -12,6 +12,15 @@ def readback(p: PendingOrder) -> str:
     if p.action is OrderAction.MODIFY:
         verb = f"changing your order to {verb}"
     shares = "share" if p.quantity == 1 else "shares"
+    if p.order_type is OrderType.STOP_LIMIT:
+        move = "falls to" if p.side is Side.SELL else "rises to"
+        edge = "at least" if p.side is Side.SELL else "up to"
+        total = f", about {fmt_rupees(p.est_total)} {'after' if p.side is Side.SELL else 'including'} charges" if p.est_total else ""
+        return (
+            f"You are setting a stop-loss: if {p.instrument.symbol} {move} {fmt_rupees(p.trigger_price)}, "
+            f"{verb} {p.quantity} {shares} of {name} {edge} {fmt_rupees(p.limit_price)}{total}. "
+            "Nothing is traded until that price is reached."
+        )
     if p.order_type is OrderType.LIMIT or p.limit_price is not None:
         price = f"at {'up to' if p.side is Side.BUY else 'at least'} {fmt_rupees(p.limit_price)}"
     else:

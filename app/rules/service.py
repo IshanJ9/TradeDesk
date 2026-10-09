@@ -157,6 +157,7 @@ class RuleService:
             created_at=self._clock(),
         )
         self._store.add(rule)
+        await self._broker.watch([inst.key])  # a live broker streams only what it is asked to follow
         self._audit.record(
             AuditKind.RULE_CREATED,
             "system",
@@ -235,7 +236,6 @@ class RuleService:
                 limit_price=limit,
                 product=req.product,
                 validity=req.validity,
-                validity_minutes=req.validity_minutes,
             )
         except ValidationError as exc:
             return self._blocked(exc.errors()[0]["msg"].removeprefix("Value error, "))

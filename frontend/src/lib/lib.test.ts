@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
+import { actionTitle, priceLine, validityWord } from "./describe";
 import { fingerprint } from "./fingerprint";
 import { clock, indianGroup, pct, rupees, secondsLeft, shortHash } from "./format";
 import { AUDIT_LIMIT, awaiting, initialState, reducer, resolved, type State } from "./store";
@@ -224,6 +225,31 @@ describe("store", () => {
 
   it("tracks connection state", () => {
     expect(reducer(initialState, { type: "conn", status: "live" }).conn).toBe("live");
+  });
+});
+
+describe("stop-loss wording", () => {
+  const stop = { side: "SELL" as const, limit_price: 139000, protection_price: null, trigger_price: 140000 };
+
+  it("says nothing happens until the price reaches the trigger", () => {
+    expect(priceLine(stop)).toBe("Stop-loss: if the price falls to ₹1,400.00, sell at least ₹1,390.00");
+    expect(priceLine({ ...stop, side: "BUY", limit_price: 141000, trigger_price: 140000 })).toContain("if the price rises to ₹1,400.00, buy up to ₹1,410.00");
+  });
+
+  it("still words a plain limit and a protected market order as before", () => {
+    expect(priceLine({ side: "BUY", limit_price: 145000, protection_price: null, trigger_price: null })).toBe("Limit: up to ₹1,450.00");
+    expect(priceLine({ side: "SELL", limit_price: null, protection_price: 140000, trigger_price: null })).toContain("won't fill below");
+  });
+
+  it("titles a stop-loss card as one, and a change to it", () => {
+    const base = { instrument: { symbol: "INFY" }, quantity: 5, side: "SELL", target_order_id: "9", order_type: "STOP_LIMIT" };
+    expect(actionTitle({ ...base, action: "PLACE" } as never)).toBe("Stop-loss · Sell 5 × INFY");
+    expect(actionTitle({ ...base, action: "MODIFY" } as never)).toBe("Change stop-loss 9");
+  });
+
+  it("knows only the two validities 021 offers", () => {
+    expect(validityWord("DAY")).toBe("Valid for the day");
+    expect(validityWord("IOC")).toBe("Fill now or cancel");
   });
 });
 

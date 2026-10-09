@@ -1,10 +1,51 @@
+# ---- secrets: never commit these -------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*.json
+*credentials*.json
+secrets/
+.aws/
+*.tfvars
+*.postman_environment.json
+*.postman_globals.json
+
+# ---- local data and caches (the instrument list, the databases, logs) -----------------
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite3
+*.sqlite3-*
+.cache/
+instruments*.csv
+instruments*.csv.gz
+*.log
+
+# ---- python ---------------------------------------------------------------------------
 .venv/
+venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-.env
-*.db
-*.sqlite3
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- frontend -------------------------------------------------------------------------
 node_modules/
 dist/
 .vite/
+
+# ---- editor, OS and assistant-local files ---------------------------------------------
+.idea/
+.vscode/
+.claude/
+.DS_Store
+Thumbs.db

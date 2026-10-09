@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -12,6 +12,10 @@ def _flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     broker: str = "mock"  # mock | zerotwoone
+    zerotwoone_username: str = field(default="", repr=False)  # your UCC, e.g. HACK1234
+    zerotwoone_password: str = field(default="", repr=False)
+    zerotwoone_base_url: str = "https://devapi.021.trade/api/developer-api/v1"
+    zerotwoone_cache_dir: str = ".cache"  # the instrument list is downloaded once a day and kept here
     demo_mode: bool = False  # enables /api/chaos/* and /api/locks/* toggles
     database_url: str = "sqlite:///:memory:"
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
@@ -28,7 +32,9 @@ class Settings:
     ticker_interval: float | None = 1.0  # mock price feed period; None = no automatic ticks
     account_push_interval: float = 1.0  # min gap between live account/order pushes
     reconcile_interval: float | None = 5.0  # how often unresolved executions are re-checked
-    reconcile_grace_seconds: float = 30.0  # wait this long before calling an order "never sent"
+    # Wait this long (and read the order book cleanly) before calling an order "never sent". 021 gives us
+    # no id to look the order up by, so we are slow to conclude that it never got there.
+    reconcile_grace_seconds: float = 120.0
     timeout_reconcile_attempts: int = 3  # order-book lookups right after a timed-out send
     timeout_reconcile_delay: float = 0.2  # seconds between those lookups
 
@@ -38,6 +44,10 @@ class Settings:
         env = os.environ
         return cls(
             broker=env.get("BROKER", "mock").strip().lower() or "mock",
+            zerotwoone_username=env.get("ZEROTWOONE_USERNAME", "").strip(),
+            zerotwoone_password=env.get("ZEROTWOONE_PASSWORD", ""),
+            zerotwoone_base_url=env.get("ZEROTWOONE_BASE_URL", "").strip() or cls.zerotwoone_base_url,
+            zerotwoone_cache_dir=env.get("ZEROTWOONE_CACHE_DIR", "").strip() or cls.zerotwoone_cache_dir,
             demo_mode=_flag("DEMO_MODE", False),
             database_url=env.get("DATABASE_URL", "sqlite:///./tradedesk.db"),
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",

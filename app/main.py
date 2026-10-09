@@ -34,6 +34,7 @@ from app.plans.store import PlanStore
 from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
+from app.schemas import RuleStatus
 
 log = logging.getLogger("tradedesk")
 
@@ -45,7 +46,18 @@ def _utcnow() -> datetime:
 def make_broker(settings: Settings) -> BrokerAdapter:
     if settings.broker == "mock":
         return MockBroker()
-    raise NotImplementedError(f"BROKER={settings.broker!r}: the 021 adapter arrives at kickoff")
+    if settings.broker == "zerotwoone":
+        if not settings.zerotwoone_username or not settings.zerotwoone_password:
+            raise RuntimeError("BROKER=zerotwoone needs ZEROTWOONE_USERNAME and ZEROTWOONE_PASSWORD in .env")
+        from app.broker.zerotwoone import ZeroTwoOneAdapter
+
+        return ZeroTwoOneAdapter(
+            username=settings.zerotwoone_username,
+            password=settings.zerotwoone_password,
+            base_url=settings.zerotwoone_base_url,
+            cache_dir=settings.zerotwoone_cache_dir,
+        )
+    raise NotImplementedError(f"BROKER={settings.broker!r}: use mock or zerotwoone")
 
 
 async def _tick_bridge(app: FastAPI) -> None:
@@ -99,6 +111,12 @@ def create_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
+        # A live broker logs in and opens its price feed first. If it cannot (wrong password, no network) the
+        # app does not start, rather than running with a broker that is not there.
+        await app.state.broker.start()
+        await app.state.broker.watch(
+            sorted({r.condition.instrument_key for r in app.state.rule_store.list(RuleStatus.ACTIVE)})
+        )
         # Crash recovery: anything that was mid-send when we last stopped gets looked up, not re-sent.
         try:
             await app.state.executor.reconcile()
@@ -117,6 +135,7 @@ def create_app(
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             await app.state.plans.shutdown()  # a plan in flight stops cleanly; unsent steps stay unsent
+            await app.state.broker.close()
             app.state.db.close()
 
     app = FastAPI(title="TradeDesk-AI", version="0.1.0", lifespan=lifespan)

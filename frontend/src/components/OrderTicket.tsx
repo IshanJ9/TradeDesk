@@ -84,7 +84,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             <span className="num font-medium">{rupees(o.est_total)}</span>
             <span className="ml-1 text-muted">{o.side === "SELL" ? "after charges" : "with charges"}</span>
           </Row>
-          <Row label="Order lasts">{validityWord(o.validity, o.validity_minutes)}</Row>
+          <Row label="Order lasts">{validityWord(o.validity)}</Row>
         </dl>
       )}
 

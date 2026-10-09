@@ -15,7 +15,7 @@ The LLM understands language and can only read data or draft orders. Plain code 
 - **Contract:** Pydantic is the single source of truth. OpenAPI is exported and TypeScript types are generated for the frontend.
 - **Safety defaults:** approval TTL 60 s; price-drift re-quote above 1% from `ref_ltp`; hard limits 1,00,000 units and Rs 1 crore per order (021's published limits).
 - **LLM provider:** undecided. Sits behind an interface; a keyword parser stands in until chosen.
-- **Approval binds to `order_hash`**, a hash of the exact order fields (not LTP, expiry or state). Any change to instrument, side, qty, prices, product, validity or client order id voids an old approval.
+- **Approval binds to `order_hash`**, a hash of the exact order fields (not LTP, expiry or state). Any change to instrument, side, qty, prices (including a stop trigger), product, validity or client order id voids an old approval. (2026-10-09: 021 has no client order id on the wire, so ours is purely an internal key; after a timeout we find an order by matching what it looks like. See README.)
 - **Standing rules:** when a rule fires it creates a fresh `PendingOrder` for approval (no auto-place in the MVP). `client_order_id` is derived from the rule id so a double fire cannot place two orders. `heads_up_pct` is reserved, built later; wording stays factual (no price predictions).
 - **Plans:** approved as a whole via `plan_hash`. A buy funded by a sell is sized from actual proceeds, bounded by an approved `max_quantity`/`max_spend`. Default failure policy is HALT.
 

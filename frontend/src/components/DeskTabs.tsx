@@ -11,7 +11,7 @@ type Tab = "orders" | "rules" | "log";
 function OrderRow({ o, ask }: { o: Order; ask: (text: string) => void }) {
   const open = o.status === "OPEN" || o.status === "PARTIAL";
   const tone = o.status === "FILLED" ? "gain" : o.status === "REJECTED" ? "loss" : open ? "warn" : "plain";
-  const price = o.limit_price ? rupees(o.limit_price) : "market";
+  const price = o.trigger_price ? `stop ${rupees(o.trigger_price)}` : o.limit_price ? rupees(o.limit_price) : "market";
   return (
     <li className="flex items-start justify-between gap-3 border-b border-line py-2.5 text-[13px] last:border-b-0">
       <div className="min-w-0">

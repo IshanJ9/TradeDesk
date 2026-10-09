@@ -316,6 +316,8 @@ def test_reconcile_marks_a_never_placed_order_after_the_grace_period(client, bro
     approve(client, p)
     assert client.post("/api/executions/reconcile").json() == {"resolved": 0, "unresolved": 1}  # too early to say
     clock.advance(seconds=31)
+    assert client.post("/api/executions/reconcile").json() == {"resolved": 0, "unresolved": 1}  # 021 gives no id; we wait longer
+    clock.advance(seconds=100)
     assert client.post("/api/executions/reconcile").json() == {"resolved": 1, "unresolved": 0}
     assert "never placed" in client.get("/api/audit?kind=RECONCILE").json()[0]["summary"]
     assert client.get("/api/orders").json() == []  # still nothing sent
