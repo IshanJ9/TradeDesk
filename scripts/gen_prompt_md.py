@@ -9,10 +9,13 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.agent import router  # noqa: E402
+from app.agent.graph import GraphCopilot  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.llm import copilot  # noqa: E402
 from app.llm.fallback import NOTICE as FALLBACK_NOTICE  # noqa: E402
@@ -21,6 +24,15 @@ from app.llm.tools import build_tools  # noqa: E402
 from app.voice.service import PROMPT as VOICE_PROMPT  # noqa: E402
 
 DATE_MARK = "2000-01-01"
+
+
+def graph_mermaid() -> str:
+    """The real graph wiring from GraphCopilot._build, with stand-in nodes (only the shape is drawn)."""
+    async def noop(_state):
+        return {}
+
+    stub = SimpleNamespace(**{n: noop for n in ("_input_guard", "_router", "_model", "_tools_node", "_output_guard")})
+    return GraphCopilot._build(stub).get_graph().draw_mermaid().rstrip("\n")
 
 
 def render() -> str:
@@ -40,18 +52,45 @@ def render() -> str:
     w(f"- Provider: AWS Bedrock Converse API (`LLM_PROVIDER=bedrock`), model `{s.bedrock_model_id}`, region `{s.aws_region}`.")
     w("- Temperature 0 (the same sentence should give the same card), at most 800 output tokens per call.")
     w(f"- Up to {copilot.MAX_STEPS} model calls per message (tool-use rounds); the last {copilot.HISTORY_LIMIT} messages of the conversation are kept.")
-    w("- Orchestrator: `ORCHESTRATOR=langgraph` runs the same prompt and tools as a LangGraph graph")
-    w("  (input guard -> router -> model <-> tools -> output guard). The router and both guards are plain code: no model call,")
-    w("  no prompt. For a question, the router offers only the read-only tools in section 3.")
+    w("- Orchestrator: `ORCHESTRATOR=langgraph` runs the agent as a LangGraph graph (section 2).")
     w("- If Bedrock is unavailable, a built-in keyword parser (no language model, no prompt) answers that turn instead.\n")
 
-    w("## 2. System prompt (sent verbatim on every model call)\n")
+    w("## 2. The agent: a LangGraph graph\n")
+    w("Each chat message runs once through this graph (`app/agent/graph.py`). The diagram below is drawn from the")
+    w("graph's real wiring by LangGraph itself. Only the `model` node calls the language model; every other node is")
+    w("plain code with no prompt.\n")
+    w("```mermaid")
+    w(graph_mermaid())
+    w("```\n")
+    w("| Node | Runs as | What it does |")
+    w("|---|---|---|")
+    w("| `input_guard` | code | Checks the message for attempts to change the assistant's rules. If it finds one, it answers with the fixed refusal in section 5 and ends the turn; the model never sees the message. |")
+    w("| `router` | code | Chooses the tool set with the rule below: **READ** (a question: read-only tools only) or **ACT** (all tools). It never decides prices, quantities or whether anything is sent. |")
+    w("| `model` | language model | Receives the system prompt (section 3), the conversation and the tools for the route. Asks for tools or answers. |")
+    w(f"| `tools` | code | Runs each tool the model asked for. On the READ route a drafting tool is refused. After {copilot.MAX_STEPS} rounds the turn stops with a fixed reply. |")
+    w("| `output_guard` | code | Order wording comes from the card, not the model. Replaces any answer that claims an order was placed, gives advice, or uses a number not found in the data (section 5). |")
+    w("")
+    w("Every node reports its step and timing to the live trace in the app. No node can send an order: the tools")
+    w("only read or draft, and only the trader's Approve click (a separate route, outside the graph) sends anything.\n")
+    w("**Router rule** (`app/agent/router.py`). A message matching this pattern takes the ACT route; anything else is")
+    w("a question and takes the READ route. When unsure it chooses ACT, because the approval card still stands")
+    w("between any draft and the broker.\n")
+    w("```text")
+    w(router._ACTION.pattern)
+    w("```\n")
+    w("**Tools per route:**\n")
+    w("- READ: " + ", ".join(f"`{n}`" for n, t in tools.items() if t.read_only))
+    w("- ACT: all of them (section 4)\n")
+    w("With `ORCHESTRATOR=classic` the same prompt, tools and guards run as a plain loop (`app/llm/copilot.py`),")
+    w("without the router: every message is offered all the tools.\n")
+
+    w("## 3. System prompt (sent verbatim on every model call)\n")
     w("The only variable part is today's date.\n")
     w("```text")
     w(system.rstrip("\n"))
     w("```\n")
 
-    w("## 3. Tools offered to the model\n")
+    w("## 4. Tools offered to the model\n")
     w("Sent with every call as Bedrock `toolConfig.tools` (name, description, JSON input schema). No tool can approve,")
     w("send or execute an order, and the broker connection the tools use is read-only.\n")
     rule_tools = {"create_rule", "cancel_rule", "alert_on_holdings"}
@@ -70,7 +109,7 @@ def render() -> str:
         w(json.dumps(t.spec.input_schema, indent=2, ensure_ascii=False))
         w("```\n")
 
-    w("## 4. Replies written by code, not by the model\n")
+    w("## 5. Replies written by code, not by the model\n")
     w("When a guard stops the model's answer, the trader sees one of these fixed texts instead:\n")
     for label, text in [
         ("A message tried to override the rules (answered before the model is called)", copilot.OVERRIDE_REFUSAL),
@@ -83,7 +122,7 @@ def render() -> str:
         w(f"- **{label}:** “{text}”")
     w("\nOrder cards and plan descriptions are also written by code from the card itself, never by the model.\n")
 
-    w("## 5. Speech-to-text hint (voice input)\n")
+    w("## 6. Speech-to-text hint (voice input)\n")
     w("Voice uses Groq `whisper-large-v3-turbo` (temperature 0). It receives this spelling hint, not instructions; the")
     w("transcript is shown to the trader to edit and is then handled exactly like typed text.\n")
     w("```text")
