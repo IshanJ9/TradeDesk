@@ -1,0 +1,3650 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TradeDesk-AI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/account": {
+      "get": {
+        "summary": "Get Account",
+        "operationId": "get_account_api_account_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSnapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "summary": "Get Orders",
+        "operationId": "get_orders_api_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Order"
+                  },
+                  "type": "array",
+                  "title": "Response Get Orders Api Orders Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pending": {
+      "get": {
+        "summary": "Get Pending",
+        "operationId": "get_pending_api_pending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/preview": {
+      "post": {
+        "summary": "Preview Order",
+        "description": "Build an order card from a structured intent (the same object the LLM emits).\n\nNothing is sent. The card has to be approved separately, and the hash on it is what the\napprove call must echo. Ambiguous or unknown instruments come back as a question.",
+        "operationId": "preview_order_api_orders_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderIntent-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReply"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{pending_id}/approve": {
+      "post": {
+        "summary": "Approve",
+        "operationId": "approve_api_approvals__pending_id__approve_post",
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown approval id"
+          },
+          "409": {
+            "description": "Nothing was sent: stale, expired, voided, blocked or re-quoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{pending_id}/reject": {
+      "post": {
+        "summary": "Reject",
+        "operationId": "reject_api_approvals__pending_id__reject_post",
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingOrder"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown approval id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/preview": {
+      "post": {
+        "summary": "Preview Plan",
+        "description": "Build a plan card from structured steps (the same object the assistant uses). Nothing is sent.",
+        "operationId": "preview_plan_api_plans_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReply"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{plan_id}/approve": {
+      "post": {
+        "summary": "Approve Plan",
+        "description": "Approve a whole plan. The steps then run in order in the background, each through the same\nexecutor as a single order; follow progress on the WebSocket or with GET /plans/{id}/report.",
+        "operationId": "approve_plan_api_plans__plan_id__approve_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown plan id"
+          },
+          "409": {
+            "description": "Nothing was run: stale, expired, voided, blocked or re-quoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{plan_id}/reject": {
+      "post": {
+        "summary": "Reject Plan",
+        "operationId": "reject_plan_api_plans__plan_id__reject_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown plan id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{plan_id}/report": {
+      "get": {
+        "summary": "Plan Report",
+        "description": "Where each step stands: filled, partly filled, rejected, not sent. Nothing is hidden.",
+        "operationId": "plan_report_api_plans__plan_id__report_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown plan id"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rules": {
+      "get": {
+        "summary": "Get Rules",
+        "description": "Newest first. A rule fires once; fired and cancelled rules stay listed.",
+        "operationId": "get_rules_api_rules_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RuleStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Rule"
+                  },
+                  "title": "Response Get Rules Api Rules Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Rule",
+        "description": "Create a standing instruction from structured fields (the same object the assistant uses).\n\nA rule never sends an order: when it fires it prepares an approval card or an alert.",
+        "operationId": "create_rule_api_rules_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReply"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rules/{rule_id}": {
+      "delete": {
+        "summary": "Delete Rule",
+        "operationId": "delete_rule_api_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown rule"
+          },
+          "409": {
+            "description": "Rule is not active"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "summary": "Get Audit",
+        "description": "Newest first.",
+        "operationId": "get_audit_api_audit_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEvent"
+                  },
+                  "title": "Response Get Audit Api Audit Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/export": {
+      "get": {
+        "summary": "Export Audit",
+        "description": "Downloadable session log: one JSON event per line, oldest first.",
+        "operationId": "export_audit_api_audit_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/x-ndjson": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/executions/reconcile": {
+      "post": {
+        "summary": "Reconcile",
+        "description": "Re-check orders whose outcome was unknown (e.g. after a timeout). Never re-sends.",
+        "operationId": "reconcile_api_executions_reconcile_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "Chat",
+        "description": "Ask the copilot. Order requests come back as cards; nothing is ever sent from here.",
+        "operationId": "chat_api_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReply"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Assistant or broker unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ws-events": {
+      "get": {
+        "summary": "Shape of messages on /ws (documentation only)",
+        "description": "Never returns data. It exists so the WebSocket message types appear in the OpenAPI\nschema and the generated TypeScript types.",
+        "operationId": "ws_events_doc_api_ws_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/SnapshotEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/TickEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AccountUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/OrderUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/PendingCreatedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/PendingUpdatedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/PlanCreatedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/PlanUpdatedEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/PlanReportUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RuleUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RuleFiredEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LockUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AuditEventMessage"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ChaosStatusEvent"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "type",
+                      "mapping": {
+                        "snapshot": "#/components/schemas/SnapshotEvent",
+                        "tick": "#/components/schemas/TickEvent",
+                        "account_update": "#/components/schemas/AccountUpdateEvent",
+                        "order_update": "#/components/schemas/OrderUpdateEvent",
+                        "pending_created": "#/components/schemas/PendingCreatedEvent",
+                        "pending_updated": "#/components/schemas/PendingUpdatedEvent",
+                        "plan_created": "#/components/schemas/PlanCreatedEvent",
+                        "plan_updated": "#/components/schemas/PlanUpdatedEvent",
+                        "plan_report_update": "#/components/schemas/PlanReportUpdateEvent",
+                        "rule_update": "#/components/schemas/RuleUpdateEvent",
+                        "rule_fired": "#/components/schemas/RuleFiredEvent",
+                        "lock_update": "#/components/schemas/LockUpdateEvent",
+                        "audit_event": "#/components/schemas/AuditEventMessage",
+                        "chaos_status": "#/components/schemas/ChaosStatusEvent"
+                      }
+                    }
+                  },
+                  "type": "array",
+                  "title": "Response Ws Events Doc Api Ws Events Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountLocks": {
+        "properties": {
+          "anchor_active": {
+            "type": "boolean",
+            "title": "Anchor Active",
+            "default": false
+          },
+          "anchor_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Message"
+          },
+          "anchor_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Until"
+          },
+          "buffett_mode": {
+            "type": "boolean",
+            "title": "Buffett Mode",
+            "default": false
+          },
+          "co_captain_locked": {
+            "type": "boolean",
+            "title": "Co Captain Locked",
+            "default": false
+          },
+          "co_captain_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Captain Message"
+          },
+          "co_approval_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Approval Limit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "anchor_active",
+          "anchor_message",
+          "anchor_until",
+          "buffett_mode",
+          "co_captain_locked",
+          "co_captain_message",
+          "co_approval_limit"
+        ],
+        "title": "AccountLocks",
+        "description": "021's discipline features as the copilot must respect them."
+      },
+      "AccountSnapshot": {
+        "properties": {
+          "funds": {
+            "$ref": "#/components/schemas/Funds"
+          },
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/Holding"
+            },
+            "type": "array",
+            "title": "Holdings"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/Position"
+            },
+            "type": "array",
+            "title": "Positions"
+          },
+          "locks": {
+            "$ref": "#/components/schemas/AccountLocks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "funds",
+          "holdings",
+          "positions",
+          "locks"
+        ],
+        "title": "AccountSnapshot"
+      },
+      "AccountUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "account_update",
+            "title": "Type",
+            "default": "account_update"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountSnapshot"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "account"
+        ],
+        "title": "AccountUpdateEvent"
+      },
+      "AmbiguityCard": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ambiguity",
+            "title": "Type",
+            "default": "ambiguity"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Instrument"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "query",
+          "candidates"
+        ],
+        "title": "AmbiguityCard",
+        "description": "'Which Tata?': the trader must pick; the copilot never guesses."
+      },
+      "ApprovalConflict": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "HASH_MISMATCH",
+              "EXPIRED",
+              "NOT_PENDING",
+              "REQUOTE_REQUIRED",
+              "BLOCKED"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "pending",
+          "plan"
+        ],
+        "title": "ApprovalConflict",
+        "description": "Body of a 409 from the approve route. Nothing was sent."
+      },
+      "ApproveRequest": {
+        "properties": {
+          "order_hash": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Order Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "order_hash"
+        ],
+        "title": "ApproveRequest",
+        "description": "The client must echo the hash of the exact card it is approving."
+      },
+      "AuditEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AuditKind"
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "user",
+              "llm",
+              "system",
+              "broker"
+            ],
+            "title": "Actor"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "actor",
+          "subject_id",
+          "summary",
+          "data"
+        ],
+        "title": "AuditEvent"
+      },
+      "AuditEventMessage": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "audit_event",
+            "title": "Type",
+            "default": "audit_event"
+          },
+          "event": {
+            "$ref": "#/components/schemas/AuditEvent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "event"
+        ],
+        "title": "AuditEventMessage"
+      },
+      "AuditKind": {
+        "type": "string",
+        "enum": [
+          "USER_MESSAGE",
+          "LLM_INTENT",
+          "RESOLUTION",
+          "PENDING_CREATED",
+          "APPROVAL",
+          "APPROVAL_REFUSED",
+          "BROKER_REQUEST",
+          "BROKER_RESPONSE",
+          "BROKER_TIMEOUT",
+          "RECONCILE",
+          "RULE_CREATED",
+          "RULE_FIRED",
+          "RULE_CANCELLED",
+          "PLAN_STARTED",
+          "PLAN_LEG_RESULT",
+          "INJECTION_BLOCKED",
+          "LIMIT_BLOCKED",
+          "LOCK_BLOCKED",
+          "CHAOS"
+        ],
+        "title": "AuditKind"
+      },
+      "ChaosStatus": {
+        "properties": {
+          "network_down": {
+            "type": "boolean",
+            "title": "Network Down",
+            "default": false
+          },
+          "market_open": {
+            "type": "boolean",
+            "title": "Market Open",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "network_down",
+          "market_open"
+        ],
+        "title": "ChaosStatus"
+      },
+      "ChaosStatusEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "chaos_status",
+            "title": "Type",
+            "default": "chaos_status"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChaosStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "status"
+        ],
+        "title": "ChaosStatusEvent"
+      },
+      "Charges": {
+        "properties": {
+          "brokerage": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Brokerage",
+            "default": 0
+          },
+          "stt": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Stt",
+            "default": 0
+          },
+          "exchange_txn": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Exchange Txn",
+            "default": 0
+          },
+          "sebi_fee": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sebi Fee",
+            "default": 0
+          },
+          "stamp_duty": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Stamp Duty",
+            "default": 0
+          },
+          "gst": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Gst",
+            "default": 0
+          },
+          "clearing": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Clearing",
+            "default": 0
+          },
+          "ipft": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ipft",
+            "default": 0
+          },
+          "dp_charge": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Dp Charge",
+            "default": 0
+          },
+          "break_even_price": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Break Even Price",
+            "default": 0
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brokerage",
+          "stt",
+          "exchange_txn",
+          "sebi_fee",
+          "stamp_duty",
+          "gst",
+          "clearing",
+          "ipft",
+          "dp_charge",
+          "break_even_price",
+          "total"
+        ],
+        "title": "Charges",
+        "description": "021's charge breakdown for one order, in paise.\n\n`clearing` is kept for the plan's 8-part list; 021's pricing page lists no clearing\ncharge for equity, so it is 0. `dp_charge` is the per-ISIN depository charge 021\nlevies on delivery sells."
+      },
+      "ChatReply": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "cards": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PendingOrderCard"
+                },
+                {
+                  "$ref": "#/components/schemas/PlanCard"
+                },
+                {
+                  "$ref": "#/components/schemas/RuleCard"
+                },
+                {
+                  "$ref": "#/components/schemas/AmbiguityCard"
+                },
+                {
+                  "$ref": "#/components/schemas/NoticeCard"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "ambiguity": "#/components/schemas/AmbiguityCard",
+                  "notice": "#/components/schemas/NoticeCard",
+                  "pending_order": "#/components/schemas/PendingOrderCard",
+                  "plan": "#/components/schemas/PlanCard",
+                  "rule": "#/components/schemas/RuleCard"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Cards"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "cards"
+        ],
+        "title": "ChatReply"
+      },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest"
+      },
+      "Comparator": {
+        "type": "string",
+        "enum": [
+          "BELOW",
+          "ABOVE"
+        ],
+        "title": "Comparator"
+      },
+      "CreateRuleRequest": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RuleKind"
+          },
+          "instrument": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Instrument",
+            "description": "The stock, as the trader said it"
+          },
+          "comparator": {
+            "$ref": "#/components/schemas/Comparator",
+            "description": "BELOW: fires when the price falls under the trigger. ABOVE: rises over it"
+          },
+          "price_rupees": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Rupees",
+            "description": "Absolute trigger price"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent",
+            "description": "Size of the move as a positive number, e.g. 3 for '3%'"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleBasis"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With percent: AVG_BUY (their buy price), PREV_CLOSE, or AT_CREATION (default)"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "amount_rupees": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Rupees"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit_price_rupees": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price Rupees"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "validity_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "instrument",
+          "comparator"
+        ],
+        "title": "CreateRuleRequest",
+        "description": "A standing instruction, in the units a trader uses (rupees, percent).\n\nGive the trigger as EITHER an absolute `price_rupees` OR a `percent` move measured from\n`basis`. A TRIGGER_ORDER rule never sends anything when it fires: it prepares a fresh order\ncard for the trader to approve. An ALERT only tells the trader."
+      },
+      "Exchange": {
+        "type": "string",
+        "enum": [
+          "NSE",
+          "BSE"
+        ],
+        "title": "Exchange"
+      },
+      "ExecutionResult": {
+        "properties": {
+          "pending": {
+            "$ref": "#/components/schemas/PendingOrder"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "SENT",
+              "REJECTED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pending",
+          "outcome",
+          "order",
+          "message"
+        ],
+        "title": "ExecutionResult",
+        "description": "What happened after an approved card was sent.\n\nSENT      the broker accepted it (see `order` for its live status)\nREJECTED  the broker refused it (`order.rejection_reason` says why)\nUNKNOWN   the request timed out and we could not confirm either way. The order is\n          never re-sent; it is reconciled against the broker's order book."
+      },
+      "Funds": {
+        "properties": {
+          "available_cash": {
+            "type": "integer",
+            "title": "Available Cash"
+          },
+          "used_margin": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Used Margin",
+            "default": 0
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available_cash",
+          "used_margin",
+          "total"
+        ],
+        "title": "Funds"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Holding": {
+        "properties": {
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "avg_price": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Avg Price"
+          },
+          "ltp": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Ltp"
+          },
+          "prev_close": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Prev Close"
+          },
+          "invested": {
+            "type": "integer",
+            "title": "Invested",
+            "readOnly": true
+          },
+          "current_value": {
+            "type": "integer",
+            "title": "Current Value",
+            "readOnly": true
+          },
+          "pnl": {
+            "type": "integer",
+            "title": "Pnl",
+            "description": "Unrealised P&L in paise vs average price (negative quantity = short).",
+            "readOnly": true
+          },
+          "pnl_pct": {
+            "type": "number",
+            "title": "Pnl Pct",
+            "description": "P&L as a percentage of the amount invested, rounded to 2 decimals.",
+            "readOnly": true
+          },
+          "day_pnl": {
+            "type": "integer",
+            "title": "Day Pnl",
+            "description": "Today's P&L in paise vs previous close.",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument",
+          "quantity",
+          "avg_price",
+          "ltp",
+          "prev_close",
+          "invested",
+          "current_value",
+          "pnl",
+          "pnl_pct",
+          "day_pnl"
+        ],
+        "title": "Holding"
+      },
+      "Instrument": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "pattern": "^[A-Z0-9&\\-_.]{1,40}$",
+            "title": "Symbol"
+          },
+          "exchange": {
+            "$ref": "#/components/schemas/Exchange"
+          },
+          "series": {
+            "type": "string",
+            "title": "Series",
+            "default": "EQ"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "tick_size": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Tick Size",
+            "default": 5
+          },
+          "price_band_low": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Band Low"
+          },
+          "price_band_high": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Band High"
+          },
+          "suspended": {
+            "type": "boolean",
+            "title": "Suspended",
+            "default": false
+          },
+          "underlying": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underlying"
+          },
+          "lot_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Size"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "option_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptionType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "symbol",
+          "exchange",
+          "series",
+          "isin",
+          "name",
+          "tick_size",
+          "price_band_low",
+          "price_band_high",
+          "suspended",
+          "underlying",
+          "lot_size",
+          "expiry",
+          "strike",
+          "option_type"
+        ],
+        "title": "Instrument"
+      },
+      "LegFailurePolicy": {
+        "type": "string",
+        "enum": [
+          "HALT",
+          "CONTINUE"
+        ],
+        "title": "LegFailurePolicy"
+      },
+      "LegStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_SENT",
+          "SKIPPED",
+          "OPEN",
+          "PARTIAL",
+          "FILLED",
+          "REJECTED",
+          "CANCELLED",
+          "UNKNOWN"
+        ],
+        "title": "LegStatus"
+      },
+      "LockUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "lock_update",
+            "title": "Type",
+            "default": "lock_update"
+          },
+          "locks": {
+            "$ref": "#/components/schemas/AccountLocks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "locks"
+        ],
+        "title": "LockUpdateEvent"
+      },
+      "NoticeCard": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "notice",
+            "title": "Type",
+            "default": "notice"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "blocked"
+            ],
+            "title": "Level"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "level",
+          "message"
+        ],
+        "title": "NoticeCard",
+        "description": "Something the trader should know: a block, a lock, or flagged content."
+      },
+      "OptionType": {
+        "type": "string",
+        "enum": [
+          "CE",
+          "PE"
+        ],
+        "title": "OptionType"
+      },
+      "Order": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "client_order_id": {
+            "type": "string",
+            "title": "Client Order Id"
+          },
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "filled_quantity": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Filled Quantity",
+            "default": 0
+          },
+          "avg_fill_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Fill Price"
+          },
+          "order_type": {
+            "$ref": "#/components/schemas/OrderType"
+          },
+          "limit_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RejectionReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejection_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "pending_quantity": {
+            "type": "integer",
+            "title": "Pending Quantity",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "order_id",
+          "client_order_id",
+          "instrument",
+          "side",
+          "quantity",
+          "filled_quantity",
+          "avg_fill_price",
+          "order_type",
+          "limit_price",
+          "product",
+          "validity",
+          "status",
+          "rejection_reason",
+          "rejection_message",
+          "created_at",
+          "updated_at",
+          "pending_quantity"
+        ],
+        "title": "Order",
+        "description": "Broker-side order state, as reported by the broker."
+      },
+      "OrderAction": {
+        "type": "string",
+        "enum": [
+          "PLACE",
+          "MODIFY",
+          "CANCEL"
+        ],
+        "title": "OrderAction"
+      },
+      "OrderIntent-Input": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrderAction"
+          },
+          "instrument_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument Ref"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "amount_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Paise"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "validity_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Minutes"
+          },
+          "target_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Order Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "OrderIntent",
+        "description": "The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."
+      },
+      "OrderIntent-Output": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OrderAction"
+          },
+          "instrument_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument Ref"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "amount_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Paise"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "validity_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Minutes"
+          },
+          "target_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Order Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action",
+          "instrument_ref",
+          "side",
+          "quantity",
+          "amount_paise",
+          "order_type",
+          "limit_price",
+          "product",
+          "validity",
+          "validity_minutes",
+          "target_order_id"
+        ],
+        "title": "OrderIntent",
+        "description": "The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."
+      },
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "OPEN",
+          "PARTIAL",
+          "FILLED",
+          "REJECTED",
+          "CANCELLED",
+          "UNKNOWN"
+        ],
+        "title": "OrderStatus"
+      },
+      "OrderType": {
+        "type": "string",
+        "enum": [
+          "LIMIT",
+          "MARKET"
+        ],
+        "title": "OrderType"
+      },
+      "OrderUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "order_update",
+            "title": "Type",
+            "default": "order_update"
+          },
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "order"
+        ],
+        "title": "OrderUpdateEvent"
+      },
+      "PendingCreatedEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "pending_created",
+            "title": "Type",
+            "default": "pending_created"
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingOrder"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "pending"
+        ],
+        "title": "PendingCreatedEvent"
+      },
+      "PendingList": {
+        "properties": {
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PendingOrder"
+            },
+            "type": "array",
+            "title": "Orders"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/Plan"
+            },
+            "type": "array",
+            "title": "Plans"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "orders",
+          "plans"
+        ],
+        "title": "PendingList"
+      },
+      "PendingOrder": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "action": {
+            "$ref": "#/components/schemas/OrderAction"
+          },
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price"
+          },
+          "protection_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protection Price"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "validity_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Minutes"
+          },
+          "target_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Order Id"
+          },
+          "client_order_id": {
+            "type": "string",
+            "title": "Client Order Id"
+          },
+          "charges": {
+            "$ref": "#/components/schemas/Charges"
+          },
+          "est_total": {
+            "type": "integer",
+            "title": "Est Total",
+            "default": 0
+          },
+          "ref_ltp": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Ref Ltp"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PendingState",
+            "default": "PENDING"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "order_hash": {
+            "type": "string",
+            "title": "Order Hash",
+            "description": "Hash of the exact order. Excludes LTP, expiry and state on purpose.\n\nPrice drift is handled by the drift check and re-quote; the hash only binds what\nthe trader approved: what, how much, at what price, under which idempotency key.",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "instrument",
+          "side",
+          "quantity",
+          "order_type",
+          "limit_price",
+          "protection_price",
+          "product",
+          "validity",
+          "validity_minutes",
+          "target_order_id",
+          "client_order_id",
+          "charges",
+          "est_total",
+          "ref_ltp",
+          "created_at",
+          "expires_at",
+          "state",
+          "plan_id",
+          "rule_id",
+          "warnings",
+          "order_hash"
+        ],
+        "title": "PendingOrder",
+        "description": "An exact order awaiting the trader's click. Built by code only."
+      },
+      "PendingOrderCard": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pending_order",
+            "title": "Type",
+            "default": "pending_order"
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingOrder"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "pending"
+        ],
+        "title": "PendingOrderCard"
+      },
+      "PendingState": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "SENT",
+          "REQUOTE_REQUIRED",
+          "EXPIRED",
+          "VOID",
+          "REJECTED"
+        ],
+        "title": "PendingState"
+      },
+      "PendingUpdatedEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "pending_updated",
+            "title": "Type",
+            "default": "pending_updated"
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingOrder"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "pending"
+        ],
+        "title": "PendingUpdatedEvent"
+      },
+      "Plan": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLeg"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Legs"
+          },
+          "on_leg_failure": {
+            "$ref": "#/components/schemas/LegFailurePolicy",
+            "default": "HALT"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PlanState",
+            "default": "PENDING"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "plan_hash": {
+            "type": "string",
+            "title": "Plan Hash",
+            "description": "Binds the approval to every leg, its caps, and the failure policy.",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "legs",
+          "on_leg_failure",
+          "state",
+          "created_at",
+          "expires_at",
+          "plan_hash"
+        ],
+        "title": "Plan",
+        "description": "Several orders approved together (shown to the trader as a basket order)."
+      },
+      "PlanApproveRequest": {
+        "properties": {
+          "plan_hash": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Plan Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_hash"
+        ],
+        "title": "PlanApproveRequest",
+        "description": "The client must echo the hash of the exact plan it is approving (every step, cap and policy)."
+      },
+      "PlanCard": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plan",
+            "title": "Type",
+            "default": "plan"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "plan"
+        ],
+        "title": "PlanCard"
+      },
+      "PlanCreatedEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "plan_created",
+            "title": "Type",
+            "default": "plan_created"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "plan"
+        ],
+        "title": "PlanCreatedEvent"
+      },
+      "PlanLeg": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index"
+          },
+          "order": {
+            "$ref": "#/components/schemas/PendingOrder"
+          },
+          "quantity_basis": {
+            "$ref": "#/components/schemas/QuantityBasis",
+            "default": "FIXED"
+          },
+          "proceeds_from_leg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proceeds From Leg"
+          },
+          "max_quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Quantity"
+          },
+          "max_spend": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Spend"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "order",
+          "quantity_basis",
+          "proceeds_from_leg",
+          "max_quantity",
+          "max_spend"
+        ],
+        "title": "PlanLeg"
+      },
+      "PlanLegRequest": {
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Instrument",
+            "description": "The stock, as the trader said it"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity",
+            "description": "A number of shares"
+          },
+          "amount_rupees": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Rupees",
+            "description": "A rupee amount to trade"
+          },
+          "fraction_of_holding": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction Of Holding",
+            "description": "SELL only: a fraction of the shares held. 'half my Infosys' -> 0.5, 'all' -> 1"
+          },
+          "proceeds_of_leg": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proceeds Of Leg",
+            "description": "BUY only: spend the money raised by this earlier SELL step (0 = the first step)"
+          },
+          "order_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LIMIT if the trader gave a price, otherwise MARKET"
+          },
+          "limit_price_rupees": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Price Rupees"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "CNC"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/Validity",
+            "default": "DAY"
+          },
+          "validity_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument",
+          "side"
+        ],
+        "title": "PlanLegRequest",
+        "description": "One step of a plan, in the units a trader uses. Give exactly ONE way to size it."
+      },
+      "PlanLegResult": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "status": {
+            "$ref": "#/components/schemas/LegStatus"
+          },
+          "requested_quantity": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requested Quantity",
+            "default": 0
+          },
+          "filled_quantity": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Filled Quantity",
+            "default": 0
+          },
+          "avg_fill_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Fill Price"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RejectionReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "pending_quantity": {
+            "type": "integer",
+            "title": "Pending Quantity",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "label",
+          "status",
+          "requested_quantity",
+          "filled_quantity",
+          "avg_fill_price",
+          "rejection_reason",
+          "message",
+          "pending_quantity"
+        ],
+        "title": "PlanLegResult"
+      },
+      "PlanReport": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PlanState"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLegResult"
+            },
+            "type": "array",
+            "title": "Legs"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "all_filled": {
+            "type": "boolean",
+            "title": "All Filled",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_id",
+          "state",
+          "legs",
+          "summary",
+          "all_filled"
+        ],
+        "title": "PlanReport"
+      },
+      "PlanReportUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "plan_report_update",
+            "title": "Type",
+            "default": "plan_report_update"
+          },
+          "report": {
+            "$ref": "#/components/schemas/PlanReport"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "report"
+        ],
+        "title": "PlanReportUpdateEvent",
+        "description": "Progress of an approved plan: sent after every step finishes."
+      },
+      "PlanState": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "REQUOTE_REQUIRED",
+          "APPROVED",
+          "RUNNING",
+          "COMPLETED",
+          "HALTED",
+          "EXPIRED",
+          "VOID",
+          "REJECTED"
+        ],
+        "title": "PlanState"
+      },
+      "PlanUpdatedEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "plan_updated",
+            "title": "Type",
+            "default": "plan_updated"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "plan"
+        ],
+        "title": "PlanUpdatedEvent",
+        "description": "A plan changed state (approved, running, completed, halted, expired, voided, re-quoted)."
+      },
+      "Position": {
+        "properties": {
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "avg_price": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Avg Price"
+          },
+          "ltp": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Ltp"
+          },
+          "prev_close": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Prev Close"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product",
+            "default": "MIS"
+          },
+          "invested": {
+            "type": "integer",
+            "title": "Invested",
+            "readOnly": true
+          },
+          "current_value": {
+            "type": "integer",
+            "title": "Current Value",
+            "readOnly": true
+          },
+          "pnl": {
+            "type": "integer",
+            "title": "Pnl",
+            "description": "Unrealised P&L in paise vs average price (negative quantity = short).",
+            "readOnly": true
+          },
+          "pnl_pct": {
+            "type": "number",
+            "title": "Pnl Pct",
+            "description": "P&L as a percentage of the amount invested, rounded to 2 decimals.",
+            "readOnly": true
+          },
+          "day_pnl": {
+            "type": "integer",
+            "title": "Day Pnl",
+            "description": "Today's P&L in paise vs previous close.",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument",
+          "quantity",
+          "avg_price",
+          "ltp",
+          "prev_close",
+          "product",
+          "invested",
+          "current_value",
+          "pnl",
+          "pnl_pct",
+          "day_pnl"
+        ],
+        "title": "Position"
+      },
+      "Product": {
+        "type": "string",
+        "enum": [
+          "CNC",
+          "MIS"
+        ],
+        "title": "Product"
+      },
+      "ProposePlanRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLegRequest"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Legs"
+          },
+          "on_leg_failure": {
+            "$ref": "#/components/schemas/LegFailurePolicy",
+            "default": "HALT"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "legs"
+        ],
+        "title": "ProposePlanRequest",
+        "description": "Several orders approved together as one plan, e.g. 'sell half my Infosys and buy ITC with the money'.\n\nSteps run in order. Nothing is sent until the trader approves the whole plan, and by default\na step that does not complete stops the rest."
+      },
+      "QuantityBasis": {
+        "type": "string",
+        "enum": [
+          "FIXED",
+          "FROM_PROCEEDS"
+        ],
+        "title": "QuantityBasis"
+      },
+      "ReconcileResult": {
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved"
+          },
+          "unresolved": {
+            "type": "integer",
+            "title": "Unresolved"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "resolved",
+          "unresolved"
+        ],
+        "title": "ReconcileResult"
+      },
+      "RejectionReason": {
+        "type": "string",
+        "enum": [
+          "INSUFFICIENT_FUNDS",
+          "PRICE_BAND",
+          "INVALID_PRICE",
+          "INVALID_QUANTITY",
+          "MARKET_CLOSED",
+          "SUSPENDED",
+          "KYC_DORMANT",
+          "RISK_CHECK",
+          "OI_LIMIT",
+          "QUANTITY_LIMIT",
+          "VALUE_LIMIT",
+          "SEGMENT_NOT_ALLOWED",
+          "ANCHOR_ACTIVE",
+          "CO_APPROVAL_REQUIRED",
+          "OTHER"
+        ],
+        "title": "RejectionReason"
+      },
+      "Rule": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RuleKind"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "condition": {
+            "$ref": "#/components/schemas/RuleCondition"
+          },
+          "order_template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderIntent-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_gap_pct": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Max Gap Pct",
+            "default": 2.0
+          },
+          "heads_up_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heads Up Pct"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuleStatus",
+            "default": "ACTIVE"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "description",
+          "condition",
+          "order_template",
+          "max_gap_pct",
+          "heads_up_pct",
+          "status",
+          "created_at",
+          "fired_at"
+        ],
+        "title": "Rule"
+      },
+      "RuleBasis": {
+        "type": "string",
+        "enum": [
+          "ABSOLUTE",
+          "AVG_BUY",
+          "PREV_CLOSE",
+          "AT_CREATION"
+        ],
+        "title": "RuleBasis"
+      },
+      "RuleCard": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "rule",
+            "title": "Type",
+            "default": "rule"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/Rule"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "rule"
+        ],
+        "title": "RuleCard"
+      },
+      "RuleCondition": {
+        "properties": {
+          "instrument_key": {
+            "type": "string",
+            "title": "Instrument Key"
+          },
+          "comparator": {
+            "$ref": "#/components/schemas/Comparator"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/RuleBasis",
+            "default": "ABSOLUTE"
+          },
+          "absolute_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Price"
+          },
+          "reference_price": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Price"
+          },
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct"
+          },
+          "trigger_price": {
+            "type": "integer",
+            "title": "Trigger Price",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument_key",
+          "comparator",
+          "basis",
+          "absolute_price",
+          "reference_price",
+          "change_pct",
+          "trigger_price"
+        ],
+        "title": "RuleCondition"
+      },
+      "RuleFiredEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "rule_fired",
+            "title": "Type",
+            "default": "rule_fired"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/Rule"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "ltp": {
+            "type": "integer",
+            "title": "Ltp"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "rule",
+          "message",
+          "ltp",
+          "pending"
+        ],
+        "title": "RuleFiredEvent",
+        "description": "A standing instruction just triggered. Show it prominently (toast + the card, if any)."
+      },
+      "RuleKind": {
+        "type": "string",
+        "enum": [
+          "ALERT",
+          "TRIGGER_ORDER"
+        ],
+        "title": "RuleKind"
+      },
+      "RuleStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "FIRED",
+          "CANCELLED"
+        ],
+        "title": "RuleStatus"
+      },
+      "RuleUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "rule_update",
+            "title": "Type",
+            "default": "rule_update"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/Rule"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "rule"
+        ],
+        "title": "RuleUpdateEvent"
+      },
+      "Side": {
+        "type": "string",
+        "enum": [
+          "BUY",
+          "SELL"
+        ],
+        "title": "Side"
+      },
+      "SnapshotEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "snapshot",
+            "title": "Type",
+            "default": "snapshot"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountSnapshot"
+          },
+          "pending": {
+            "$ref": "#/components/schemas/PendingList"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            },
+            "type": "array",
+            "title": "Orders"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "account",
+          "pending",
+          "orders",
+          "rules"
+        ],
+        "title": "SnapshotEvent"
+      },
+      "Tick": {
+        "properties": {
+          "instrument_key": {
+            "type": "string",
+            "title": "Instrument Key"
+          },
+          "ltp": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Ltp"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Seq"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument_key",
+          "ltp",
+          "seq",
+          "ts"
+        ],
+        "title": "Tick"
+      },
+      "TickEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "tick",
+            "title": "Type",
+            "default": "tick"
+          },
+          "tick": {
+            "$ref": "#/components/schemas/Tick"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "tick"
+        ],
+        "title": "TickEvent"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "Validity": {
+        "type": "string",
+        "enum": [
+          "DAY",
+          "IOC",
+          "MINUTES"
+        ],
+        "title": "Validity"
+      }
+    }
+  }
+}
