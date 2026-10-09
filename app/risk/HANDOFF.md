@@ -52,7 +52,8 @@ warnings use gross current exposure plus the proposed buy; they can overstate
 exposure when a buy closes a short. The goal warning sums today's loss and the
 decline since the goal began, explicitly noting that those periods can overlap.
 
-Multi-step plan legs are not checked by the profile guard. Orders placed in 021's
+Multi-step plan legs are now checked by the profile guard too (added at integration;
+see README). Orders placed in 021's
 own app count toward today's totals but cannot be blocked by this app. The limits
 belong to the trader and do not constitute investment advice.
 

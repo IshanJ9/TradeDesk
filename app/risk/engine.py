@@ -12,6 +12,10 @@ from app.risk.today import TodayFacts, compute_today, percentage
 from app.schemas import OrderAction, PendingOrder, Product, Side, fmt_rupees
 
 
+def orders_a_day(n: int) -> str:
+    return f"{n} order a day" if n == 1 else f"{n} orders a day"
+
+
 def within_window(now: datetime, last: datetime | None, minutes: int) -> bool:
     return last is not None and timedelta(0) <= now - last < timedelta(minutes=minutes)
 
@@ -39,7 +43,7 @@ def evaluate(pending: PendingOrder, stage: Stage, profile: RiskProfile,
         return RiskVerdict(block=block)
     warnings = []
     if over_orders:
-        warnings.append(f"You set {profile.max_orders_per_day} orders a day; "
+        warnings.append(f"You set {orders_a_day(profile.max_orders_per_day)}; "
                         + (f"this would be order #{count}." if placing else f"you already have {count} today. A modification adds no order."))
     price = pending.limit_price or pending.protection_price or pending.ref_ltp
     value = (pending.quantity or 0) * price

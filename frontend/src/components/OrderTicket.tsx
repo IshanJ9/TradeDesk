@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { actionTitle, chargeLines, outcomeOf, priceLine, productWord, STATE_NOTE, validityWord } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
+import { crossesOwnLimit } from "../lib/limits";
 import type { Note } from "../lib/store";
 import type { ExecutionResult, PendingOrder } from "../lib/types";
 import { Fingerprint } from "./Fingerprint";
@@ -42,8 +43,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
   const sideTone = o.side === "SELL" ? "loss" : o.side === "BUY" ? "gain" : "plain";
   const costs = chargeLines(o.charges);
   const outcome = result ? outcomeOf(result) : null;
-  // A warning about the trader's OWN limits ("You set …") needs a deliberate tick before Approve: friction, not a block.
-  const crossesOwnLimit = o.warnings.some((w) => w.startsWith("You set") || w.startsWith("You switched"));
+  const ownLimit = crossesOwnLimit(o.warnings); // needs a deliberate tick before Approve (lib/limits.ts)
   const [acknowledged, setAcknowledged] = useState(false);
 
   return (
@@ -114,7 +114,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
           ))}
         </ul>
       )}
-      {crossesOwnLimit && waiting && (
+      {ownLimit && waiting && (
         <label className="mx-4 mt-2 flex items-center gap-2 text-[13px] text-ink">
           <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
           I've read this. It crosses a limit I set myself.
@@ -128,7 +128,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             <Fingerprint hash={o.order_hash} />
             <div className="flex gap-2">
               <Button onClick={onDecline} disabled={sending}>Decline</Button>
-              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (crossesOwnLimit && !acknowledged)}>
+              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (ownLimit && !acknowledged)}>
                 {sending ? "Sending…" : isCancel ? "Approve this cancellation" : "Approve this order"}
               </Button>
             </div>

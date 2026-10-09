@@ -125,14 +125,16 @@ frontend needs its deployment CORS configuration checked.
   overstate exposure for a buy that closes a short.
 - Goal warnings combine today's loss with decline since the goal began and disclose
   that those periods overlap. Goal progress also changes with deposits/withdrawals.
-- Multi-step plan legs bypass the profile guard. Orders sent from 021's own app
-  count toward today but cannot be blocked here. Check plan execution separately.
+- Multi-step plan legs are checked by the profile guard too (added after this note was
+  first written), and a plan's earlier steps count as orders. Orders sent from 021's own
+  app count toward today but cannot be blocked here.
 - The app currently stores one trader's profile and goal, without user/account
   scoping. Do not reuse one database for different accounts.
 - Past data starts when this app records it. Demo days are synthetic, explicitly
   labelled, and not proof of live trading performance.
-- Existing mobile desk/tab horizontal overflow remains an integration/layout item.
-  The optional order-warning acknowledgment checkbox was not implemented.
+- The mobile desk/tab horizontal overflow has since been fixed (the tab row scrolls),
+  and order and plan cards now require an "I've read this" tick when they cross one of
+  the trader's own limits.
 
 ## What to send back
 

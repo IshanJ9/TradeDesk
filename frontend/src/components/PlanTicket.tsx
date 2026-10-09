@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { legLine, legStatusWord, STATE_NOTE } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
+import { crossesOwnLimit } from "../lib/limits";
 import type { Note } from "../lib/store";
 import type { Plan, PlanLegResult, PlanReport } from "../lib/types";
 import { Fingerprint } from "./Fingerprint";
@@ -57,6 +59,8 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
   const expired = waiting && secondsLeft(plan.expires_at, Date.now()) === 0;
   const running = plan.state === "APPROVED" || plan.state === "RUNNING";
   const n = plan.legs.length;
+  const ownLimit = crossesOwnLimit(plan.legs.flatMap((leg) => leg.order.warnings)); // a tick before Approve (lib/limits.ts)
+  const [acknowledged, setAcknowledged] = useState(false);
 
   return (
     <article id={`card-${plan.id}`} className="ticket" data-tone={note?.tone === "warn" ? "warn" : undefined} data-resolved={!waiting} aria-label={plan.title}>
@@ -99,12 +103,18 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
               ? "If a step is rejected or doesn't complete, the later steps are not sent."
               : "If a step fails, the others are still tried, except any that need its money."}
           </p>
+          {ownLimit && (
+            <label className="mx-4 mt-2 flex items-center gap-2 text-[13px] text-ink">
+              <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+              I've read this. It crosses a limit I set myself.
+            </label>
+          )}
           <div className="mt-3"><div className="perf" /></div>
           <footer className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3.5 pt-3">
             <Fingerprint hash={plan.plan_hash} label="Plan fingerprint" />
             <div className="flex gap-2">
               <Button onClick={onDecline} disabled={sending}>Decline</Button>
-              <Button variant="primary" onClick={onApprove} disabled={sending || expired}>
+              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (ownLimit && !acknowledged)}>
                 {sending ? "Starting…" : `Approve all ${n} steps`}
               </Button>
             </div>

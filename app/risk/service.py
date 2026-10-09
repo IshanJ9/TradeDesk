@@ -9,6 +9,7 @@ from app.api_models import DisciplineSummary, DisciplineUpdateEvent
 from app.broker.base import BrokerTimeout, ReadOnlyBroker
 from app.events import EventHub
 from app.history.store import ActivityStore, DaySummary, trading_day
+from app.risk.engine import orders_a_day
 from app.risk.models import ChargesMeter, DisciplineDay, DisciplineReport
 from app.risk.presets import preset
 from app.risk.report import compare_history, demo_days, goal_progress, rounded, score_today
@@ -83,7 +84,7 @@ class DisciplineService:
             if profile is None:
                 warnings.append("Set your own profile to see a risk score. Re-entry counts currently use the balanced starting window.")
             elif facts.orders_today > profile.max_orders_per_day:
-                warnings.append(f"You set {profile.max_orders_per_day} orders a day; you have {facts.orders_today} today.")
+                warnings.append(f"You set {orders_a_day(profile.max_orders_per_day)}; you have {facts.orders_today} today.")
             if comparison.source == "demo":
                 warnings.append("DEMO DATA: the usual-risk comparison uses synthetic days, not your trading history.")
             report = DisciplineReport(profile=profile, today=facts, score=score, history=comparison,
