@@ -331,6 +331,42 @@ class ChaosStatusEvent(_Event):
     status: ChaosStatus
 
 
+class TraceEvent(_Event):
+    """One step of the assistant's work, for the live activity panel (see app/trace.py).
+
+    `detail` is a short sentence for people. It never holds keys, passwords or raw broker replies."""
+
+    type: Literal["trace"] = "trace"
+    run_id: str  # one chat message = one run
+    node: str  # "input_guard", "router", "tool:propose_order", "output_guard", ...
+    kind: Literal["node", "tool", "guard"]
+    status: Literal["start", "end", "blocked", "error"]
+    detail: str = ""
+    ms: int | None = None  # how long the step took; set on end, blocked and error
+
+
+class ExternalOrderEvent(_Event):
+    """An order in the broker's book that this app did not send (placed in 021's own app, for example)."""
+
+    type: Literal["external_order"] = "external_order"
+    order: Order
+
+
+class DisciplineSummary(Model):
+    """Today's trading against the trader's OWN limits. Facts only: no advice, no predictions."""
+
+    orders_today: int = 0
+    order_limit: int | None = None  # None = the trader set no limit
+    risk_score: int | None = None  # 0-100 for today; None until the trader has a profile
+    average_score: int | None = None  # the trader's own recent average, for comparison
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DisciplineUpdateEvent(_Event):
+    type: Literal["discipline_update"] = "discipline_update"
+    summary: DisciplineSummary
+
+
 WsEvent = Annotated[
     Union[
         SnapshotEvent,
@@ -347,6 +383,9 @@ WsEvent = Annotated[
         LockUpdateEvent,
         AuditEventMessage,
         ChaosStatusEvent,
+        TraceEvent,
+        ExternalOrderEvent,
+        DisciplineUpdateEvent,
     ],
     Field(discriminator="type"),
 ]

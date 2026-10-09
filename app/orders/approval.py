@@ -26,6 +26,7 @@ from app.orders.builder import OrderBuilder
 from app.orders.executor import DuplicateExecution, Executor
 from app.orders.limits import OrderBlocked, check_instrument, check_locks
 from app.pending import PendingStore
+from app.risk.guard import NoRiskGuard, RiskGuard
 from app.schemas import (
     AuditKind,
     OrderAction,
@@ -61,7 +62,9 @@ class ApprovalService:
         hub: EventHub,
         settings: Settings,
         clock: Callable[[], datetime],
+        risk: RiskGuard | None = None,
     ):
+        self._risk = risk or NoRiskGuard()
         self._store = store
         self._builder = builder
         self._executor = executor
@@ -137,6 +140,11 @@ class ApprovalService:
         except OrderBlocked as exc:
             self._audit.record(AuditKind.LOCK_BLOCKED, "system", exc.message, subject_id=p.id)
             self._void(p, exc.message)
+
+        verdict = await self._risk.check(p, "approve")  # limits can be crossed between the card and the click
+        if verdict.block:
+            self._audit.record(AuditKind.LIMIT_BLOCKED, "system", verdict.block, subject_id=p.id)
+            self._void(p, verdict.block)
 
         if p.action in (OrderAction.MODIFY, OrderAction.CANCEL):
             target = next((o for o in await self._broker.get_orders() if o.order_id == p.target_order_id), None)

@@ -614,6 +614,36 @@ export interface components {
             validity?: components["schemas"]["Validity"];
         };
         /**
+         * DisciplineSummary
+         * @description Today's trading against the trader's OWN limits. Facts only: no advice, no predictions.
+         */
+        DisciplineSummary: {
+            /**
+             * Orders Today
+             * @default 0
+             */
+            orders_today: number;
+            /** Order Limit */
+            order_limit: number | null;
+            /** Risk Score */
+            risk_score: number | null;
+            /** Average Score */
+            average_score: number | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** DisciplineUpdateEvent */
+        DisciplineUpdateEvent: {
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "discipline_update";
+            summary: components["schemas"]["DisciplineSummary"];
+        };
+        /**
          * Exchange
          * @enum {string}
          */
@@ -640,6 +670,20 @@ export interface components {
              * @default
              */
             message: string;
+        };
+        /**
+         * ExternalOrderEvent
+         * @description An order in the broker's book that this app did not send (placed in 021's own app, for example).
+         */
+        ExternalOrderEvent: {
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "external_order";
+            order: components["schemas"]["Order"];
         };
         /** Funds */
         Funds: {
@@ -1413,6 +1457,42 @@ export interface components {
             type: "tick";
             tick: components["schemas"]["Tick"];
         };
+        /**
+         * TraceEvent
+         * @description One step of the assistant's work, for the live activity panel (see app/trace.py).
+         *
+         *     `detail` is a short sentence for people. It never holds keys, passwords or raw broker replies.
+         */
+        TraceEvent: {
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "trace";
+            /** Run Id */
+            run_id: string;
+            /** Node */
+            node: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "node" | "tool" | "guard";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "start" | "end" | "blocked" | "error";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Ms */
+            ms: number | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2036,7 +2116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"])[];
+                    "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"])[];
                 };
             };
         };

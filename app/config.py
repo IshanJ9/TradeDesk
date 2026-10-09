@@ -21,6 +21,10 @@ class Settings:
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
     aws_region: str = "ap-south-1"
     bedrock_model_id: str = "openai.gpt-oss-120b-1:0"
+    orchestrator: str = "classic"  # classic = the current copilot loop; langgraph = the graph in app/agent/
+    groq_api_key: str = field(default="", repr=False)  # voice transcription (backend only)
+    voice_model: str = "whisper-large-v3-turbo"
+    external_sync_interval: float | None = 5.0  # how often to look for orders placed outside this app
     approval_ttl_seconds: int = 60
     rule_card_ttl_seconds: int = 900  # a card made by a fired rule waits longer: the trader may be away
     max_active_rules: int = 50
@@ -55,6 +59,9 @@ class Settings:
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",
             aws_region=env.get("AWS_REGION", "ap-south-1").strip() or "ap-south-1",
             bedrock_model_id=env.get("BEDROCK_MODEL_ID", "openai.gpt-oss-120b-1:0").strip(),
+            orchestrator=env.get("ORCHESTRATOR", "").strip().lower() or "classic",
+            groq_api_key=env.get("GROQ_API_KEY", "").strip(),
+            voice_model=env.get("VOICE_MODEL", "").strip() or cls.voice_model,
             approval_ttl_seconds=int(env.get("APPROVAL_TTL_SECONDS", "60")),
             drift_limit_pct=float(env.get("DRIFT_LIMIT_PCT", "1.0")),
             market_protection_pct=float(env.get("MARKET_PROTECTION_PCT", "1.0")),

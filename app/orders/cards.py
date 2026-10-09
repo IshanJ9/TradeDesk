@@ -14,6 +14,7 @@ from app.orders.builder import NeedsClarification, OrderBuilder
 from app.orders.limits import OrderBlocked
 from app.orders.readback import readback
 from app.pending import PendingStore
+from app.risk.guard import NoRiskGuard, RiskGuard
 from app.schemas import AuditKind, Instrument, OrderIntent, PendingOrder, RejectionReason
 
 _LOCK_REASONS = {RejectionReason.ANCHOR_ACTIVE, RejectionReason.CO_APPROVAL_REQUIRED}
@@ -29,11 +30,14 @@ class Proposal:
 
 
 class CardService:
-    def __init__(self, builder: OrderBuilder, store: PendingStore, hub: EventHub, audit: AuditLog):
+    def __init__(
+        self, builder: OrderBuilder, store: PendingStore, hub: EventHub, audit: AuditLog, risk: RiskGuard | None = None
+    ):
         self._builder = builder
         self._store = store
         self._hub = hub
         self._audit = audit
+        self._risk = risk or NoRiskGuard()
 
     async def resolve(self, query: str):
         return await self._builder.resolve(query)
@@ -73,8 +77,17 @@ class CardService:
                 blocked.message,
             )
 
-        if extra_warnings:  # warnings are not part of the order hash
-            pending = pending.model_copy(update={"warnings": [*extra_warnings, *pending.warnings]})
+        verdict = await self._risk.check(pending, "preview")  # the trader's own limits (app/risk/guard.py)
+        if verdict.block:
+            self._audit.record(AuditKind.LIMIT_BLOCKED, "system", verdict.block, data={"reason": "RISK_LIMIT"})
+            return Proposal(
+                "blocked",
+                ChatReply(text=verdict.block, cards=[NoticeCard(level="blocked", message=verdict.block)]),
+                verdict.block,
+            )
+        extra = [*verdict.warnings, *extra_warnings]
+        if extra:  # warnings are not part of the order hash
+            pending = pending.model_copy(update={"warnings": [*extra, *pending.warnings]})
         self._store.put(pending)
         self._hub.publish(PendingCreatedEvent, pending=pending)
         text = readback(pending)

@@ -39,6 +39,12 @@ export function describe(e: WsEvent): string {
       return e.event.summary;
     case "chaos_status":
       return `network_down ${e.status.network_down}`;
+    case "trace":
+      return `${e.run_id} ${e.node} ${e.kind} ${e.status} ${e.ms ?? ""}`;
+    case "external_order":
+      return `placed outside this app: ${e.order.order_id}`;
+    case "discipline_update":
+      return `orders today ${e.summary.orders_today}, risk ${e.summary.risk_score ?? "-"}`;
     default: {
       const unhandled: never = e;
       return unhandled;
