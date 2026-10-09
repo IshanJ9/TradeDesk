@@ -19,7 +19,7 @@ from app.broker.mock import MockBroker
 from app.config import Settings
 from app.db import Database
 from app.events import EventHub
-from app.history.store import InMemoryActivityStore
+from app.history.sqlite_store import SqliteActivityStore  # voice-live: durable activity
 from app.orders.approval import ApprovalService
 from app.llm.copilot import Copilot
 from app.llm.factory import make_llm
@@ -38,6 +38,7 @@ from app.rules.service import RuleService
 from app.rules.store import RuleStore
 from app.schemas import RuleStatus
 from app.voice.api import router as voice_router  # voice-live: transcription only
+from app.sync.external import run_external_sync  # voice-live: uses the existing broker session
 
 log = logging.getLogger("tradedesk")
 
@@ -127,6 +128,9 @@ def create_app(
         except BrokerTimeout:
             log.warning("broker unreachable at startup; unresolved executions and rules stay as they are")
         tasks = [asyncio.create_task(_tick_bridge(app))]
+        # voice-live: participates in the same cancellation/shutdown as the other tasks.
+        if settings.external_sync_interval is not None:
+            tasks.append(asyncio.create_task(run_external_sync(app, settings.external_sync_interval)))
         if settings.reconcile_interval:
             tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval)))
         if isinstance(app.state.broker, MockBroker) and settings.ticker_interval:
@@ -167,7 +171,7 @@ def create_app(
     app.state.builder = builder
     app.state.executor = executor
     # Shared hooks for the parallel workstreams (each owner replaces only their own line):
-    history = InMemoryActivityStore()  # voice-live: database-backed store + order sync
+    history = SqliteActivityStore(db)  # voice-live: database-backed store + order sync
     risk = NoRiskGuard()  # risk-goals: the trader's own limits
     app.state.history = history
     app.state.risk = risk
