@@ -56,3 +56,45 @@ export const api = {
 
   auditExportUrl: "/api/audit/export",
 };
+
+// voice-live: raw audio only; the returned text is never submitted to chat here.
+export function voiceError(status: number): string {
+  switch (status) {
+    case 400: return "The recording is empty. Please try again or type instead.";
+    case 413: return "The recording is too large. Try a shorter recording or type instead.";
+    case 415: return "This recording format isn't supported. Please type instead.";
+    case 429: return "Too many voice requests, wait a moment or type instead";
+    case 503: return "Voice is not set up on this server";
+    default: return "Couldn't transcribe that, please type it";
+  }
+}
+
+export async function transcribe(
+  audio: Blob, signal?: AbortSignal,
+): Promise<Result<import("./types.gen").components["schemas"]["Transcript"]>> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  const timer = setTimeout(cancel, 25_000);
+  try {
+    const response = await fetch("/api/voice/transcribe", {
+      method: "POST", body: audio, signal: controller.signal,
+      headers: { "Content-Type": audio.type || "application/octet-stream" },
+    });
+    if (!response.ok) return { ok: false, status: response.status, message: voiceError(response.status) };
+    const data: unknown = await response.json();
+    if (typeof data !== "object" || data === null || !("text" in data) ||
+        typeof data.text !== "string" || !data.text.trim() || data.text.length > 500) {
+      return { ok: false, status: 502, message: voiceError(502) };
+    }
+    const seconds = "seconds" in data && typeof data.seconds === "number" &&
+      Number.isFinite(data.seconds) && data.seconds >= 0 ? data.seconds : null;
+    return { ok: true, data: { text: data.text.trim(), seconds } };
+  } catch {
+    return { ok: false, status: 0, message: voiceError(0) };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+  }
+}
