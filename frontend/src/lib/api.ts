@@ -56,3 +56,14 @@ export const api = {
 
   auditExportUrl: "/api/audit/export",
 };
+
+// risk-goals: independent settings/report calls; no order actions.
+type RiskSchemas = import("./types.gen").components["schemas"];
+export const disciplineApi = {
+  report: () => request<RiskSchemas["DisciplineReport"]>("GET", "/api/discipline"),
+  presets: () => request<RiskSchemas["PresetOption"][]>("GET", "/api/profile/presets"),
+  suggest: (body: RiskSchemas["OnboardingAnswers"]) => request<RiskSchemas["OnboardingSuggestion"]>("POST", "/api/profile/onboarding", body),
+  saveProfile: (body: RiskSchemas["RiskProfile-Input"]) => request<RiskSchemas["RiskProfile-Output"]>("PUT", "/api/profile", body),
+  saveGoal: (body: RiskSchemas["GoalRequest"]) => request<RiskSchemas["Goal"]>("PUT", "/api/goal", body),
+  deleteGoal: () => request<void>("DELETE", "/api/goal"),
+};
