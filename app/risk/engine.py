@@ -17,11 +17,12 @@ def within_window(now: datetime, last: datetime | None, minutes: int) -> bool:
 
 
 def evaluate(pending: PendingOrder, stage: Stage, profile: RiskProfile,
-             facts: TodayFacts, goal: Goal | None, now: datetime) -> RiskVerdict:
+             facts: TodayFacts, goal: Goal | None, now: datetime, extra_orders: int = 0) -> RiskVerdict:
     if pending.action == OrderAction.CANCEL:
         return RiskVerdict()
     placing = pending.action == OrderAction.PLACE
-    count = facts.orders_today + int(placing)
+    # extra_orders: earlier steps of the same plan, which will be placed before this one
+    count = facts.orders_today + extra_orders + int(placing)
     over_orders = count > profile.max_orders_per_day
     # Decimal preserves exact percentage boundaries for integer-paise amounts.
     loss = max(0, -facts.pnl_after_charges)
@@ -87,7 +88,7 @@ class ProfileGuard:
     def __init__(self, broker: ReadOnlyBroker, store: ProfileStore, clock: Callable[[], datetime]):
         self._broker, self._store, self._clock = broker, store, clock
 
-    async def check(self, pending: PendingOrder, stage: Stage) -> RiskVerdict:
+    async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict:
         if pending.action == OrderAction.CANCEL:
             return RiskVerdict()
         profile = self._store.get_profile()
@@ -98,4 +99,4 @@ class ProfileGuard:
             return RiskVerdict()
         now = self._clock()
         facts = await compute_today(self._broker, profile, now)
-        return evaluate(pending, stage, profile, facts, self._store.get_goal(), now)
+        return evaluate(pending, stage, profile, facts, self._store.get_goal(), now, extra_orders)

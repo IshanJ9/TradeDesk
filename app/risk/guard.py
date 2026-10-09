@@ -1,7 +1,9 @@
 """Hook for the trader's own risk limits (the overtrading guard).
 
 Every order card passes through `CardService.propose` (stage "preview") and every Approve click through
-`ApprovalService._recheck` (stage "approve"), and both ask the guard. A guard can only:
+`ApprovalService._recheck` (stage "approve"), and both ask the guard. Plans ask it for every step, in both
+`PlanService.propose` and `PlanService._recheck`, passing `extra_orders`: how many orders the same plan places
+before that step, so a 3-step plan counts as 3 orders. A guard can only:
   * add warnings to a card (shown to the trader, not part of the order hash), or
   * block, with a message, for a limit the trader switched on themselves.
 It never sends, changes or cancels anything, and it never gives advice.
@@ -24,9 +26,9 @@ class RiskVerdict:
 
 
 class RiskGuard(Protocol):
-    async def check(self, pending: PendingOrder, stage: Stage) -> RiskVerdict: ...
+    async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict: ...
 
 
 class NoRiskGuard:
-    async def check(self, pending: PendingOrder, stage: Stage) -> RiskVerdict:
+    async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict:
         return RiskVerdict()

@@ -208,6 +208,8 @@ async def run(max_calls: int, only: set[int] | None = None, orchestrator: str | 
         if case.setup:
             case.setup(broker)
         app = create_app(settings, broker=broker)
+        if hasattr(app.state.copilot._llm, "_primary"):  # test the real model: no quiet fallback to the stand-in
+            app.state.copilot._llm = app.state.copilot._llm._primary
         llm = app.state.copilot._llm
         original = llm.complete
 

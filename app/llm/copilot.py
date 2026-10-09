@@ -122,6 +122,9 @@ class Copilot:
     def _finish(self, ctx: ToolContext, message: str, text: str) -> ChatReply:
         cards: list[Card] = list(ctx.reply_cards)
         cards += self._injection_notices(ctx)
+        notice = getattr(self._llm, "take_notice", lambda: None)()  # app/llm/fallback.py: say when the stand-in answered
+        if notice:
+            cards.append(NoticeCard(level="info", message=notice))
         self._remember(message, text, cards)
         return ChatReply(text=text, cards=cards)
 
