@@ -53,6 +53,38 @@ instructions", "developer mode", "without asking me") is answered by code and ne
 number the trader wrote as a word ("ten") cannot be checked this way, so the check stands down for it; the
 card still shows the exact quantity for the trader to confirm.
 
+### The graph orchestrator (LangGraph)
+
+`ORCHESTRATOR=langgraph` runs the same assistant as a LangGraph state graph (`app/agent/graph.py`) inside the
+backend process; `classic` (the default) keeps the plain loop. The graph:
+
+    START -> input_guard -> router -> model <-> tools (at most 6 rounds) -> output_guard -> END
+
+- **input_guard**: the rule-override check; such a message ends here, answered by code.
+- **router** (plain code, no model call): a question gets only the tools that read, so it cannot produce an
+  order card, rule or plan even if the model asks for one (that call is refused in code). Anything that might
+  be an action gets every tool. The router chooses tools only; prices, quantities and sending are never its call.
+- **output_guard**: every check listed above (code-written card text, grounded numbers, no "I placed it", no advice).
+- Every step is published live to the desk's **Assistant** tab (node, tool, guard verdict, time taken).
+
+Nothing in the graph can send an order: the tools only read or draft, and only the Approve click sends. Checked
+by running the whole test suite with the graph as the default (identical except the extra trace messages) and
+`scripts/model_eval.py --orchestrator langgraph` with the real Bedrock model: 31 prompts, 0 failures.
+
+### Whole-portfolio requests (level 4)
+
+The model only picks the tool; code finds the positions and works out every quantity from live account data.
+One step becomes an order card, several become one plan card approved once. Nothing is sent without approval.
+
+- "Exit all my losing intraday positions" (`exit_losing_positions`): every intraday position in a loss, biggest
+  loss first; a short is closed by buying back; at most 6 steps (it says so if there are more). Each step stands
+  on its own: one refused step does not stop the rest.
+- "Rebalance so no stock exceeds 20%" (`trim_to_max_weight`): sells just enough of each stock over the limit,
+  measuring the portfolio as shares plus cash at current prices (shown on the card). It only sells; it never
+  picks anything to buy. Real sale prices can differ slightly from the prices used for sizing.
+- "Tell me when any of my holdings falls 3% in a day" (`alert_on_holdings`): one alert per stock held, measured
+  from yesterday's close, so they cover today's session. A stock already past the trigger is skipped and named.
+
 ## Running on 021's sandbox
 
     BROKER=zerotwoone
@@ -64,14 +96,32 @@ fails. Before trusting it, run the read-only check, which places no orders:
 
     .venv\Scripts\python scripts\live_check.py
 
-**Status: the adapter (`app/broker/zerotwoone/`) was built from 021's API guide and tested against a fake 021
-that follows the guide (`tests/fake021.py`). A first read-only run against the live sandbox (`live_check.py`)
-confirmed: login, the instrument list (about 15,600 cash instruments), search, the cash estimate, and live
-prices over the market socket. It also showed two things the guide did not say, both now handled: the
-instrument file leaves index names empty (NIFTY is named from its option contracts), and option expiries are
-plain Unix seconds.** Not yet verified against the live sandbox: placing, modifying and cancelling orders, the
-order and trade shapes with real orders in the book, the option chain prices, and how the sandbox's
-deliberate failures (500, 503, timeouts, rate limits) look in practice.
+To check order actions on the live sandbox (1 share of ITC at a time, virtual money; prints its plan and places
+nothing without `--yes`): `scripts\live_actions.py` (modify, cancel, selling today's buy, exit-losers card) and
+`scripts\chaos_live.py` (the four network failures).
+
+**Status: the adapter (`app/broker/zerotwoone/`) was built from 021's API guide, tested against a fake 021
+that follows the guide (`tests/fake021.py`), and then checked against the live sandbox with our own account.**
+
+Verified on the live sandbox, each through the app's own card -> Approve path, with 021's order book read back
+after every step:
+
+- Login, the instrument list (about 15,600 cash instruments), search, the cash estimate, live prices over the
+  market socket, and option-chain prices (`live_check.py`, read-only). Two things the guide did not say, both
+  handled: the instrument file leaves index names empty (NIFTY is named from its option contracts), and option
+  expiries are plain Unix seconds. The sandbox's option-chain OI and volume looked random, so we don't show them.
+- Placing orders, including a part-filled order reported as part-filled, not as done.
+- Four network failures on a real order call (`chaos_live.py`): reply lost, HTTP 500 and HTTP 503 after 021
+  processed the order, and the request never arriving. Each time 021 ended with exactly one order (or none),
+  never a duplicate, and the app never claimed what it could not prove.
+- Modifying an open order's price and cancelling it; cancelling a part-filled order (`live_actions.py`).
+- Selling delivery shares bought the same day: 021 lists them under positions, not holdings, and the app
+  accepts the sale (`live_actions.py`).
+- "Exit all my losing intraday positions" against the real positions: it prepares a card or says there is
+  nothing to do, and never sends anything by itself.
+
+Not verified live: a sell actually filling (our checks ran after market hours, so 021 accepted the orders but
+did not fill them; they were cancelled), and the sandbox's own rate limits (429) in practice.
 
 What the guide forced, and what we did about it:
 
@@ -107,7 +157,6 @@ What the guide forced, and what we did about it:
 
 - The orders websocket (live fills). Order state is read over REST, which the guide calls the source of truth.
 - F&O orders. Orders are equity only; the option chain is read-only.
-- Live-sandbox verification of orders and failure handling (see the status note above).
 - Pending cards and plans are held in memory (rules, the audit log and the send log are in SQLite).
 - Demo and chaos switches, authentication (single demo user), and Co-Captain co-approval.
 
@@ -136,7 +185,9 @@ Missing or expired keys, denied model access and network errors use the app's ex
 | `app/api_models.py` | REST and WebSocket message types |
 | `app/broker/` | `BrokerAdapter` interface, `ReadOnlyView`, `MockBroker` |
 | `app/orders/` | charges, hard limits, card builder, approval service, executor |
-| `app/llm/` | LLM interface, tools, guards, the stand-in parser, the orchestrator |
+| `app/llm/` | LLM interface, tools (incl. `portfolio_tools.py`), guards, the stand-in parser, the classic orchestrator |
+| `app/agent/` | LangGraph orchestrator and the tool router |
+| `app/trace.py` | live trace events for the Assistant tab |
 | `frontend/src/lib/` | typed API client, live-feed reducer, formatting (tested) |
 | `frontend/src/components/` | the desk: chat, approval tickets, account, activity |
 | `app/audit.py`, `app/db.py` | SQLite audit log and execution write-ahead log |
