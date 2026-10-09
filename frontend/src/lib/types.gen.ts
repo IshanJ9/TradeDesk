@@ -385,6 +385,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["get_profile_api_profile_get"];
+        /** Put Profile */
+        put: operations["put_profile_api_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Presets */
+        get: operations["get_presets_api_profile_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Onboarding */
+        post: operations["onboarding_api_profile_onboarding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/goal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Goal */
+        get: operations["get_goal_api_goal_get"];
+        /** Put Goal */
+        put: operations["put_goal_api_goal_put"];
+        post?: never;
+        /** Delete Goal */
+        delete: operations["delete_goal_api_goal_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discipline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Discipline */
+        get: operations["get_discipline_api_discipline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discipline/demo-seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seed Demo */
+        post: operations["seed_demo_api_discipline_demo_seed_post"];
+        /** Clear Demo */
+        delete: operations["clear_demo_api_discipline_demo_seed_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -605,6 +711,17 @@ export interface components {
             /** Total */
             readonly total: number;
         };
+        /** ChargesMeter */
+        ChargesMeter: {
+            /** Today Paise */
+            today_paise: number;
+            /** Turnover Pct */
+            turnover_pct: number;
+            /** Last 30 Days Paise */
+            last_30_days_paise: number;
+            /** Last 30 Days Demo Paise */
+            last_30_days_demo_paise: number;
+        };
         /** ChatReply */
         ChatReply: {
             /** Text */
@@ -617,11 +734,37 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ClosedTrade */
+        ClosedTrade: {
+            /** Order Id */
+            order_id: string;
+            /** Instrument Key */
+            instrument_key: string;
+            product: components["schemas"]["Product"];
+            /** Quantity */
+            quantity: number;
+            /** Pnl */
+            pnl: number;
+            /**
+             * Closed At
+             * Format: date-time
+             */
+            closed_at: string;
+        };
         /**
          * Comparator
          * @enum {string}
          */
         Comparator: "BELOW" | "ABOVE";
+        /** ComparisonGroup */
+        ComparisonGroup: {
+            /** Days */
+            days: number;
+            /** Net Pnl */
+            net_pnl: number;
+            /** Profitable Days */
+            profitable_days: number;
+        };
         /**
          * CreateRuleRequest
          * @description A standing instruction, in the units a trader uses (rupees, percent).
@@ -663,6 +806,46 @@ export interface components {
             product?: components["schemas"]["Product"];
             /** @default DAY */
             validity?: components["schemas"]["Validity"];
+        };
+        /** DemoSeedResult */
+        DemoSeedResult: {
+            /** Seeded Days */
+            seeded_days: number;
+        };
+        /** DisciplineDay */
+        DisciplineDay: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Orders */
+            orders: number;
+            /** Turnover */
+            turnover: number;
+            /** Pnl */
+            pnl: number;
+            /** Charges */
+            charges: number;
+            /** Pnl After Charges */
+            pnl_after_charges: number;
+            /** Risk Score */
+            risk_score: number | null;
+            /** Components */
+            components: components["schemas"]["ScoreComponent"][];
+            /** Demo */
+            demo: boolean;
+        };
+        /** DisciplineReport */
+        DisciplineReport: {
+            profile: components["schemas"]["RiskProfile-Output"] | null;
+            today: components["schemas"]["TodayFacts"];
+            score: components["schemas"]["RiskScore"] | null;
+            history: components["schemas"]["HistoryComparison"];
+            goal: components["schemas"]["GoalProgress"] | null;
+            charges: components["schemas"]["ChargesMeter"];
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * DisciplineSummary
@@ -760,10 +943,109 @@ export interface components {
             /** Total */
             readonly total: number;
         };
+        /** Goal */
+        Goal: {
+            /** Target Paise */
+            target_paise: number | null;
+            /** Target Pct */
+            target_pct: number | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Max Acceptable Loss Paise */
+            max_acceptable_loss_paise: number;
+            /**
+             * Start Value
+             * @description Portfolio value in paise, captured by the backend when saved.
+             */
+            start_value: number;
+        };
+        /** GoalProgress */
+        GoalProgress: {
+            goal: components["schemas"]["Goal"];
+            /** Progress Paise */
+            progress_paise: number;
+            /** Target Paise */
+            target_paise: number;
+            /** Progress Pct */
+            progress_pct: number;
+            /** Days Left */
+            days_left: number;
+            /** Remaining Paise */
+            remaining_paise: number;
+            /** Needed Per Week Paise */
+            needed_per_week_paise: number | null;
+            /** Pace Paise */
+            pace_paise: number;
+            /** Pace Text */
+            pace_text: string;
+            /** Loss Headroom Paise */
+            loss_headroom_paise: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_started" | "active" | "expired" | "achieved";
+            /**
+             * Note
+             * @default Arithmetic against your chosen goal, not a forecast. Deposits and withdrawals affect portfolio value.
+             */
+            note: string;
+        };
+        /**
+         * GoalRequest
+         * @description User-entered goal. The server captures start_value; callers cannot supply it.
+         *
+         *     Amount fields use paise to match the existing API. Convert rupees at the UI boundary.
+         *     start_date may be omitted; when provided it must be today's Indian trading date.
+         */
+        GoalRequest: {
+            /** Target Paise */
+            target_paise?: number | null;
+            /** Target Pct */
+            target_pct?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Max Acceptable Loss Paise */
+            max_acceptable_loss_paise: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HistoryComparison */
+        HistoryComparison: {
+            /** Average Score */
+            average_score: number | null;
+            /** Baseline Days */
+            baseline_days: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "real" | "demo" | "none";
+            above_usual: components["schemas"]["ComparisonGroup"];
+            at_or_below_usual: components["schemas"]["ComparisonGroup"];
+            /** Days */
+            days: components["schemas"]["DisciplineDay"][];
+            /**
+             * Note
+             * @default Past days don't predict future ones.
+             */
+            note: string;
         };
         /** Holding */
         Holding: {
@@ -875,6 +1157,53 @@ export interface components {
             level: "info" | "warning" | "blocked";
             /** Message */
             message: string;
+        };
+        /** OnboardingAnswers */
+        OnboardingAnswers: {
+            /**
+             * Daily Loss Comfort
+             * @enum {string}
+             */
+            daily_loss_comfort: "small" | "moderate" | "larger";
+            /**
+             * Holding Period
+             * @enum {string}
+             */
+            holding_period: "weeks_or_more" | "days" | "same_day";
+            /**
+             * Usual Orders
+             * @enum {string}
+             */
+            usual_orders: "up_to_three" | "four_to_six" | "seven_or_more";
+            /** Intraday Allowed */
+            intraday_allowed: boolean;
+            /**
+             * Aim
+             * @enum {string}
+             */
+            aim: "preserve_capital" | "steady_progress" | "active_trading";
+        };
+        /** OnboardingSuggestion */
+        OnboardingSuggestion: {
+            /**
+             * Preset
+             * @enum {string}
+             */
+            preset: "conservative" | "balanced" | "aggressive";
+            profile: components["schemas"]["RiskProfile-Output"];
+            /** Explanation */
+            explanation: string;
+            /**
+             * Note
+             * @default Starting values; change them to your own. These are not recommendations.
+             */
+            note: string;
+            /**
+             * Requires Review
+             * @default true
+             * @constant
+             */
+            requires_review: true;
         };
         /**
          * OptionType
@@ -1338,6 +1667,20 @@ export interface components {
              */
             readonly day_pnl: number;
         };
+        /** PresetOption */
+        PresetOption: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "conservative" | "balanced" | "aggressive";
+            profile: components["schemas"]["RiskProfile-Output"];
+            /**
+             * Note
+             * @default Starting values; change them to your own. These are not recommendations.
+             */
+            note: string;
+        };
         /**
          * Product
          * @enum {string}
@@ -1375,6 +1718,91 @@ export interface components {
          * @enum {string}
          */
         RejectionReason: "INSUFFICIENT_FUNDS" | "PRICE_BAND" | "INVALID_PRICE" | "INVALID_QUANTITY" | "MARKET_CLOSED" | "SUSPENDED" | "KYC_DORMANT" | "RISK_CHECK" | "OI_LIMIT" | "QUANTITY_LIMIT" | "VALUE_LIMIT" | "SEGMENT_NOT_ALLOWED" | "ANCHOR_ACTIVE" | "CO_APPROVAL_REQUIRED" | "OTHER";
+        /** RiskProfile */
+        "RiskProfile-Input": {
+            /**
+             * Style
+             * @enum {string}
+             */
+            style: "conservative" | "balanced" | "aggressive" | "custom";
+            /** Max Orders Per Day */
+            max_orders_per_day: number;
+            /** Max Order Pct */
+            max_order_pct: number;
+            /** Max Stock Pct */
+            max_stock_pct: number;
+            /** Daily Loss Limit Pct */
+            daily_loss_limit_pct: number;
+            /** Cooling Off After Losses */
+            cooling_off_after_losses: number;
+            /** Cooling Off Minutes */
+            cooling_off_minutes: number;
+            /** Reentry Minutes */
+            reentry_minutes: number;
+            /** Intraday Allowed */
+            intraday_allowed: boolean;
+            /**
+             * Hard Order Limit
+             * @default false
+             */
+            hard_order_limit?: boolean;
+            /**
+             * Hard Stop On Daily Loss
+             * @default false
+             */
+            hard_stop_on_daily_loss?: boolean;
+            /**
+             * Hide Day Pnl
+             * @default false
+             */
+            hide_day_pnl?: boolean;
+        };
+        /** RiskProfile */
+        "RiskProfile-Output": {
+            /**
+             * Style
+             * @enum {string}
+             */
+            style: "conservative" | "balanced" | "aggressive" | "custom";
+            /** Max Orders Per Day */
+            max_orders_per_day: number;
+            /** Max Order Pct */
+            max_order_pct: number;
+            /** Max Stock Pct */
+            max_stock_pct: number;
+            /** Daily Loss Limit Pct */
+            daily_loss_limit_pct: number;
+            /** Cooling Off After Losses */
+            cooling_off_after_losses: number;
+            /** Cooling Off Minutes */
+            cooling_off_minutes: number;
+            /** Reentry Minutes */
+            reentry_minutes: number;
+            /** Intraday Allowed */
+            intraday_allowed: boolean;
+            /**
+             * Hard Order Limit
+             * @default false
+             */
+            hard_order_limit: boolean;
+            /**
+             * Hard Stop On Daily Loss
+             * @default false
+             */
+            hard_stop_on_daily_loss: boolean;
+            /**
+             * Hide Day Pnl
+             * @default false
+             */
+            hide_day_pnl: boolean;
+        };
+        /** RiskScore */
+        RiskScore: {
+            /** Total */
+            total: number;
+            /** Components */
+            components: components["schemas"]["ScoreComponent"][];
+        };
         /** Rule */
         Rule: {
             /** Id */
@@ -1474,6 +1902,20 @@ export interface components {
             type: "rule_update";
             rule: components["schemas"]["Rule"];
         };
+        /** ScoreComponent */
+        ScoreComponent: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "activity" | "size" | "concentration" | "intraday" | "loss_chasing";
+            /** Label */
+            label: string;
+            /** Score */
+            score: number;
+            /** Weight */
+            weight: number;
+        };
         /**
          * Side
          * @enum {string}
@@ -1519,6 +1961,56 @@ export interface components {
              */
             type: "tick";
             tick: components["schemas"]["Tick"];
+        };
+        /** TodayFacts */
+        TodayFacts: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Orders Today */
+            orders_today: number;
+            /** Turnover */
+            turnover: number;
+            /** Charges */
+            charges: number;
+            /** Realised Pnl */
+            realised_pnl: number;
+            /** Unrealised Pnl */
+            unrealised_pnl: number;
+            /** Pnl Estimate */
+            pnl_estimate: number;
+            /** Pnl After Charges */
+            pnl_after_charges: number;
+            /** Portfolio Value */
+            portfolio_value: number;
+            /** Largest Order Pct */
+            largest_order_pct: number;
+            /** Largest Stock Pct */
+            largest_stock_pct: number;
+            /** Stock Values */
+            stock_values: {
+                [key: string]: number;
+            };
+            /** Intraday Share Pct */
+            intraday_share_pct: number;
+            /** Consecutive Losses */
+            consecutive_losses: number;
+            /** Last Loss At */
+            last_loss_at: string | null;
+            /** Last Loss By Stock */
+            last_loss_by_stock: {
+                [key: string]: string;
+            };
+            /** Reentries */
+            reentries: number;
+            /** Cooling Off Breaches */
+            cooling_off_breaches: number;
+            /** Closed Trades */
+            closed_trades: components["schemas"]["ClosedTrade"][];
+            /** Notes */
+            notes: string[];
         };
         /**
          * TraceEvent
@@ -2265,6 +2757,241 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExternalActivity"];
                 };
+            };
+        };
+    };
+    get_profile_api_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProfile-Output"] | null;
+                };
+            };
+        };
+    };
+    put_profile_api_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskProfile-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProfile-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_presets_api_profile_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetOption"][];
+                };
+            };
+        };
+    };
+    onboarding_api_profile_onboarding_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingAnswers"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSuggestion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_goal_api_goal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Goal"] | null;
+                };
+            };
+        };
+    };
+    put_goal_api_goal_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Goal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_goal_api_goal_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_discipline_api_discipline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineReport"];
+                };
+            };
+        };
+    };
+    seed_demo_api_discipline_demo_seed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoSeedResult"];
+                };
+            };
+        };
+    };
+    clear_demo_api_discipline_demo_seed_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

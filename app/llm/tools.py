@@ -688,6 +688,8 @@ async def _plan_report(ctx: ToolContext, args: dict) -> dict:
 
 
 def build_tools() -> dict[str, Tool]:
+    from app.llm.portfolio_tools import alert_on_holdings, exit_losing_positions, trim_to_max_weight  # they build on this module
+
     tools = [
         Tool(ToolSpec("get_funds", "Available cash and used margin.", _schema()), _funds, _render_funds),
         _valued_tool("holdings", lambda b: b.get_holdings(), "positions", lambda b: b.get_positions()),
@@ -821,6 +823,47 @@ def build_tools() -> dict[str, Tool]:
             ),
             _plan_report,
             lambda o: o.get("summary") or o.get("message", ""),
+        ),
+        Tool(
+            ToolSpec(
+                "exit_losing_positions",
+                "Prepare ONE approval card that exits every position currently in a loss, e.g. 'exit all my losing "
+                "intraday positions' or 'square off my losers'. The code finds the positions and every quantity; pass "
+                "no stock names or numbers. product MIS = intraday (the default), CNC = today's delivery positions. "
+                "Nothing is sent until the trader approves.",
+                _schema(product={"type": "string", "enum": ["MIS", "CNC"], "description": "MIS = intraday (default)"}),
+            ),
+            exit_losing_positions,
+            lambda o: o.get("message") or o.get("note", ""),
+            read_only=False,
+        ),
+        Tool(
+            ToolSpec(
+                "trim_to_max_weight",
+                "Prepare ONE approval card that sells just enough of each holding so that no stock is above a "
+                "percentage of the portfolio (shares + cash), e.g. 'rebalance so no stock exceeds 20%'. Pass only the "
+                "percentage the trader said. The code works out every quantity. It only sells; it never picks "
+                "anything to buy. Nothing is sent until the trader approves.",
+                _schema(max_percent={"type": "number", "minimum": 1, "maximum": 100, "_required": True}),
+            ),
+            trim_to_max_weight,
+            lambda o: o.get("message") or o.get("note", ""),
+            read_only=False,
+        ),
+        Tool(
+            ToolSpec(
+                "alert_on_holdings",
+                "Set an ALERT on EVERY stock the trader holds, e.g. 'tell me when any of my holdings falls 3% in a day'. "
+                "Measured from yesterday's close. Pass only the percentage the trader said and the direction. Alerts "
+                "only notify; they never prepare or send orders. For one named stock use create_rule instead.",
+                _schema(
+                    percent={"type": "number", "exclusiveMinimum": 0, "maximum": 100, "_required": True},
+                    direction={"type": "string", "enum": ["DOWN", "UP"], "description": "DOWN = falls (default), UP = rises"},
+                ),
+            ),
+            alert_on_holdings,
+            lambda o: o.get("message", ""),
+            read_only=False,
         ),
     ]
     return {t.spec.name: t for t in tools}

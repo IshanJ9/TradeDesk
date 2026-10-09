@@ -873,6 +873,274 @@
           }
         }
       }
+    },
+    "/api/profile": {
+      "get": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Get Profile",
+        "operationId": "get_profile_api_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RiskProfile-Output"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Profile Api Profile Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Put Profile",
+        "operationId": "put_profile_api_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskProfile-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskProfile-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profile/presets": {
+      "get": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Get Presets",
+        "operationId": "get_presets_api_profile_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PresetOption"
+                  },
+                  "type": "array",
+                  "title": "Response Get Presets Api Profile Presets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profile/onboarding": {
+      "post": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Onboarding",
+        "operationId": "onboarding_api_profile_onboarding_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingAnswers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingSuggestion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/goal": {
+      "get": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Get Goal",
+        "operationId": "get_goal_api_goal_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Goal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Goal Api Goal Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Put Goal",
+        "operationId": "put_goal_api_goal_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Delete Goal",
+        "operationId": "delete_goal_api_goal_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/discipline": {
+      "get": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Get Discipline",
+        "operationId": "get_discipline_api_discipline_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/discipline/demo-seed": {
+      "post": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Seed Demo",
+        "operationId": "seed_demo_api_discipline_demo_seed_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoSeedResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Discipline"
+        ],
+        "summary": "Clear Demo",
+        "operationId": "clear_demo_api_discipline_demo_seed_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1351,6 +1619,35 @@
         "title": "Charges",
         "description": "021's charge breakdown for one order, in paise.\n\n`clearing` is kept for the plan's 8-part list; 021's pricing page lists no clearing\ncharge for equity, so it is 0. `dp_charge` is the per-ISIN depository charge 021\nlevies on delivery sells."
       },
+      "ChargesMeter": {
+        "properties": {
+          "today_paise": {
+            "type": "integer",
+            "title": "Today Paise"
+          },
+          "turnover_pct": {
+            "type": "number",
+            "title": "Turnover Pct"
+          },
+          "last_30_days_paise": {
+            "type": "integer",
+            "title": "Last 30 Days Paise"
+          },
+          "last_30_days_demo_paise": {
+            "type": "integer",
+            "title": "Last 30 Days Demo Paise"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "today_paise",
+          "turnover_pct",
+          "last_30_days_paise",
+          "last_30_days_demo_paise"
+        ],
+        "title": "ChargesMeter"
+      },
       "ChatReply": {
         "properties": {
           "text": {
@@ -1415,6 +1712,45 @@
         ],
         "title": "ChatRequest"
       },
+      "ClosedTrade": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "instrument_key": {
+            "type": "string",
+            "title": "Instrument Key"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "pnl": {
+            "type": "integer",
+            "title": "Pnl"
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Closed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "order_id",
+          "instrument_key",
+          "product",
+          "quantity",
+          "pnl",
+          "closed_at"
+        ],
+        "title": "ClosedTrade"
+      },
       "Comparator": {
         "type": "string",
         "enum": [
@@ -1422,6 +1758,30 @@
           "ABOVE"
         ],
         "title": "Comparator"
+      },
+      "ComparisonGroup": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "net_pnl": {
+            "type": "integer",
+            "title": "Net Pnl"
+          },
+          "profitable_days": {
+            "type": "integer",
+            "title": "Profitable Days"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "days",
+          "net_pnl",
+          "profitable_days"
+        ],
+        "title": "ComparisonGroup"
       },
       "CreateRuleRequest": {
         "properties": {
@@ -1551,6 +1911,147 @@
         ],
         "title": "CreateRuleRequest",
         "description": "A standing instruction, in the units a trader uses (rupees, percent).\n\nGive the trigger as EITHER an absolute `price_rupees` OR a `percent` move measured from\n`basis`. A TRIGGER_ORDER rule never sends anything when it fires: it prepares a fresh order\ncard for the trader to approve. An ALERT only tells the trader."
+      },
+      "DemoSeedResult": {
+        "properties": {
+          "seeded_days": {
+            "type": "integer",
+            "title": "Seeded Days"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seeded_days"
+        ],
+        "title": "DemoSeedResult"
+      },
+      "DisciplineDay": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "turnover": {
+            "type": "integer",
+            "title": "Turnover"
+          },
+          "pnl": {
+            "type": "integer",
+            "title": "Pnl"
+          },
+          "charges": {
+            "type": "integer",
+            "title": "Charges"
+          },
+          "pnl_after_charges": {
+            "type": "integer",
+            "title": "Pnl After Charges"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreComponent"
+            },
+            "type": "array",
+            "title": "Components"
+          },
+          "demo": {
+            "type": "boolean",
+            "title": "Demo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "orders",
+          "turnover",
+          "pnl",
+          "charges",
+          "pnl_after_charges",
+          "risk_score",
+          "components",
+          "demo"
+        ],
+        "title": "DisciplineDay"
+      },
+      "DisciplineReport": {
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskProfile-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "today": {
+            "$ref": "#/components/schemas/TodayFacts"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "$ref": "#/components/schemas/HistoryComparison"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "charges": {
+            "$ref": "#/components/schemas/ChargesMeter"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile",
+          "today",
+          "score",
+          "history",
+          "goal",
+          "charges",
+          "warnings"
+        ],
+        "title": "DisciplineReport"
       },
       "DisciplineSummary": {
         "properties": {
@@ -1767,6 +2268,213 @@
         ],
         "title": "Funds"
       },
+      "Goal": {
+        "properties": {
+          "target_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9007199254740991.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Paise"
+          },
+          "target_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pct"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "max_acceptable_loss_paise": {
+            "type": "integer",
+            "maximum": 9007199254740991.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Acceptable Loss Paise"
+          },
+          "start_value": {
+            "type": "integer",
+            "maximum": 9007199254740991.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Start Value",
+            "description": "Portfolio value in paise, captured by the backend when saved."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target_paise",
+          "target_pct",
+          "start_date",
+          "end_date",
+          "max_acceptable_loss_paise",
+          "start_value"
+        ],
+        "title": "Goal"
+      },
+      "GoalProgress": {
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/Goal"
+          },
+          "progress_paise": {
+            "type": "integer",
+            "title": "Progress Paise"
+          },
+          "target_paise": {
+            "type": "integer",
+            "title": "Target Paise"
+          },
+          "progress_pct": {
+            "type": "number",
+            "title": "Progress Pct"
+          },
+          "days_left": {
+            "type": "integer",
+            "title": "Days Left"
+          },
+          "remaining_paise": {
+            "type": "integer",
+            "title": "Remaining Paise"
+          },
+          "needed_per_week_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed Per Week Paise"
+          },
+          "pace_paise": {
+            "type": "integer",
+            "title": "Pace Paise"
+          },
+          "pace_text": {
+            "type": "string",
+            "title": "Pace Text"
+          },
+          "loss_headroom_paise": {
+            "type": "integer",
+            "title": "Loss Headroom Paise"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "active",
+              "expired",
+              "achieved"
+            ],
+            "title": "Status"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": "Arithmetic against your chosen goal, not a forecast. Deposits and withdrawals affect portfolio value."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal",
+          "progress_paise",
+          "target_paise",
+          "progress_pct",
+          "days_left",
+          "remaining_paise",
+          "needed_per_week_paise",
+          "pace_paise",
+          "pace_text",
+          "loss_headroom_paise",
+          "status",
+          "note"
+        ],
+        "title": "GoalProgress"
+      },
+      "GoalRequest": {
+        "properties": {
+          "target_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9007199254740991.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Paise"
+          },
+          "target_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pct"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "max_acceptable_loss_paise": {
+            "type": "integer",
+            "maximum": 9007199254740991.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Acceptable Loss Paise"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "end_date",
+          "max_acceptable_loss_paise"
+        ],
+        "title": "GoalRequest",
+        "description": "User-entered goal. The server captures start_value; callers cannot supply it.\n\nAmount fields use paise to match the existing API. Convert rupees at the UI boundary.\nstart_date may be omitted; when provided it must be today's Indian trading date."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1779,6 +2487,64 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HistoryComparison": {
+        "properties": {
+          "average_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Score"
+          },
+          "baseline_days": {
+            "type": "integer",
+            "title": "Baseline Days"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "real",
+              "demo",
+              "none"
+            ],
+            "title": "Source"
+          },
+          "above_usual": {
+            "$ref": "#/components/schemas/ComparisonGroup"
+          },
+          "at_or_below_usual": {
+            "$ref": "#/components/schemas/ComparisonGroup"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DisciplineDay"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": "Past days don't predict future ones."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "average_score",
+          "baseline_days",
+          "source",
+          "above_usual",
+          "at_or_below_usual",
+          "days",
+          "note"
+        ],
+        "title": "HistoryComparison"
       },
       "Holding": {
         "properties": {
@@ -2072,6 +2838,101 @@
         ],
         "title": "NoticeCard",
         "description": "Something the trader should know: a block, a lock, or flagged content."
+      },
+      "OnboardingAnswers": {
+        "properties": {
+          "daily_loss_comfort": {
+            "type": "string",
+            "enum": [
+              "small",
+              "moderate",
+              "larger"
+            ],
+            "title": "Daily Loss Comfort"
+          },
+          "holding_period": {
+            "type": "string",
+            "enum": [
+              "weeks_or_more",
+              "days",
+              "same_day"
+            ],
+            "title": "Holding Period"
+          },
+          "usual_orders": {
+            "type": "string",
+            "enum": [
+              "up_to_three",
+              "four_to_six",
+              "seven_or_more"
+            ],
+            "title": "Usual Orders"
+          },
+          "intraday_allowed": {
+            "type": "boolean",
+            "title": "Intraday Allowed"
+          },
+          "aim": {
+            "type": "string",
+            "enum": [
+              "preserve_capital",
+              "steady_progress",
+              "active_trading"
+            ],
+            "title": "Aim"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "daily_loss_comfort",
+          "holding_period",
+          "usual_orders",
+          "intraday_allowed",
+          "aim"
+        ],
+        "title": "OnboardingAnswers"
+      },
+      "OnboardingSuggestion": {
+        "properties": {
+          "preset": {
+            "type": "string",
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive"
+            ],
+            "title": "Preset"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/RiskProfile-Output"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": "Starting values; change them to your own. These are not recommendations."
+          },
+          "requires_review": {
+            "type": "boolean",
+            "const": true,
+            "title": "Requires Review",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preset",
+          "profile",
+          "explanation",
+          "note",
+          "requires_review"
+        ],
+        "title": "OnboardingSuggestion"
       },
       "OptionType": {
         "type": "string",
@@ -3382,6 +4243,35 @@
         ],
         "title": "Position"
       },
+      "PresetOption": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive"
+            ],
+            "title": "Name"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/RiskProfile-Output"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": "Starting values; change them to your own. These are not recommendations."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "profile",
+          "note"
+        ],
+        "title": "PresetOption"
+      },
       "Product": {
         "type": "string",
         "enum": [
@@ -3473,6 +4363,211 @@
           "OTHER"
         ],
         "title": "RejectionReason"
+      },
+      "RiskProfile-Input": {
+        "properties": {
+          "style": {
+            "type": "string",
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive",
+              "custom"
+            ],
+            "title": "Style"
+          },
+          "max_orders_per_day": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Orders Per Day"
+          },
+          "max_order_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Order Pct"
+          },
+          "max_stock_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Stock Pct"
+          },
+          "daily_loss_limit_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Daily Loss Limit Pct"
+          },
+          "cooling_off_after_losses": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cooling Off After Losses"
+          },
+          "cooling_off_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Cooling Off Minutes"
+          },
+          "reentry_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Reentry Minutes"
+          },
+          "intraday_allowed": {
+            "type": "boolean",
+            "title": "Intraday Allowed"
+          },
+          "hard_order_limit": {
+            "type": "boolean",
+            "title": "Hard Order Limit",
+            "default": false
+          },
+          "hard_stop_on_daily_loss": {
+            "type": "boolean",
+            "title": "Hard Stop On Daily Loss",
+            "default": false
+          },
+          "hide_day_pnl": {
+            "type": "boolean",
+            "title": "Hide Day Pnl",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "style",
+          "max_orders_per_day",
+          "max_order_pct",
+          "max_stock_pct",
+          "daily_loss_limit_pct",
+          "cooling_off_after_losses",
+          "cooling_off_minutes",
+          "reentry_minutes",
+          "intraday_allowed"
+        ],
+        "title": "RiskProfile"
+      },
+      "RiskProfile-Output": {
+        "properties": {
+          "style": {
+            "type": "string",
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive",
+              "custom"
+            ],
+            "title": "Style"
+          },
+          "max_orders_per_day": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Orders Per Day"
+          },
+          "max_order_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Order Pct"
+          },
+          "max_stock_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Stock Pct"
+          },
+          "daily_loss_limit_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Daily Loss Limit Pct"
+          },
+          "cooling_off_after_losses": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cooling Off After Losses"
+          },
+          "cooling_off_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Cooling Off Minutes"
+          },
+          "reentry_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Reentry Minutes"
+          },
+          "intraday_allowed": {
+            "type": "boolean",
+            "title": "Intraday Allowed"
+          },
+          "hard_order_limit": {
+            "type": "boolean",
+            "title": "Hard Order Limit",
+            "default": false
+          },
+          "hard_stop_on_daily_loss": {
+            "type": "boolean",
+            "title": "Hard Stop On Daily Loss",
+            "default": false
+          },
+          "hide_day_pnl": {
+            "type": "boolean",
+            "title": "Hide Day Pnl",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "style",
+          "max_orders_per_day",
+          "max_order_pct",
+          "max_stock_pct",
+          "daily_loss_limit_pct",
+          "cooling_off_after_losses",
+          "cooling_off_minutes",
+          "reentry_minutes",
+          "intraday_allowed",
+          "hard_order_limit",
+          "hard_stop_on_daily_loss",
+          "hide_day_pnl"
+        ],
+        "title": "RiskProfile"
+      },
+      "RiskScore": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreComponent"
+            },
+            "type": "array",
+            "title": "Components"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total",
+          "components"
+        ],
+        "title": "RiskScore"
       },
       "Rule": {
         "properties": {
@@ -3743,6 +4838,44 @@
         ],
         "title": "RuleUpdateEvent"
       },
+      "ScoreComponent": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "activity",
+              "size",
+              "concentration",
+              "intraday",
+              "loss_chasing"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "weight": {
+            "type": "integer",
+            "title": "Weight"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "score",
+          "weight"
+        ],
+        "title": "ScoreComponent"
+      },
       "Side": {
         "type": "string",
         "enum": [
@@ -3852,6 +4985,137 @@
           "tick"
         ],
         "title": "TickEvent"
+      },
+      "TodayFacts": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "orders_today": {
+            "type": "integer",
+            "title": "Orders Today"
+          },
+          "turnover": {
+            "type": "integer",
+            "title": "Turnover"
+          },
+          "charges": {
+            "type": "integer",
+            "title": "Charges"
+          },
+          "realised_pnl": {
+            "type": "integer",
+            "title": "Realised Pnl"
+          },
+          "unrealised_pnl": {
+            "type": "integer",
+            "title": "Unrealised Pnl"
+          },
+          "pnl_estimate": {
+            "type": "integer",
+            "title": "Pnl Estimate"
+          },
+          "pnl_after_charges": {
+            "type": "integer",
+            "title": "Pnl After Charges"
+          },
+          "portfolio_value": {
+            "type": "integer",
+            "title": "Portfolio Value"
+          },
+          "largest_order_pct": {
+            "type": "number",
+            "title": "Largest Order Pct"
+          },
+          "largest_stock_pct": {
+            "type": "number",
+            "title": "Largest Stock Pct"
+          },
+          "stock_values": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stock Values"
+          },
+          "intraday_share_pct": {
+            "type": "number",
+            "title": "Intraday Share Pct"
+          },
+          "consecutive_losses": {
+            "type": "integer",
+            "title": "Consecutive Losses"
+          },
+          "last_loss_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Loss At"
+          },
+          "last_loss_by_stock": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "type": "object",
+            "title": "Last Loss By Stock"
+          },
+          "reentries": {
+            "type": "integer",
+            "title": "Reentries"
+          },
+          "cooling_off_breaches": {
+            "type": "integer",
+            "title": "Cooling Off Breaches"
+          },
+          "closed_trades": {
+            "items": {
+              "$ref": "#/components/schemas/ClosedTrade"
+            },
+            "type": "array",
+            "title": "Closed Trades"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "orders_today",
+          "turnover",
+          "charges",
+          "realised_pnl",
+          "unrealised_pnl",
+          "pnl_estimate",
+          "pnl_after_charges",
+          "portfolio_value",
+          "largest_order_pct",
+          "largest_stock_pct",
+          "stock_values",
+          "intraday_share_pct",
+          "consecutive_losses",
+          "last_loss_at",
+          "last_loss_by_stock",
+          "reentries",
+          "cooling_off_breaches",
+          "closed_trades",
+          "notes"
+        ],
+        "title": "TodayFacts"
       },
       "TraceEvent": {
         "properties": {

@@ -107,6 +107,13 @@ class RuleBasedLLM:
         if re.match(r"(?:please\s+)?(?:list|show|view|what are|what's|whats)\b.*\b(?:rules|alerts|standing instructions?)$", t):
             return [_call("list_rules")]
 
+        # "tell me when any of my holdings falls 3% in a day": one alert per stock held
+        if (m := re.search(r"\b(?:any|each|every|all)\s+(?:of\s+)?(?:my\s+)?(?:holdings?|stocks?|shares?)\b.*?(?P<pct>\d+(?:\.\d+)?)\s*%", t)) and re.search(
+            r"\b(?:alert|notify|tell|warn|ping|let)\b", t
+        ):
+            up = re.search(rf"\b{_RISE}\b", t) and not re.search(rf"\b{_FALL}\b", t)
+            return [_call("alert_on_holdings", percent=float(m["pct"]), direction="UP" if up else "DOWN")]
+
         # standing instructions: "alert me if ...", "buy 5 tcs if ..."
         if m := re.match(r"(?:please\s+)?(?:alert|notify|tell|warn|ping)\s+me\s+(?:if|when|once)\s+(?P<rest>.+)$", t):
             subject = re.match(
@@ -122,6 +129,14 @@ class RuleBasedLLM:
             if trig:
                 return [_call("create_rule", kind="TRIGGER_ORDER", instrument=_clean_name(m["name"]), side=m["side"].upper(),
                               quantity=int(_num(m["qty"])), product="MIS" if "intraday" in t else "CNC", **trig)]
+
+        # whole-portfolio requests: code finds the positions and sizes every step
+        if re.search(r"\b(?:exit|close|square\s*off|sell|get\s+out\s+of)\b.*(?:\blos(?:ing|ers?)\b|\bin\s+(?:a\s+)?loss\b)", t):  # not "stop loss"
+            return [_call("exit_losing_positions", product="CNC" if "delivery" in t else "MIS")]
+        if m := re.search(
+            r"\b(?:rebalance|trim|cap|reduce)\b.*?\b(?:exceeds?|above|over|more\s+than|max(?:imum)?|at\s+most|under|below)\s+(?P<pct>\d+(?:\.\d+)?)\s*%", t
+        ):
+            return [_call("trim_to_max_weight", max_percent=float(m["pct"]))]
 
         # plans: "sell half my infosys and buy itc with the money"
         if m := re.match(
