@@ -73,21 +73,10 @@ class Copilot:
 
     async def _turn(self, message: str) -> ChatReply:
         self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message})
-        override = overrides_rules(message)
-        if override:  # answered by code: the model never sees it, and it is not kept in the conversation
-            self._audit.record(
-                AuditKind.INJECTION_BLOCKED, "system", "A message tried to change the assistant's rules; refused in code",
-                data={"matched": list(override), "message": message[:300]},
-            )
-            return ChatReply(
-                text=OVERRIDE_REFUSAL,
-                cards=[NoticeCard(level="warning", message="That message looked like an attempt to change my rules, so I did not act on it.")],
-            )
-        recent_user_texts = [m.text for m in self._history if m.role == "user"][-6:]
-        ctx = ToolContext(
-            broker=self._broker, cards=self._cards, rules=self._rules, plans=self._plans, clock=self._clock,
-            user_texts=[*recent_user_texts, message],
-        )
+        refusal = self._refuse_override(message)
+        if refusal:
+            return refusal
+        ctx = self._context(message)
         messages = [*self._history, Message("user", message)]
         specs = [t.spec for t in self._tools.values()]
         system = build_system_prompt(self._clock())
@@ -105,6 +94,32 @@ class Copilot:
             final = GAVE_UP
 
         text = self._shape_text(ctx, final, message)
+        return self._finish(ctx, message, text)
+
+    # ---- steps shared with the graph orchestrator (app/agent/graph.py) ---- #
+
+    def _refuse_override(self, message: str) -> ChatReply | None:
+        override = overrides_rules(message)
+        if not override:
+            return None
+        # answered by code: the model never sees it, and it is not kept in the conversation
+        self._audit.record(
+            AuditKind.INJECTION_BLOCKED, "system", "A message tried to change the assistant's rules; refused in code",
+            data={"matched": list(override), "message": message[:300]},
+        )
+        return ChatReply(
+            text=OVERRIDE_REFUSAL,
+            cards=[NoticeCard(level="warning", message="That message looked like an attempt to change my rules, so I did not act on it.")],
+        )
+
+    def _context(self, message: str) -> ToolContext:
+        recent_user_texts = [m.text for m in self._history if m.role == "user"][-6:]
+        return ToolContext(
+            broker=self._broker, cards=self._cards, rules=self._rules, plans=self._plans, clock=self._clock,
+            user_texts=[*recent_user_texts, message],
+        )
+
+    def _finish(self, ctx: ToolContext, message: str, text: str) -> ChatReply:
         cards: list[Card] = list(ctx.reply_cards)
         cards += self._injection_notices(ctx)
         self._remember(message, text, cards)
@@ -135,17 +150,21 @@ class Copilot:
         return "\n".join(dict.fromkeys(line for line in lines if line))
 
     def _shape_text(self, ctx: ToolContext, final: str, user_text: str) -> str:
+        return self._shape(ctx, final, user_text)[0]
+
+    def _shape(self, ctx: ToolContext, final: str, user_text: str) -> tuple[str, str | None]:
+        """The reply the trader reads, and which check replaced the model's words (None if none did)."""
         if ctx.proposal_texts:  # an order card was involved: the words come from the card, not the model
-            return "\n".join(dict.fromkeys(ctx.proposal_texts))
+            return "\n".join(dict.fromkeys(ctx.proposal_texts)), None
 
         final = plain_text(final)  # the chat shows plain text: no markdown
         fallback = self._fallback(ctx)
         if claims_execution(final):
             self._audit.record(AuditKind.INJECTION_BLOCKED, "system", "Answer claimed an order was placed; replaced", data={"answer": final})
-            return NOT_PLACED
+            return NOT_PLACED, "the answer claimed an order was placed"
         if gives_advice(final):
             self._audit.record(AuditKind.LIMIT_BLOCKED, "system", "Answer contained advice or a prediction; replaced", data={"answer": final})
-            return NO_ADVICE
+            return NO_ADVICE, "the answer contained advice or a prediction"
         bad = ungrounded_numbers(final, [out for _, out in ctx.read_results], user_text)
         if bad:
             self._audit.record(
@@ -154,10 +173,10 @@ class Copilot:
                 f"Answer contained numbers not found in the account data ({', '.join(bad[:5])}); replaced",
                 data={"answer": final, "ungrounded": bad},
             )
-            return fallback or NOT_GROUNDED
+            return fallback or NOT_GROUNDED, f"numbers not in your account data ({', '.join(bad[:3])})"
         if not final.strip():
-            return fallback or HELP
-        return final
+            return fallback or HELP, None
+        return final, None
 
     def _injection_notices(self, ctx: ToolContext) -> list[NoticeCard]:
         notices = []
