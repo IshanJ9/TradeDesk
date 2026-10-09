@@ -8,45 +8,13 @@ win/loss is before charges. Delivery and intraday inventories never cross-match.
 
 import asyncio
 from collections import defaultdict, deque
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from app.broker.base import ReadOnlyBroker
 from app.history.store import trading_day
 from app.orders.charges import compute_charges
-from app.risk.models import RiskProfile
-from app.schemas import Funds, Holding, Model, Order, OrderStatus, Position, Product, Side
-
-
-class ClosedTrade(Model):
-    order_id: str
-    instrument_key: str
-    product: Product
-    quantity: int
-    pnl: int
-    closed_at: datetime
-
-
-class TodayFacts(Model):
-    day: date
-    orders_today: int
-    turnover: int
-    charges: int
-    realised_pnl: int
-    unrealised_pnl: int
-    pnl_estimate: int
-    pnl_after_charges: int
-    portfolio_value: int
-    largest_order_pct: float
-    largest_stock_pct: float
-    stock_values: dict[str, int]
-    intraday_share_pct: float
-    consecutive_losses: int
-    last_loss_at: datetime | None
-    last_loss_by_stock: dict[str, datetime]
-    reentries: int
-    cooling_off_breaches: int
-    closed_trades: list[ClosedTrade]
-    notes: list[str]
+from app.risk.models import ClosedTrade, RiskProfile, TodayFacts
+from app.schemas import Funds, Holding, Order, OrderStatus, Position, Product, Side
 
 
 def percentage(value: int, total: int) -> float:

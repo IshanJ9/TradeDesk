@@ -1,11 +1,11 @@
 """The trader's own settings. Money is integer paise; percentages are 1 through 100."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from pydantic import Field, StrictBool, model_validator
 
-from app.schemas import Model
+from app.schemas import Model, Product
 
 PresetName = Literal["conservative", "balanced", "aggressive"]
 PositiveCount = Annotated[int, Field(strict=True, gt=0, le=100_000)]
@@ -77,3 +77,111 @@ class GoalRequest(Model):
 class Goal(GoalRequest):
     start_date: date
     start_value: Money = Field(description="Portfolio value in paise, captured by the backend when saved.")
+
+
+class ClosedTrade(Model):
+    order_id: str
+    instrument_key: str
+    product: Product
+    quantity: int
+    pnl: int
+    closed_at: datetime
+
+
+class TodayFacts(Model):
+    day: date
+    orders_today: int
+    turnover: int
+    charges: int
+    realised_pnl: int
+    unrealised_pnl: int
+    pnl_estimate: int
+    pnl_after_charges: int
+    portfolio_value: int
+    largest_order_pct: float
+    largest_stock_pct: float
+    stock_values: dict[str, int]
+    intraday_share_pct: float
+    consecutive_losses: int
+    last_loss_at: datetime | None
+    last_loss_by_stock: dict[str, datetime]
+    reentries: int
+    cooling_off_breaches: int
+    closed_trades: list[ClosedTrade]
+    notes: list[str]
+
+
+class ScoreComponent(Model):
+    key: Literal["activity", "size", "concentration", "intraday", "loss_chasing"]
+    label: str
+    score: Annotated[float, Field(ge=0, le=100)]
+    weight: int
+
+
+class RiskScore(Model):
+    total: Annotated[int, Field(ge=0, le=100)]
+    components: list[ScoreComponent]
+
+
+class DisciplineDay(Model):
+    day: date
+    orders: int
+    turnover: int
+    pnl: int
+    charges: int
+    pnl_after_charges: int
+    risk_score: int | None
+    components: list[ScoreComponent]
+    demo: bool
+
+
+class ComparisonGroup(Model):
+    days: int
+    net_pnl: int
+    profitable_days: int
+
+
+class HistoryComparison(Model):
+    average_score: float | None
+    baseline_days: int
+    source: Literal["real", "demo", "none"]
+    above_usual: ComparisonGroup
+    at_or_below_usual: ComparisonGroup
+    days: list[DisciplineDay]
+    note: str = "Past days don't predict future ones."
+
+
+class GoalProgress(Model):
+    goal: Goal
+    progress_paise: int
+    target_paise: int
+    progress_pct: float
+    days_left: int
+    remaining_paise: int
+    needed_per_week_paise: int | None
+    pace_paise: int
+    pace_text: str
+    loss_headroom_paise: int
+    status: Literal["not_started", "active", "expired", "achieved"]
+    note: str = "Arithmetic against your chosen goal, not a forecast. Deposits and withdrawals affect portfolio value."
+
+
+class ChargesMeter(Model):
+    today_paise: int
+    turnover_pct: float
+    last_30_days_paise: int
+    last_30_days_demo_paise: int
+
+
+class DisciplineReport(Model):
+    profile: RiskProfile | None
+    today: TodayFacts
+    score: RiskScore | None
+    history: HistoryComparison
+    goal: GoalProgress | None
+    charges: ChargesMeter
+    warnings: list[str]
+
+
+class DemoSeedResult(Model):
+    seeded_days: int

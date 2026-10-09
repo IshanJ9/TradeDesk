@@ -3,7 +3,8 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.history.store import trading_day
-from app.risk.models import Goal, GoalRequest, OnboardingAnswers, OnboardingSuggestion, PresetOption, RiskProfile
+from app.risk.models import (DemoSeedResult, DisciplineReport, Goal, GoalRequest, OnboardingAnswers,
+                             OnboardingSuggestion, PresetOption, RiskProfile)
 from app.risk.presets import all_presets, suggest_profile
 from app.risk.store import ProfileStore
 from app.risk.valuation import portfolio_value
@@ -22,7 +23,9 @@ async def get_profile(request: Request):
 
 @router.put("/profile", response_model=RiskProfile)
 async def put_profile(body: RiskProfile, request: Request):
-    return profile_store(request).save_profile(body)
+    saved = profile_store(request).save_profile(body)
+    await request.app.state.discipline.refresh_safely()
+    return saved
 
 
 @router.get("/profile/presets", response_model=list[PresetOption])
@@ -59,4 +62,27 @@ async def put_goal(body: GoalRequest, request: Request):
 @router.delete("/goal", status_code=204)
 async def delete_goal(request: Request):
     profile_store(request).delete_goal()
+    return Response(status_code=204)
+
+
+@router.get("/discipline", response_model=DisciplineReport)
+async def get_discipline(request: Request):
+    return await request.app.state.discipline.refresh()
+
+
+@router.post("/discipline/demo-seed", response_model=DemoSeedResult)
+async def seed_demo(request: Request):
+    if not request.app.state.settings.demo_mode:
+        raise HTTPException(404, "Not found")
+    count = await request.app.state.discipline.seed()
+    await request.app.state.discipline.refresh_safely()
+    return DemoSeedResult(seeded_days=count)
+
+
+@router.delete("/discipline/demo-seed", status_code=204)
+async def clear_demo(request: Request):
+    if not request.app.state.settings.demo_mode:
+        raise HTTPException(404, "Not found")
+    await request.app.state.discipline.clear_demo()
+    await request.app.state.discipline.refresh_safely()
     return Response(status_code=204)

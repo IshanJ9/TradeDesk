@@ -36,6 +36,8 @@ from app.plans.store import PlanStore
 from app.risk.engine import ProfileGuard
 from app.risk.api import router as risk_router
 from app.risk.store import ProfileStore
+from app.risk.report_store import ReportStore  # risk-goals
+from app.risk.service import DisciplineService  # risk-goals
 from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
@@ -129,6 +131,7 @@ def create_app(
         except BrokerTimeout:
             log.warning("broker unreachable at startup; unresolved executions and rules stay as they are")
         tasks = [asyncio.create_task(_tick_bridge(app))]
+        tasks.append(asyncio.create_task(app.state.discipline.run()))  # risk-goals: 20-second reports
         if settings.reconcile_interval:
             tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval)))
         if isinstance(app.state.broker, MockBroker) and settings.ticker_interval:
@@ -175,6 +178,9 @@ def create_app(
     app.state.history = history
     app.state.risk = risk
     app.state.profile_store = profile_store  # risk-goals
+    app.state.discipline = DisciplineService(  # risk-goals: reads only; owns its report tables
+        the_broker.read_only(), profile_store, ReportStore(db), lambda: app.state.history, hub, clock, settings.demo_mode
+    )
     cards = CardService(builder, store, hub, audit, risk)
     tools = build_tools()
     llm = make_llm(settings, {name: t.render for name, t in tools.items()})
