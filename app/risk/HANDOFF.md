@@ -100,5 +100,8 @@ in light and dark themes. Live broker behavior was not tested in this workstream
 5. `f053c45` Discipline UI.
 6. This handoff and final validation checkpoint.
 
-No feature commits have been pushed by the agent. From the TradeDesk directory,
-the user can publish this branch with `git push origin risk-goals`.
+These were the original local Person C checkpoints. The feature has since been
+integrated with the existing LangGraph work on the Syrus submission's `main`
+branch at the user's request. See `app/risk/LIVE_021_HANDOFF.md` for the teammate's
+live-testing setup and checklist. The internal TradeDesk `risk-goals` branch is
+still local-ahead and can separately be published with `git push origin risk-goals`.
