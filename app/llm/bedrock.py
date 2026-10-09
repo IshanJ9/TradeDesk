@@ -47,7 +47,7 @@ class BedrockLLM:
                     else:
                         converted.append({"role": role, "content": content})
             request = {"modelId": self._model_id, "messages": converted,
-                       "system": [{"text": system}], "inferenceConfig": {"maxTokens": 800}}
+                       "system": [{"text": system}], "inferenceConfig": {"maxTokens": 800, "temperature": 0}}  # no creativity: the same sentence should give the same card
             if tools:
                 request["toolConfig"] = {"tools": [
                     {"toolSpec": {"name": tool.name, "description": tool.description,

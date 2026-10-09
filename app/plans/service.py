@@ -42,6 +42,7 @@ from app.orders.builder import OrderBuilder
 from app.orders.charges import compute_charges
 from app.orders.executor import DuplicateExecution, Executor
 from app.orders.limits import OrderBlocked, check_instrument, check_locks
+from app.orders.owned import delivery_owned
 from app.plans.builder import PlanBuilder, PlanNeedsClarification
 from app.plans.readback import leg_label, plan_readback, render_report
 from app.plans.store import PlanStore
@@ -227,7 +228,7 @@ class PlanService:
     async def _recheck(self, plan: Plan) -> None:
         """Re-validate every step against the account as it is now."""
         locks = await self._broker.get_account_locks()
-        holdings = await self._broker.get_holdings()
+        holdings = await delivery_owned(self._broker)  # holdings + today's delivery buys
         worst_drift: tuple[float, int, int, int] | None = None
         for leg in plan.legs:
             o = leg.order

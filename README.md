@@ -45,7 +45,13 @@ Bedrock is supported (see below). To add another provider: write one class with 
 
 Whichever model is used, code (not the model) enforces: order cards are written by code; every number in an
 answer must come from a tool result or the trader's message; no claims of having placed an order; no advice;
-text from outside the app that looks like instructions is withheld from the model.
+text from outside the app that looks like instructions is withheld from the model. Two more checks came from
+running the real model (`scripts/model_eval.py`): every figure the model puts into an order, rule or plan
+(quantity, price, trigger, amount, percentage) must be one the trader actually wrote, otherwise nothing is
+prepared and they are asked again; and a message that tries to change the assistant's rules ("ignore your
+instructions", "developer mode", "without asking me") is answered by code and never sent to the model. A
+number the trader wrote as a word ("ten") cannot be checked this way, so the check stands down for it; the
+card still shows the exact quantity for the trader to confirm.
 
 ## Running on 021's sandbox
 
@@ -58,9 +64,14 @@ fails. Before trusting it, run the read-only check, which places no orders:
 
     .venv\Scripts\python scripts\live_check.py
 
-**Status: the adapter (`app/broker/zerotwoone/`) has been built from 021's API guide and tested against a fake
-021 that follows the guide (`tests/fake021.py`). It has not yet been run against the live sandbox**, so the
-guide's gaps (below) are assumptions until `live_check.py` confirms them.
+**Status: the adapter (`app/broker/zerotwoone/`) was built from 021's API guide and tested against a fake 021
+that follows the guide (`tests/fake021.py`). A first read-only run against the live sandbox (`live_check.py`)
+confirmed: login, the instrument list (about 15,600 cash instruments), search, the cash estimate, and live
+prices over the market socket. It also showed two things the guide did not say, both now handled: the
+instrument file leaves index names empty (NIFTY is named from its option contracts), and option expiries are
+plain Unix seconds.** Not yet verified against the live sandbox: placing, modifying and cancelling orders, the
+order and trade shapes with real orders in the book, the option chain prices, and how the sandbox's
+deliberate failures (500, 503, timeouts, rate limits) look in practice.
 
 What the guide forced, and what we did about it:
 
@@ -96,7 +107,7 @@ What the guide forced, and what we did about it:
 
 - The orders websocket (live fills). Order state is read over REST, which the guide calls the source of truth.
 - F&O orders. Orders are equity only; the option chain is read-only.
-- Running against the live sandbox has not happened yet (see above).
+- Live-sandbox verification of orders and failure handling (see the status note above).
 - Pending cards and plans are held in memory (rules, the audit log and the send log are in SQLite).
 - Demo and chaos switches, authentication (single demo user), and Co-Captain co-approval.
 

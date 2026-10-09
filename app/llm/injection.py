@@ -34,3 +34,14 @@ class Finding:
 def scan(text: str) -> tuple[str, ...]:
     """Names of the patterns that matched. Empty means nothing suspicious was found."""
     return tuple(name for name, rx in _PATTERNS.items() if rx.search(text))
+
+
+# What counts as "this message is trying to change the rules". A plain request such as "sell all my Infosys" is NOT
+# in here: the trader may ask for that, and it only ever makes a card they must approve.
+_OVERRIDE = {"ignore-instructions", "system-prompt", "role-change", "new-instructions", "fake-tags", "jailbreak", "skip-approval"}
+
+
+def overrides_rules(text: str) -> tuple[str, ...]:
+    """Which rule-override patterns the TRADER's own message matches. Such a message is answered by code and never
+    reaches the model, so a clever phrasing cannot depend on the model's mood."""
+    return tuple(n for n in scan(text) if n in _OVERRIDE)

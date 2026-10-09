@@ -27,11 +27,11 @@ log = logging.getLogger("tradedesk.instruments")
 
 # 021 names -> what we call them. Orders use the short request name; the file and responses use these.
 EXCHANGE_BY_FILE_NAME = {"NSECM": Exchange.NSE, "BSEEQ": Exchange.BSE}
+INDEX_EXCHANGES = {"NSEIDX": Exchange.NSE, "BSEIDX": Exchange.BSE}
 WS_CODE = {"NSECM": 1, "NSEFO": 2, "NSEIDX": 3, "BSEEQ": 4, "BSEEQD": 5, "BSEIDX": 6}
 REQUEST_NAME = {"NSECM": "NSE", "NSEFO": "NSEFO", "BSEEQ": "BSE", "BSEEQD": "BSEFO"}
 OPTION_TYPES = {"CALL": OptionType.CE, "PUT": OptionType.PE}
 
-_EXCHANGE_EPOCH_OFFSET = 315_513_000  # add to exchange seconds-since-1980 to get Unix seconds (guide)
 
 
 @dataclass(frozen=True)
@@ -55,21 +55,15 @@ class Listing:
 
 
 def expiry_to_date(raw: int, today: date | None = None) -> date | None:
-    """The guide says 'an integer timestamp from the exchange' without naming the epoch. Exchange times
-    elsewhere in the guide are seconds since 1980, so try that first, then plain Unix seconds.
-
-    The two readings of one number differ by ten years, so a window around today settles it: a live contract
-    expires between a week ago and three years from now. None if neither reading fits (the row is skipped)."""
+    """An expiry is Unix seconds (checked against the live instrument file: 1791882000 is Tuesday
+    13 October 2026, a normal NIFTY expiry). Cash instruments have 0. A value that is not a plausible live
+    contract date (more than a week ago, or over three years away) returns None and the row is skipped."""
     today = today or datetime.now(timezone.utc).date()
-    lo, hi = today - timedelta(days=7), today + timedelta(days=3 * 366)
-    for offset in (_EXCHANGE_EPOCH_OFFSET, 0):
-        try:
-            d = datetime.fromtimestamp(raw + offset, tz=timezone.utc).date()
-        except (OverflowError, OSError, ValueError):
-            continue
-        if lo <= d <= hi:
-            return d
-    return None
+    try:
+        d = datetime.fromtimestamp(raw, tz=timezone.utc).date()
+    except (OverflowError, OSError, ValueError):
+        return None
+    return d if today - timedelta(days=7) <= d <= today + timedelta(days=3 * 366) else None
 
 
 def option_symbol(underlying: str, expiry: date, strike_paise: int, kind: OptionType) -> str:
@@ -122,8 +116,7 @@ class InstrumentMaster:
                 option_rows.append(row)
                 continue
             is_stock = kind == "STK" and exch in EXCHANGE_BY_FILE_NAME
-            is_index = kind == "IDX" and exch == "NSEIDX"
-            if not (is_stock or is_index):
+            if not is_stock:
                 continue
             tick = _int(row.get("ticksize", ""), 0) or 5
             low, high = _int(row.get("lower_circuit", "")), _int(row.get("upper_circuit", ""))
@@ -131,7 +124,7 @@ class InstrumentMaster:
                 inst = Instrument(
                     symbol=symbol,
                     exchange=EXCHANGE_BY_FILE_NAME.get(exch, Exchange.NSE),
-                    series="INDEX" if is_index else "EQ",
+                    series="EQ",
                     isin=(row.get("isin") or "").strip() or None,
                     name=NAMES.get(symbol, "") if is_stock and exch == "NSECM" else "",
                     tick_size=tick,
@@ -144,8 +137,18 @@ class InstrumentMaster:
             listings.append(
                 Listing(token, exch, inst, max(_int(row.get("board_lot_quantity", ""), 1), 1), _int(row.get("freeze_quantity", "")))
             )
-            if is_index:
-                index_tokens[(exch, token)] = symbol
+        # The file's index rows have EMPTY symbols; the only place an index is named is on its option contracts
+        # (NIFTY, BANKNIFTY ... with underlying_token pointing at the index row). Name the indexes from those.
+        for row in option_rows:
+            u_exch, u_token = (row.get("underlying_exchange") or "").strip(), _int(row.get("underlying_token", ""), -1)
+            if u_exch in INDEX_EXCHANGES and (u_exch, u_token) not in index_tokens and u_token >= 0:
+                name = (row.get("symbol") or "").strip().upper().replace(" ", "")
+                try:
+                    inst = Instrument(symbol=name, exchange=INDEX_EXCHANGES[u_exch], series="INDEX", tick_size=5)
+                except ValidationError:
+                    continue
+                listings.append(Listing(u_token, u_exch, inst))
+                index_tokens[(u_exch, u_token)] = name
         if skipped:
             log.info("skipped %d unusable rows in the instrument file", skipped)
         return cls(listings, option_rows, index_tokens, today)
@@ -164,6 +167,14 @@ class InstrumentMaster:
     def by_symbol(self, symbol: str, exchange: str = "NSECM") -> Listing | None:
         key_exchange = EXCHANGE_BY_FILE_NAME.get(exchange, Exchange.NSE)
         return self._by_key.get(f"{key_exchange.value}:{symbol.upper()}")
+
+    def index(self, symbol: str) -> Listing | None:
+        """A market index by name (NIFTY, BANKNIFTY, SENSEX), if it has option contracts to be named from."""
+        for exchange in (Exchange.NSE, Exchange.BSE):
+            found = self._by_key.get(f"{exchange.value}:{symbol.upper()}")
+            if found is not None and found.exchange in INDEX_EXCHANGES:
+                return found
+        return None
 
     def by_isin(self, isin: str) -> Listing | None:
         for item in self._equities:
@@ -188,8 +199,8 @@ class InstrumentMaster:
                 name_words and all(any(w.startswith(t) for w in name_words) for t in words)
             ):
                 rest.append(inst)
-        index = self._by_key.get(f"NSE:{compact.upper()}")
-        found = exact + ([index.instrument] if index and index.exchange == "NSEIDX" and index.instrument not in exact else []) + rest
+        index = self.index(compact)
+        found = exact + ([index.instrument] if index and index.instrument not in exact else []) + rest
         found.sort(key=lambda i: (i.symbol.lower() != compact, i.exchange is not Exchange.NSE, len(i.symbol)))
         return found[:limit]
 
@@ -201,11 +212,7 @@ class InstrumentMaster:
             built: list[Listing] = []
             for row in self._option_rows:
                 token = _int(row["token"], -1)
-                under = self._index_tokens.get((row["underlying_exchange"].strip(), _int(row["underlying_token"], -1)))
-                if under is None:
-                    stock = self._by_token.get((row["underlying_exchange"].strip(), _int(row["underlying_token"], -1)))
-                    under = stock.instrument.symbol if stock else None
-                if under != underlying:
+                if (row.get("symbol") or "").strip().upper().replace(" ", "") != underlying:
                     continue
                 expiry, kind = expiry_to_date(_int(row["expiry"]), self._today), OPTION_TYPES.get((row["option_type"] or "").strip())
                 strike, lot = _int(row["strike_price"]), max(_int(row["board_lot_quantity"], 1), 1)
@@ -214,7 +221,7 @@ class InstrumentMaster:
                 try:
                     inst = Instrument(
                         symbol=option_symbol(underlying, expiry, strike, kind),
-                        exchange=Exchange.NSE,
+                        exchange=Exchange.BSE if row["exchange"].strip() == "BSEEQD" else Exchange.NSE,
                         series="OPT",
                         tick_size=_int(row["ticksize"]) or 5,
                         underlying=underlying,

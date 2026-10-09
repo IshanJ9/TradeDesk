@@ -83,3 +83,54 @@ _ADVICE = re.compile(
 
 def gives_advice(text: str) -> bool:
     return bool(_ADVICE.search(text))
+
+
+def plain_text(text: str) -> str:
+    """The chat shows plain text, so remove markdown a model may add (bold, headings, tables, code ticks) and the
+    odd typographic spaces it likes. Changes how an answer looks, never what it says."""
+    out = []
+    for line in text.replace(" ", " ").replace(" ", " ").replace("‑", "-").splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r"\|?[\s:|-]+\|?", stripped) and "-" in stripped and "|" in stripped:
+            continue  # a table's separator row (|---|---|)
+        if stripped.startswith("|") and stripped.endswith("|"):
+            line = " | ".join(cell.strip() for cell in stripped.strip("|").split("|"))
+        line = re.sub(r"^\s{0,3}#{1,6}\s+", "", line)  # headings
+        line = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), line)  # bold
+        line = line.replace("`", "")
+        out.append(line.rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+# ---- the numbers a model puts into an ORDER must be numbers the trader actually wrote ------------------
+from decimal import Decimal  # noqa: E402
+
+_SCALES = {"k": 1_000, "l": 100_000, "lac": 100_000, "lacs": 100_000, "lakh": 100_000, "lakhs": 100_000,
+           "cr": 10_000_000, "crore": 10_000_000, "crores": 10_000_000}
+_TYPED = re.compile(r"(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(k|lakhs?|lacs?|l|crores?|cr)?\b", re.IGNORECASE)
+# If the trader wrote a number as a word we cannot check it against the digits, so the check stands down.
+_NUMBER_WORDS = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|"
+    r"seventy|eighty|ninety|hundred|thousand|ek|do|teen|char|paanch|panch|chhe|saat|aath|nau|das|bees|pachas|sau|hazaar|hazar)\b",
+    re.IGNORECASE,
+)
+
+
+def typed_numbers(texts: Iterable[str]) -> set[Decimal]:
+    """Every number written in these messages, including '10k', '2 lakh' and '1,00,000' as their full values."""
+    found: set[Decimal] = set()
+    for text in texts:
+        for m in _TYPED.finditer(text):
+            base = Decimal(m.group(1).replace(",", ""))
+            found.add(base)
+            if m.group(2):
+                found.add(base * _SCALES[m.group(2).lower()])
+    return found
+
+
+def numbers_not_typed(named: dict[str, float | int | None], texts: list[str]) -> list[tuple[str, Decimal]]:
+    """The (name, value) pairs that the trader never wrote. Empty = all fine (or not checkable)."""
+    if any(_NUMBER_WORDS.search(t) for t in texts):
+        return []
+    typed = typed_numbers(texts)
+    return [(k, Decimal(str(v))) for k, v in named.items() if v is not None and Decimal(str(v)) not in typed]

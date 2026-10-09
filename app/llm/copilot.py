@@ -18,7 +18,8 @@ from datetime import datetime
 from app.api_models import Card, ChatReply, NoticeCard
 from app.audit import AuditLog
 from app.broker.base import ReadOnlyBroker
-from app.llm.grounding import claims_execution, gives_advice, ungrounded_numbers
+from app.llm.injection import overrides_rules
+from app.llm.grounding import claims_execution, gives_advice, plain_text, ungrounded_numbers
 from app.llm.injection import scan
 from app.llm.prompt import build_system_prompt
 from app.llm.rules import HELP
@@ -37,6 +38,7 @@ HISTORY_LIMIT = 12  # messages kept between turns
 NOT_PLACED = "I haven't placed anything. I can only prepare an order card for you to approve."
 NO_ADVICE = "I can't give advice or predictions. I can show you facts from your account: your holdings, P&L, orders and prices."
 NOT_GROUNDED = "I can only share numbers that come from your account data. Try asking about your holdings, P&L, orders or a stock's price."
+OVERRIDE_REFUSAL = "I can't ignore my rules or act outside them. I can only prepare an order card for you to approve, and nothing is sent until you click Approve. Tell me which stock you mean and what you'd like to do."
 GAVE_UP = "I couldn't finish that. Please try rephrasing, or ask for one thing at a time."
 
 
@@ -71,8 +73,20 @@ class Copilot:
 
     async def _turn(self, message: str) -> ChatReply:
         self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message})
+        override = overrides_rules(message)
+        if override:  # answered by code: the model never sees it, and it is not kept in the conversation
+            self._audit.record(
+                AuditKind.INJECTION_BLOCKED, "system", "A message tried to change the assistant's rules; refused in code",
+                data={"matched": list(override), "message": message[:300]},
+            )
+            return ChatReply(
+                text=OVERRIDE_REFUSAL,
+                cards=[NoticeCard(level="warning", message="That message looked like an attempt to change my rules, so I did not act on it.")],
+            )
+        recent_user_texts = [m.text for m in self._history if m.role == "user"][-6:]
         ctx = ToolContext(
-            broker=self._broker, cards=self._cards, rules=self._rules, plans=self._plans, clock=self._clock
+            broker=self._broker, cards=self._cards, rules=self._rules, plans=self._plans, clock=self._clock,
+            user_texts=[*recent_user_texts, message],
         )
         messages = [*self._history, Message("user", message)]
         specs = [t.spec for t in self._tools.values()]
@@ -124,6 +138,7 @@ class Copilot:
         if ctx.proposal_texts:  # an order card was involved: the words come from the card, not the model
             return "\n".join(dict.fromkeys(ctx.proposal_texts))
 
+        final = plain_text(final)  # the chat shows plain text: no markdown
         fallback = self._fallback(ctx)
         if claims_execution(final):
             self._audit.record(AuditKind.INJECTION_BLOCKED, "system", "Answer claimed an order was placed; replaced", data={"answer": final})

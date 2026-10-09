@@ -41,6 +41,7 @@ def _clean_name(name: str) -> str:
 
 
 _FRACTIONS = {"half": 0.5, "ahalf": 0.5, "athird": 1 / 3, "aquarter": 0.25, "all": 1.0, "everything": 1.0}
+_MARKET = r"(?:\s+(?:at|@)?\s*(?:the\s+)?(?:market|mkt|cmp)(?:\s+price)?)?"  # "... at market", "... at cmp"
 _FALL = r"(?:falls?|drops?|dips?|declines?|loses?|slips?|goes\s+down|sinks?)"
 _RISE = r"(?:rises?|gains?|climbs?|jumps?|goes\s+up|surges?)"
 
@@ -174,7 +175,7 @@ class RuleBasedLLM:
         # one-step sale of a share of what is held: "sell half my tcs", "sell all my infy", "sell 30% of itc at 410"
         if m := re.match(
             r"(?:please\s+)?sell\s+(?P<size>half|a\s+half|a\s+third|a\s+quarter|all|everything|\d+(?:\.\d+)?\s*%)\s+(?:(?:of|in)\s+)?(?:my\s+)?"
-            r"(?P<name>.+?)(?:\s+(?:at|@|for)\s*₹?" + _NUM.format(n="price") + r")?$",
+            r"(?P<name>.+?)(?:\s+(?:at|@|for)\s*₹?" + _NUM.format(n="price") + r")?" + _MARKET + r"$",
             t,
         ):
             name = _clean_name(m["name"])
@@ -190,14 +191,14 @@ class RuleBasedLLM:
 
         if m := re.match(
             r"(?:please\s+)?(?P<side>buy|sell)\s+(?P<name>.+?)\s+worth\s+₹?" + _NUM.format(n="amt")
-            + r"\s*(?P<sfx>k|l|lakh|lakhs|lac|cr|crore)?$",
+            + r"\s*(?P<sfx>k|l|lakh|lakhs|lac|cr|crore)?" + _MARKET + r"$",
             t,
         ):
             return [self._order(m["side"], _clean_name(m["name"]), t, amount=_num(m["amt"], m["sfx"]))]
 
         if m := re.match(
             r"(?:please\s+)?(?P<side>buy|sell)\s+" + _NUM.format(n="qty") + r"\s+(?P<name>.+?)"
-            r"(?:\s+(?:at|@|for|limit(?:\s+(?:at|of))?)\s*₹?" + _NUM.format(n="price") + r")?$",
+            r"(?:\s+(?:at|@|for|limit(?:\s+(?:at|of))?)\s*₹?" + _NUM.format(n="price") + r")?" + _MARKET + r"$",
             t,
         ):
             return [

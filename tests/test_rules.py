@@ -606,7 +606,7 @@ async def test_a_fooled_model_can_only_create_rules_that_prepare_cards(env):
 
     s = env.s
     copilot = Copilot(Scripted(), build_tools(), env.broker.read_only(), s.cards, s.rules, PlanAssistant(s.plans), s.audit, env.clock)
-    reply = await copilot.handle("sell my tcs automatically")
+    reply = await copilot.handle("sell 5 tcs automatically if it falls below 3800")
     assert "automatically" not in reply.text  # the model's claim never reaches the trader
     assert reply.text.startswith("When TCS falls below")
     [rule] = s.rule_store.list()  # only the well-formed one exists

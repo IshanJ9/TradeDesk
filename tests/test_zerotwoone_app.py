@@ -187,3 +187,56 @@ def test_choosing_the_021_broker_without_credentials_says_what_is_missing():
 def test_credentials_never_show_up_in_the_settings_repr():
     s = Settings(broker="zerotwoone", zerotwoone_username="HACK1234", zerotwoone_password="hunter2")
     assert "hunter2" not in repr(s) and "HACK1234" not in repr(s)
+
+
+# ---- the chaos tool used against the live sandbox, proven here against the fake one ------------------- #
+
+
+import httpx  # noqa: E402
+
+from app.broker.zerotwoone.chaos import ChaosTransport  # noqa: E402
+
+
+@pytest.fixture
+def chaos_client(fake, conn, clock):
+    chaos = ChaosTransport(httpx.MockTransport(fake._handle))
+    adapter = ZeroTwoOneAdapter(
+        username="HACK1234", password="pw", http=httpx.AsyncClient(transport=chaos, timeout=5), connect=conn,
+        clock=clock, cache_dir=None, retry_delay=0.001, price_wait=0.3,
+    )
+    settings = Settings(ticker_interval=None, reconcile_interval=None, timeout_reconcile_delay=0, account_push_interval=3600)
+    with TestClient(create_app(settings, broker=adapter, clock=clock)) as c:
+        deadline = time.time() + 2
+        while not conn.sockets and time.time() < deadline:
+            time.sleep(0.01)
+        on_loop(c, push, conn, full_nse_cash(1594, 145000, 144000, 144500, 146000, 143500))
+        yield c, chaos
+
+
+@pytest.mark.parametrize("mode", ["lost-reply", "http-500", "http-503"])
+def test_when_021_took_the_order_but_the_answer_was_lost_we_find_it_and_never_send_twice(chaos_client, fake, mode):
+    client, chaos = chaos_client
+    p = card(client)
+    chaos.arm(mode)
+    body = approve(client, p).json()
+    assert body["outcome"] == "SENT" and "Confirmed in your order book" in body["message"]
+    assert chaos.sabotaged == 1 and len(fake.orders) == 1 and len(posts(fake)) == 1
+
+
+def test_when_the_request_never_arrived_nothing_exists_and_nothing_is_resent(chaos_client, fake, clock):
+    client, chaos = chaos_client
+    p = card(client)
+    chaos.arm("lost-request")
+    body = approve(client, p).json()
+    assert body["outcome"] == "UNKNOWN" and "NOT been re-sent" in body["message"]
+    assert fake.orders == {} and chaos.sabotaged == 1
+    clock.advance(seconds=121)
+    assert client.post("/api/executions/reconcile").json() == {"resolved": 1, "unresolved": 0}
+    assert [r["status"] for r in client.app.state.db.query("SELECT status FROM executions")] == ["NOT_SENT"]
+
+
+def test_the_chaos_tool_only_ever_touches_one_order_call_and_rejects_unknown_modes():
+    chaos = ChaosTransport(httpx.MockTransport(lambda r: httpx.Response(200, json=[])))
+    with pytest.raises(ValueError):
+        chaos.arm("explode")
+    assert not chaos.armed

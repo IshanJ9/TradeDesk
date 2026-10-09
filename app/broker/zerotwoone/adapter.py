@@ -62,6 +62,13 @@ LIVE = (OrderStatus.PENDING, OrderStatus.OPEN, OrderStatus.PARTIAL)
 DEFAULT_BASE_URL = "https://devapi.021.trade/api/developer-api/v1"
 
 
+SESSION_TAKEN = (
+    "021 says this login is no longer valid. 021 allows only one login per account at a time, so another copy of "
+    "the app (or a script such as live_check.py) has probably logged in and cancelled this one. "
+    "Close the other copy and try again."
+)
+
+
 class BrokerAuthFailed(BrokerError):
     """Login was refused (wrong UCC or password, or the account cannot trade)."""
 
@@ -207,6 +214,8 @@ class ZeroTwoOneAdapter(BrokerAdapter):
                 continue
             if r.status_code == 404 and allow_404:
                 return None
+            if r.status_code == 401:  # we already logged in again once inside _send, so someone else holds the account
+                raise BrokerTimeout(SESSION_TAKEN)
             if r.status_code in (429, 500, 502, 503, 504):
                 last = BrokerTimeout(f"{method} {path}: HTTP {r.status_code}")
                 continue
@@ -224,6 +233,8 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         r = await self._send(method, path, body)  # transport trouble is BrokerTimeout
         payload = _json(r)
         text = _error_text(r)
+        if r.status_code == 401:  # refused before it was processed, even after a fresh login: someone else holds the account
+            raise BrokerRejected(RejectionReason.OTHER, SESSION_TAKEN)
         if r.status_code != 200:
             raise classify_order_failure(r.status_code, text)
         if not isinstance(payload, dict) or "success" not in payload:
@@ -503,7 +514,7 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         return await asyncio.to_thread(self.master.option_expiries, underlying, today)
 
     async def get_option_chain(self, underlying: str, expiry: date, window: int = 5) -> OptionChain:
-        under = self.master.get(f"NSE:{underlying.upper()}")
+        under = self.master.index(underlying)
         if under is None:
             raise ValueError(f"no such underlying {underlying}")
         contracts = await asyncio.to_thread(self.master.option_listings, underlying.upper(), expiry)
@@ -517,7 +528,8 @@ class ZeroTwoOneAdapter(BrokerAdapter):
 
         feed = self._chain_feed
         if feed is None:
-            feed = self._chain_feed = self._make_feed(mode="oc", filters="l,o,v", publish=False, resolve=self._resolve_chain)
+            # Prices only ("l"). The sandbox fills open interest and volume with random numbers, so we do not ask.
+            feed = self._chain_feed = self._make_feed(mode="oc", filters="l", publish=False, resolve=self._resolve_chain)
             feed.start()
         self._chain_keys = {c.ws: c.instrument.key for c in picked}
         await feed.watch(list(self._chain_keys))
@@ -529,9 +541,7 @@ class ZeroTwoOneAdapter(BrokerAdapter):
             for c in picked:
                 snap = by_key[c.instrument.key]
                 if c.instrument.strike == strike and snap is not None and snap.ltp is not None:
-                    legs[c.instrument.option_type] = OptionQuote(
-                        instrument_key=c.instrument.key, ltp=snap.ltp, oi=snap.oi or 0, volume=snap.volume or 0
-                    )
+                    legs[c.instrument.option_type] = OptionQuote(instrument_key=c.instrument.key, ltp=snap.ltp)
             rows.append(OptionChainRow(strike=strike, call=legs[OptionType.CE], put=legs[OptionType.PE]))
         if all(r.call is None and r.put is None for r in rows):
             raise BrokerTimeout("no option prices arrived")

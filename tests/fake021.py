@@ -14,19 +14,19 @@ from datetime import datetime, timezone
 
 import httpx
 
-EXCHANGE_EPOCH = 315_513_000
 HEADER = (
     "token,exchange,underlying_token,underlying_exchange,min_lot_size,board_lot_quantity,freeze_quantity,"
     "lower_circuit,upper_circuit,expiry,option_type,strike_price,symbol,instrument_type,isin,ticksize"
 )
 
 
-def exchange_seconds(year: int, month: int, day: int) -> int:
-    return int(datetime(year, month, day, 10, 0, tzinfo=timezone.utc).timestamp()) - EXCHANGE_EPOCH
+def expiry_seconds(year: int, month: int, day: int) -> int:
+    """Expiries in the real file are plain Unix seconds."""
+    return int(datetime(year, month, day, 9, 0, tzinfo=timezone.utc).timestamp())
 
 
 def csv_text() -> str:
-    exp1, exp2 = exchange_seconds(2026, 10, 13), exchange_seconds(2026, 10, 20)
+    exp1, exp2 = expiry_seconds(2026, 10, 13), expiry_seconds(2026, 10, 20)
     rows = [
         "1594,NSECM,1594,NSECM,0,1,984600,115200,172800,0,,0,INFY,STK,INE009A01021,5",
         "11536,NSECM,11536,NSECM,0,1,500000,311200,466800,0,,0,TCS,STK,INE467B01029,5",
@@ -36,7 +36,7 @@ def csv_text() -> str:
         "3499,NSECM,3499,NSECM,0,1,900000,12000,18000,0,,0,TATASTEEL,STK,INE081A01020,5",
         "22699,NSECM,22699,NSECM,0,100,984600,9649,10663,0,,0,747HR36,STK,IN1620230376,1",
         "500209,BSEEQ,500209,BSEEQ,0,1,500000,115200,172800,0,,0,INFY,STK,INE009A01021,5",
-        "26000,NSEIDX,26000,NSEIDX,0,1,0,0,0,0,,0,NIFTY,IDX,,5",
+        '26000,NSEIDX,26000,NSEIDX,0,0,0,0,0,0,"",0,"",IDX,            ,0',  # the real file leaves index names empty
     ]
     token = 70000
     for exp in (exp1, exp2):
@@ -67,6 +67,7 @@ class Fake021:
         self.auto_settle_cancel = False  # True: a cancel finishes at once instead of lingering as SentForCancellation
         self.last_price = {2885: 140000}
         self.csv = csv_text()
+        self.lock_out = False  # another copy of the app keeps logging in, so every token we get is revoked at once
         self.fail_next: list[dict] = []  # {"match": "POST /orders", "status": 500, "error": "...", "apply": bool, "raise": bool}
 
     # ---- plumbing ---------------------------------------------------------------------------- #
@@ -90,7 +91,7 @@ class Fake021:
             self.logins += 1
             self.token = f"tok-{self.logins}"
             return self._ok({"accessToken": self.token, "tokenType": "Bearer", "expiresAt": "2026-10-10T05:00:00+05:30", "expiresIn": 39600})
-        if request.headers.get("authorization") != f"Bearer {self.token}":
+        if self.lock_out or request.headers.get("authorization") != f"Bearer {self.token}":
             return self._err("Invalid or expired access token.", 401)
 
         key = f"{request.method} {path}"
@@ -227,8 +228,15 @@ def full_index(token: int, value: int, close: int, open_: int, high: int, low: i
     return bytes(buf)
 
 
-def chain_packet(token: int, ltp: int, oi: int, volume: int = 0) -> bytes:
-    return struct.pack(">HIHB", 9, token, 2, 3) + b"\x01" + struct.pack(">I", ltp) + b"\x02" + struct.pack(">Q", oi) + b"\x03" + struct.pack(">Q", volume)
+def chain_packet(token: int, ltp: int, oi: int | None = None, volume: int | None = None) -> bytes:
+    """An option-chain packet. With only a price it is what we ask for; OI and volume are optional extras."""
+    fields = b"\x01" + struct.pack(">I", ltp)
+    if oi is not None:
+        fields += b"\x02" + struct.pack(">Q", oi)
+    if volume is not None:
+        fields += b"\x03" + struct.pack(">Q", volume)
+    count = 1 + (oi is not None) + (volume is not None)
+    return struct.pack(">HIHB", 9, token, 2, count) + fields
 
 
 HEARTBEAT = b"\x00\x0a"
