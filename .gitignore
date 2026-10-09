@@ -43,6 +43,11 @@ node_modules/
 dist/
 .vite/
 
+# ---- internal planning documents (kept local, not part of the submission) -------------
+docs/
+Build plan.docx
+021 AI Trading Copilot*.docx
+
 # ---- editor, OS and assistant-local files ---------------------------------------------
 .idea/
 .vscode/
