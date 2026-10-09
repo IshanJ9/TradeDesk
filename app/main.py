@@ -193,7 +193,15 @@ def create_app(
     app.state.plan_store = plan_store
     app.state.plans = plans
     app.state.rule_engine = RuleEngine(rule_store, cards, the_broker.read_only(), audit, hub, settings, clock)
-    app.state.copilot = Copilot(llm, tools, the_broker.read_only(), cards, rules, PlanAssistant(plans), audit, clock)
+    copilot_args = (llm, tools, the_broker.read_only(), cards, rules, PlanAssistant(plans), audit, clock)
+    if settings.orchestrator == "langgraph":
+        from app.agent.graph import GraphCopilot  # imported only when used: classic mode needs no LangGraph
+
+        app.state.copilot = GraphCopilot(*copilot_args, hub=hub)
+    elif settings.orchestrator == "classic":
+        app.state.copilot = Copilot(*copilot_args)
+    else:
+        raise RuntimeError(f"ORCHESTRATOR={settings.orchestrator!r}: use classic or langgraph")
     app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock, risk)
 
     app.add_middleware(
