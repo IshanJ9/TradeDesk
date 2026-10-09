@@ -85,7 +85,7 @@ describe("trace and external-order markup", () => {
   });
   it("does not claim an empty session proves there were no outside orders", () => {
     const html = renderToStaticMarkup(createElement(ExternalOrders, { state: initialState }));
-    expect(html).toContain("No external activity received in this session");
-    expect(html).toContain("saved quietly");
+    expect(html).toContain("Loading saved activity");
+    expect(html).not.toContain("No external orders recorded");
   });
 });

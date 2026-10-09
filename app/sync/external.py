@@ -39,8 +39,9 @@ class ExternalOrderSync:
             ours = {row["broker_order_id"] for row in executions if row["broker_order_id"]}
             now = self._clock()
             defer_unknown = any(
-                (row["status"] not in FINAL_EXECUTIONS or not row["broker_order_id"])
-                and (now - datetime.fromisoformat(row["created_at"])).total_seconds() < self._grace
+                row["status"] not in FINAL_EXECUTIONS
+                or (not row["broker_order_id"]
+                    and (now - datetime.fromisoformat(row["created_at"])).total_seconds() < self._grace)
                 for row in executions
             )
             if self._baseline is None:
@@ -54,7 +55,8 @@ class ExternalOrderSync:
                     # The protocol has no UNKNOWN source. Wait before fixing an
                     # attribution that record_order deliberately never overwrites.
                     continue
-                source = known.get(oid, "app" if oid in ours else "external")
+                # A confirmed execution ID is stronger evidence than an earlier guess.
+                source = "app" if oid in ours else known.get(oid, "external")
                 self._history.record_order(order, source)
                 signature = _signature(order)
                 previous = self._seen.get(oid)

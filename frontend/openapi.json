@@ -852,6 +852,27 @@
           }
         }
       }
+    },
+    "/api/activity/external": {
+      "get": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "External Activity",
+        "operationId": "external_activity_api_activity_external_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalActivity"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1664,6 +1685,34 @@
         ],
         "title": "ExecutionResult",
         "description": "What happened after an approved card was sent.\n\nSENT      the broker accepted it (see `order` for its live status)\nREJECTED  the broker refused it (`order.rejection_reason` says why)\nUNKNOWN   the request timed out and we could not confirm either way. The order is\n          never re-sent; it is reconciled against the broker's order book."
+      },
+      "ExternalActivity": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            },
+            "type": "array",
+            "title": "Orders"
+          },
+          "attribution_pending": {
+            "type": "boolean",
+            "title": "Attribution Pending"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "orders",
+          "attribution_pending"
+        ],
+        "title": "ExternalActivity"
       },
       "ExternalOrderEvent": {
         "properties": {

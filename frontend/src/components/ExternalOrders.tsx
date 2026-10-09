@@ -1,14 +1,21 @@
 // Owner: voice-live. Read-only view of activity detected by polling.
 import { clock, rupees } from "../lib/format";
 import type { State } from "../lib/store";
+import { useExternalActivity } from "../lib/externalActivity";
 import { Chip, Empty } from "./ui";
 
 export function ExternalOrders({ state }: { state: State }) {
-  if (!state.external.length)
-    return <Empty title="No external activity received in this session.">Orders placed in 021&rsquo;s app appear after polling. Completed orders already present at startup are saved quietly.</Empty>;
+  const { orders, loading, error, attributionPending } = useExternalActivity(state.external, state.conn);
   return (
+    <div>
+    <p role="status" className="mb-2 text-xs text-muted">
+      {error ? "Saved activity is unavailable. Displayed activity may be stale; retrying shortly."
+        : loading ? "Loading saved activity…" : "Today's saved external activity. Updates arrive by polling."}
+      {attributionPending && " Some orders are awaiting source confirmation while an execution is unresolved."}
+    </p>
+    {!orders.length && !loading && !error && <Empty title="No external orders recorded for today.">Orders placed in 021&rsquo;s app appear after polling; completed orders are also restored from saved history.</Empty>}
     <ul aria-label="Orders detected outside TradeDesk">
-      {state.external.map((o) => (
+      {orders.map((o) => (
         <li key={o.order_id} className="border-b border-line py-2 text-[13px] last:border-b-0">
           <div className="flex flex-wrap items-center gap-2"><span className="num min-w-0 break-all text-ink">
             {o.side === "BUY" ? "Buy" : "Sell"} {o.quantity} &times; {o.instrument.symbol}
@@ -26,5 +33,6 @@ export function ExternalOrders({ state }: { state: State }) {
         </li>
       ))}
     </ul>
+    </div>
   );
 }

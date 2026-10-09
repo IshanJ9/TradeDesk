@@ -28,8 +28,13 @@ class SqliteActivityStore:
         )
 
     def orders_on(self, day: date) -> list[OrderRecord]:
+        # Retain the first observation in storage, but never report an order as
+        # external when the durable execution ledger proves this app sent it.
         records = [OrderRecord(order=Order.model_validate_json(row["data"]), source=row["source"], day=day)
-                   for row in self._db.query("SELECT source,data FROM activity_orders WHERE day=? ORDER BY rowid", (day.isoformat(),))]
+                   for row in self._db.query(
+                       "SELECT CASE WHEN EXISTS (SELECT 1 FROM executions e WHERE e.broker_order_id=a.order_id) "
+                       "THEN 'app' ELSE a.source END AS source,a.data "
+                       "FROM activity_orders a WHERE a.day=? ORDER BY a.rowid", (day.isoformat(),))]
         # Sort actual instants, not ISO strings (which can have different UTC offsets).
         return sorted(records, key=lambda record: record.order.created_at)
 

@@ -109,6 +109,7 @@ async def test_grace_boundary_and_known_orders_still_update(rig):
     assert [e.order.order_id for e in events(queue)] == [order.order_id]
     assert len(app.state.history.orders_on(NOW.date())) == 1
     time[0] += timedelta(milliseconds=1)
+    app.state.db.execute("UPDATE executions SET status='NOT_SENT'")
     await sync.poll()
     assert [e.order.order_id for e in events(queue)] == [other.order_id]
     assert len(app.state.history.orders_on(NOW.date())) == 2
@@ -132,6 +133,7 @@ async def test_deferred_startup_final_does_not_flood_after_grace(rig):
     execution(app, time)
     await sync.poll()
     time[0] += timedelta(seconds=120)
+    app.state.db.execute("UPDATE executions SET status='NOT_SENT'")
     await sync.poll()
     assert not events(queue)
     assert len(app.state.history.orders_on(NOW.date())) == 1
@@ -329,3 +331,62 @@ async def test_trace_sample_is_demo_only_and_never_calls_broker(demo):
             assert app.state.audit.list() == []
     finally:
         app.state.db.close()
+
+
+async def test_unknown_past_grace_waits_for_real_reconciliation(rig):
+    app, broker, sync, queue, time = rig
+    order = await external(app, broker)
+    execution(app, time, age=121)
+    await sync.poll()
+    assert not events(queue)
+    assert app.state.history.orders_on(NOW.date()) == []
+    time[0] += timedelta(hours=1)
+    await sync.poll()
+    assert app.state.history.orders_on(NOW.date()) == []
+    app.state.db.execute("UPDATE executions SET status='SENT', broker_order_id=?", (order.order_id,))
+    await sync.poll()
+    assert app.state.history.orders_on(NOW.date())[0].source == "app"
+    assert not events(queue)
+
+
+async def test_late_confirmed_id_corrects_legacy_external_history(rig):
+    app, broker, sync, queue, time = rig
+    order = await external(app, broker)
+    await sync.poll()
+    assert app.state.history.orders_on(NOW.date())[0].source == "external"
+    events(queue)
+    execution(app, time, status="SENT", oid=order.order_id, age=121)
+    broker.set_price("NSE:INFY", 140000)
+    await sync.poll()
+    assert app.state.history.orders_on(NOW.date())[0].source == "app"
+    assert not events(queue)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        assert (await client.get("/api/activity/external")).json()["orders"] == []
+
+
+async def test_external_history_endpoint_restores_quiet_startup_orders(rig):
+    app, broker, sync, queue, _ = rig
+    order = await external(app, broker, limit_price=150000)
+    await sync.poll()
+    assert not events(queue)  # completed order was intentionally not broadcast
+    broker.get_orders = AsyncMock(side_effect=AssertionError("History GET must not call broker"))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        for _ in range(2):  # refreshing or opening a new client gets the same saved data
+            response = await client.get("/api/activity/external")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["orders"][0]["order_id"] == order.order_id
+            assert data["day"] == NOW.date().isoformat()
+            assert data["attribution_pending"] is False
+    broker.get_orders.assert_not_awaited()
+
+
+async def test_external_history_endpoint_explains_unresolved_source(rig):
+    app, broker, sync, _, time = rig
+    await external(app, broker)
+    execution(app, time, age=999)
+    await sync.poll()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        data = (await client.get("/api/activity/external")).json()
+        assert data["attribution_pending"] is True
+        assert data["orders"] == []
