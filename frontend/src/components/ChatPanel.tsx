@@ -7,6 +7,10 @@ import { api } from "../lib/api";
 import { Banner, Button, Chip } from "./ui";
 import { MicButton } from "./MicButton";
 import { transcriptParts } from "../lib/voice";
+import { pipelineOf } from "../lib/pipeline";
+import { traceRuns } from "../lib/trace";
+import type { TraceEvent } from "../lib/types";
+import { AssistantPipeline } from "./AssistantPipeline";
 
 const SUGGESTIONS = [
   "What's my P&L today and which positions are down more than 5%?",
@@ -25,6 +29,7 @@ interface Props {
   offline: boolean;
   send: (text: string) => Promise<boolean>;
   onReveal: (id: string) => void;
+  trace?: TraceEvent[]; // the assistant's live steps, drawn as a strip under the conversation
 }
 
 function CardView({ card, onReveal, onPick }: { card: Card; onReveal: (id: string) => void; onPick: (query: string, name: string) => void }) {
@@ -74,7 +79,8 @@ function CardView({ card, onReveal, onPick }: { card: Card; onReveal: (id: strin
   }
 }
 
-export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
+export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] }: Props) {
+  const latestRun = messages.length ? traceRuns(trace)[0] : undefined;
   const [text, setText] = useState("");
   const [fromVoice, setFromVoice] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
@@ -110,7 +116,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
       <div className="flex-1 overflow-y-auto px-4 pb-2 pt-4 scroll-quiet" role="log" aria-live="polite" aria-label="Conversation">
         {messages.length === 0 ? (
           <div className="mx-auto max-w-[34rem] pt-6">
-            <h1 className="font-serif text-[34px] italic leading-[1.05] text-ink">Ask about your account, or describe an order.</h1>
+            <h1 className="font-serif text-[26px] italic leading-[1.15] text-ink sm:text-[30px]">Ask about your account, or describe an order.</h1>
             <p className="mt-3 text-[15px] text-muted">
               I read your data and prepare orders. I never send one: every order waits on your desk as a ticket until you approve that exact ticket.
             </p>
@@ -149,7 +155,9 @@ export function ChatPanel({ messages, busy, offline, send, onReveal }: Props) {
                 </li>
               ),
             )}
-            {busy && (
+            {latestRun && (!busy || !pipelineOf(latestRun).finished) ? (
+              <li><AssistantPipeline run={latestRun} compact /></li>
+            ) : busy && (
               <li className="flex items-center gap-1 text-muted" aria-label="Working on it">
                 {[0, 1, 2].map((i) => (
                   <span key={i} data-motion className="h-1.5 w-1.5 rounded-full bg-muted" style={{ animation: `dots 1s ${i * 0.15}s infinite` }} />

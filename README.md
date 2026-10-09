@@ -19,6 +19,11 @@ API docs at http://127.0.0.1:8000/docs. WebSocket at `ws://127.0.0.1:8000/ws`.
     npm run dev          # http://localhost:5173, proxies /api and /ws to the backend on :8000
 
 Start the backend first. `npm run build` makes the production bundle (`npm run preview` serves it).
+
+Pages: `/` is the landing page, `/how-it-works` explains the assistant with a playable diagram of the LangGraph
+orchestrator, `/login` is the log-in and sign-up screen, and `/app` is the desk. The log-in screen is a UI only for
+now: no account is checked, nothing typed there is stored or sent, and it says so on the page. Every page has a
+theme switch (System, Light, Dark).
 The UI follows the system light/dark setting, bundles its fonts (no network needed), and works down to
 phone width (an Ask / Desk switch appears below 1024px).
 

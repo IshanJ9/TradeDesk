@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { State } from "../lib/store";
 import { traceLabel, traceRuns } from "../lib/trace";
+import { AssistantPipeline } from "./AssistantPipeline";
 import { Chip, Empty } from "./ui";
 
 export function AssistantTrace({ state }: { state: State }) {
@@ -14,6 +15,8 @@ export function AssistantTrace({ state }: { state: State }) {
     return <Empty title="No assistant activity yet.">Each step the assistant takes (guards, routing, tools) appears here live.</Empty>;
   return (
     <div className="space-y-2">
+      {runs[0] && <AssistantPipeline run={runs[0]} />}
+      <h3 className="pt-2 text-[13px] font-semibold text-ink">Step log</h3>
       <p className="text-xs text-muted">Live assistant steps. Recorded time adds the reported step durations; it is not wall-clock time. Older steps may leave this session view.</p>
       {runs.map((run) => {
         const open = openIds.has(run.id);

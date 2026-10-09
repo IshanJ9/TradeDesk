@@ -6,68 +6,107 @@
 @import "@fontsource/instrument-serif/400-italic.css";
 
 /* ------------------------------------------------------------------------------------------
-   Design tokens. "Harbor fog": a cool, quiet desk. Gains are a deep teal and losses a muted
-   brick (no casino green/red). Amber is reserved for one meaning: the price moved. The primary
+   Design tokens, from the "TradeDesk Signature UI" handoff: a violet-and-amber night, and the same desk by
+   day. Gain and loss always carry a sign, not only a colour. Amber means one thing: look again. The primary
    button is ink, and Decline has equal weight, so nothing nudges the trader toward Approve.
    ------------------------------------------------------------------------------------------ */
 :root {
-  --bg: #e8edef;
-  --surface: #f6f8f9;
-  --surface-2: #edf1f3;
-  --paper: #fbfcfc;
-  --ink: #14202a;
-  --ink-inverse: #f3f6f7;
-  --muted: #566874;
-  --line: #c9d3d8;
-  --line-strong: #aebcc4;
-  --gain: #0b6b64;
-  --loss: #a5453b;
-  --warn-bg: #fbf1dc;
-  --warn-ink: #7a4e07;
-  --warn-line: #e2c27a;
-  --error-bg: #f9e4e1;
-  --error-ink: #8a2f25;
-  --error-line: #e3aaa3;
-  --info-bg: #e1edf2;
-  --info-ink: #1f4a5e;
-  --info-line: #aecbd8;
-  --focus: #2b6f8a;
-  --shadow: 0 1px 0 rgb(20 32 42 / 0.04), 0 8px 24px -12px rgb(20 32 42 / 0.18);
+  --bg: #f1eff5;
+  --surface: #fbfafd;
+  --surface-2: #e9e6f0;
+  --paper: #ffffff;
+  --ink: #100c18;
+  --ink-inverse: #fbfafd;
+  --muted: #5f5a6b;
+  --line: #e1dde9;
+  --line-strong: #c7c1d3;
+  --gain: #04793a;
+  --loss: #b4380a;
+  --warn-bg: #fdf0d8;
+  --warn-ink: #7a4300;
+  --warn-line: #f2c97a;
+  --error-bg: #fde4df;
+  --error-ink: #b42318;
+  --error-line: #f4b4aa;
+  --info-bg: #ece8ff;
+  --info-ink: #5b43c9;
+  --info-line: #cbbfff;
+  --focus: #6d4dfa;
+  --violet: #6d4dfa;
+  --glow-1: rgba(124, 92, 255, 0.16);
+  --glow-2: rgba(245, 165, 36, 0.14);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 16px 30px -18px rgba(40, 20, 80, 0.35);
   color-scheme: light;
 }
 
+/* Dark follows the system unless the trader picked a theme (data-theme on <html>, see lib/theme.ts). The same
+   values are repeated for an explicit "dark" choice below. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e161c;
-    --surface: #16212a;
-    --surface-2: #1c2a34;
-    --paper: #1a2731;
-    --ink: #e5ecef;
-    --ink-inverse: #0e161c;
-    --muted: #90a4b0;
-    --line: #2a3a45;
-    --line-strong: #3b505e;
-    --gain: #55c4b8;
-    --loss: #e58f84;
-    --warn-bg: #342910;
-    --warn-ink: #f0c874;
-    --warn-line: #6f5718;
-    --error-bg: #3a1d1a;
-    --error-ink: #f1a79d;
-    --error-line: #7b3a33;
-    --info-bg: #17303c;
-    --info-ink: #9cc9dc;
-    --info-line: #2f5568;
-    --focus: #7ab8d1;
-    --shadow: 0 1px 0 rgb(0 0 0 / 0.3), 0 10px 28px -14px rgb(0 0 0 / 0.7);
+  :root:not([data-theme="light"]) {
+    --bg: #08050f;
+    --surface: #0f0c16;
+    --surface-2: #16121f;
+    --paper: #1b1626;
+    --ink: #ecebed;
+    --ink-inverse: #08050f;
+    --muted: #8d8997;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.15);
+    --gain: #2bd47d;
+    --loss: #f2675a;
+    --warn-bg: rgba(255, 181, 71, 0.13);
+    --warn-ink: #ffc46e;
+    --warn-line: rgba(255, 181, 71, 0.4);
+    --error-bg: rgba(242, 103, 90, 0.13);
+    --error-ink: #f8968b;
+    --error-line: rgba(242, 103, 90, 0.4);
+    --info-bg: rgba(169, 156, 255, 0.1);
+    --info-ink: #c4bbff;
+    --info-line: rgba(169, 156, 255, 0.35);
+    --focus: #a99cff;
+    --violet: #7c5cff;
+    --glow-1: rgba(88, 44, 190, 0.42);
+    --glow-2: rgba(208, 88, 29, 0.22);
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 30px 60px -28px rgba(0, 0, 0, 0.9);
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #08050f;
+  --surface: #0f0c16;
+  --surface-2: #16121f;
+  --paper: #1b1626;
+  --ink: #ecebed;
+  --ink-inverse: #08050f;
+  --muted: #8d8997;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --gain: #2bd47d;
+  --loss: #f2675a;
+  --warn-bg: rgba(255, 181, 71, 0.13);
+  --warn-ink: #ffc46e;
+  --warn-line: rgba(255, 181, 71, 0.4);
+  --error-bg: rgba(242, 103, 90, 0.13);
+  --error-ink: #f8968b;
+  --error-line: rgba(242, 103, 90, 0.4);
+  --info-bg: rgba(169, 156, 255, 0.1);
+  --info-ink: #c4bbff;
+  --info-line: rgba(169, 156, 255, 0.35);
+  --focus: #a99cff;
+  --violet: #7c5cff;
+  --glow-1: rgba(88, 44, 190, 0.42);
+  --glow-2: rgba(208, 88, 29, 0.22);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 30px 60px -28px rgba(0, 0, 0, 0.9);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 @theme inline {
   --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-serif: "Libre Baskerville", Georgia, ui-serif, serif;
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface2: var(--surface-2);
@@ -89,7 +128,11 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(900px 420px at 18% -8%, var(--glow-1), transparent 62%),
+    radial-gradient(700px 380px at 82% 108%, var(--glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -97,9 +140,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* numbers line up in columns; hashes and ids read as data */
+/* numbers line up in columns (the design sets figures in the serif, tabular) */
 .num {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -178,9 +221,12 @@ button:disabled {
   animation-delay: calc(var(--i) * 14ms);
 }
 @media (prefers-color-scheme: dark) {
-  .fp > span {
+  :root:not([data-theme="light"]) .fp > span {
     background: hsl(var(--h) 45% 62%);
   }
+}
+:root[data-theme="dark"] .fp > span {
+  background: hsl(var(--h) 45% 62%);
 }
 
 @keyframes ticket-in {
@@ -237,4 +283,64 @@ details > summary::-webkit-details-marker {
 .ticket.flash {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
+}
+
+/* ---- the assistant pipeline (AssistantPipeline): the LangGraph run, drawn live --------------- */
+.pl-node {
+  position: relative;
+  min-width: 0;
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background 240ms ease, box-shadow 240ms ease, opacity 240ms ease, transform 240ms ease;
+}
+.pl-node[data-state="idle"] { opacity: 0.45; }
+.pl-node[data-state="skipped"] { opacity: 0.25; }
+.pl-node[data-state="done"] { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pl-node[data-state="running"] {
+  background: var(--info-bg);
+  box-shadow: inset 0 0 0 1.5px var(--violet), 0 0 22px -6px var(--violet);
+  transform: translateY(-2px);
+  animation: pl-breathe 1600ms ease-in-out infinite;
+}
+.pl-node[data-state="blocked"] {
+  background: var(--error-bg);
+  box-shadow: inset 0 0 0 1.5px var(--loss), 0 0 18px -8px var(--loss);
+  animation: pl-bounce 260ms ease-out;
+}
+.pl-edge {
+  position: relative;
+  flex: 1 0 8px;
+  max-width: 28px;
+  height: 2px;
+  align-self: center;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.pl-edge[data-lit="true"] { background: var(--violet); }
+.pl-edge[data-lit="true"]::after {
+  content: "";
+  position: absolute;
+  top: -2.5px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--violet);
+  box-shadow: 0 0 10px var(--violet);
+  animation: pl-packet 520ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.pl-who {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+@keyframes pl-breathe { 50% { box-shadow: inset 0 0 0 1.5px var(--violet), 0 0 30px -4px var(--violet); } }
+@keyframes pl-bounce { 30% { transform: translateX(-3px); } 60% { transform: translateX(2px); } }
+@keyframes pl-packet { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(18px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pl-node, .pl-edge::after { animation: none !important; transition: none !important; }
 }

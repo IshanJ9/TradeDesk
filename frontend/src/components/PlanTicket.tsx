@@ -67,7 +67,7 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
       <header className="flex items-start justify-between gap-3 px-4 pt-3.5">
         <div>
           <Chip tone="info">Plan &middot; {n} steps, approved together</Chip>
-          <h3 className="mt-1.5 text-[18px] font-medium leading-tight text-ink">{plan.title}</h3>
+          <h3 className="mt-1.5 font-serif text-[19px] leading-tight text-ink">{plan.title}</h3>
         </div>
         {waiting && <div className="shrink-0 pt-1 text-right text-xs"><Countdown expiresAt={plan.expires_at} /></div>}
       </header>

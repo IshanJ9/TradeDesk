@@ -61,7 +61,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             {o.action !== "PLACE" && <Chip tone="info">{o.action === "MODIFY" ? "Change" : "Cancel"}</Chip>}
             {o.rule_id && <Chip tone="info">From your rule</Chip>}
           </div>
-          <h3 className="num mt-1.5 text-[20px] font-medium leading-tight text-ink">{actionTitle(o)}</h3>
+          <h3 className="mt-1.5 font-serif text-[21px] leading-tight text-ink [font-variant-numeric:tabular-nums]">{actionTitle(o)}</h3>
           <p className="text-[13px] text-muted">
             {o.instrument.name || o.instrument.symbol} &middot; {o.instrument.exchange}
             {!isCancel && <> &middot; {productWord(o.product)}</>}
