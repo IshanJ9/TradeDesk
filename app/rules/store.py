@@ -5,6 +5,8 @@ whether *this call* made the change. Whoever gets True fires the rule; everyone 
 That is what makes "fires exactly once" hold across duplicate ticks, retries and restarts.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from app.db import Database
