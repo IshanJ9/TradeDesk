@@ -458,7 +458,7 @@ def test_a_pending_card_from_chat_shows_up_for_the_websocket_client(client):
 
 def test_unknown_providers_fail_loudly_not_silently():
     with pytest.raises(NotImplementedError, match="not wired yet"):
-        create_app(Settings(llm_provider="bedrock"))
+        create_app(Settings(llm_provider="unknown-provider"))
     create_app(Settings(llm_provider="rules"))
     create_app(Settings(llm_provider=""))
 

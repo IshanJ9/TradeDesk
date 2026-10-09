@@ -40,7 +40,7 @@ Never edit `frontend/src/lib/types.gen.ts` by hand.
 
 The chat runs behind `app/llm/types.py::LLMClient`. `LLM_PROVIDER=rules` (the default) uses a built-in
 keyword parser that makes the same tool calls a real model would, so everything works without a provider.
-To add a provider such as Bedrock: write one class with `async complete(system, messages, tools) -> LLMTurn`
+Bedrock is supported (see below). To add another provider: write one class with `async complete(system, messages, tools) -> LLMTurn`
 (translate to/from the provider's API) and add a branch in `app/llm/factory.py`. Keep keys in `.env`.
 
 Whichever model is used, code (not the model) enforces: order cards are written by code; every number in an
@@ -98,8 +98,24 @@ What the guide forced, and what we did about it:
 - F&O orders. Orders are equity only; the option chain is read-only.
 - Running against the live sandbox has not happened yet (see above).
 - Pending cards and plans are held in memory (rules, the audit log and the send log are in SQLite).
-- An LLM provider. The built-in keyword parser is used until one is chosen.
 - Demo and chaos switches, authentication (single demo user), and Co-Captain co-approval.
+
+### Bedrock chat
+
+Install `requirements.txt`, then edit the backend `.env`:
+
+```ini
+LLM_PROVIDER=bedrock
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key
+AWS_REGION=ap-south-1
+BEDROCK_MODEL_ID=openai.gpt-oss-120b-1:0
+```
+
+Use the region and model/profile ID available to your AWS account. Restart the backend after changing
+`.env`, then use the existing TradeDesk chat. The backend calls Bedrock Converse with conversation
+history and the app's tools; requests use up to 800 output tokens and can incur AWS charges.
+The key stays in the backend environment. No additional server or AWS infrastructure is required.
+Missing or expired keys, denied model access and network errors use the app's existing LLM error response.
 
 ## Where things are
 

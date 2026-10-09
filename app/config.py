@@ -19,6 +19,8 @@ class Settings:
     demo_mode: bool = False  # enables /api/chaos/* and /api/locks/* toggles
     database_url: str = "sqlite:///:memory:"
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
+    aws_region: str = "ap-south-1"
+    bedrock_model_id: str = "openai.gpt-oss-120b-1:0"
     approval_ttl_seconds: int = 60
     rule_card_ttl_seconds: int = 900  # a card made by a fired rule waits longer: the trader may be away
     max_active_rules: int = 50
@@ -51,6 +53,8 @@ class Settings:
             demo_mode=_flag("DEMO_MODE", False),
             database_url=env.get("DATABASE_URL", "sqlite:///./tradedesk.db"),
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",
+            aws_region=env.get("AWS_REGION", "ap-south-1").strip() or "ap-south-1",
+            bedrock_model_id=env.get("BEDROCK_MODEL_ID", "openai.gpt-oss-120b-1:0").strip(),
             approval_ttl_seconds=int(env.get("APPROVAL_TTL_SECONDS", "60")),
             drift_limit_pct=float(env.get("DRIFT_LIMIT_PCT", "1.0")),
             market_protection_pct=float(env.get("MARKET_PROTECTION_PCT", "1.0")),

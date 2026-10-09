@@ -16,6 +16,9 @@ def make_llm(settings: Settings, renderers: dict[str, Callable[[dict], str]]) ->
     provider = settings.llm_provider
     if provider in ("", "rules"):
         return RuleBasedLLM(renderers)
+    if provider == "bedrock":
+        from app.llm.bedrock import BedrockLLM
+        return BedrockLLM(settings.aws_region, settings.bedrock_model_id)
     raise NotImplementedError(
         f"LLM_PROVIDER={provider!r} is not wired yet. Use LLM_PROVIDER=rules (the built-in keyword "
         "parser) until the provider class is added in app/llm/factory.py."
