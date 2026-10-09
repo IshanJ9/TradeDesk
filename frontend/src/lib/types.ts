@@ -23,6 +23,8 @@ export type ApprovalConflict = S["ApprovalConflict"];
 export type ChatReply = S["ChatReply"];
 export type Card = ChatReply["cards"][number];
 export type Tick = S["Tick"];
+export type TraceEvent = S["TraceEvent"];
+export type DisciplineSummary = S["DisciplineSummary"];
 
 /** Every message that can arrive on /ws. */
 export type WsEvent =

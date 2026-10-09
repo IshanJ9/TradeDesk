@@ -739,6 +739,15 @@
                       },
                       {
                         "$ref": "#/components/schemas/ChaosStatusEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/TraceEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ExternalOrderEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/DisciplineUpdateEvent"
                       }
                     ],
                     "discriminator": {
@@ -757,7 +766,10 @@
                         "rule_fired": "#/components/schemas/RuleFiredEvent",
                         "lock_update": "#/components/schemas/LockUpdateEvent",
                         "audit_event": "#/components/schemas/AuditEventMessage",
-                        "chaos_status": "#/components/schemas/ChaosStatusEvent"
+                        "chaos_status": "#/components/schemas/ChaosStatusEvent",
+                        "trace": "#/components/schemas/TraceEvent",
+                        "external_order": "#/components/schemas/ExternalOrderEvent",
+                        "discipline_update": "#/components/schemas/DisciplineUpdateEvent"
                       }
                     }
                   },
@@ -1447,6 +1459,91 @@
         "title": "CreateRuleRequest",
         "description": "A standing instruction, in the units a trader uses (rupees, percent).\n\nGive the trigger as EITHER an absolute `price_rupees` OR a `percent` move measured from\n`basis`. A TRIGGER_ORDER rule never sends anything when it fires: it prepares a fresh order\ncard for the trader to approve. An ALERT only tells the trader."
       },
+      "DisciplineSummary": {
+        "properties": {
+          "orders_today": {
+            "type": "integer",
+            "title": "Orders Today",
+            "default": 0
+          },
+          "order_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Limit"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "average_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Score"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "orders_today",
+          "order_limit",
+          "risk_score",
+          "average_score",
+          "warnings"
+        ],
+        "title": "DisciplineSummary",
+        "description": "Today's trading against the trader's OWN limits. Facts only: no advice, no predictions."
+      },
+      "DisciplineUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "discipline_update",
+            "title": "Type",
+            "default": "discipline_update"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DisciplineSummary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "summary"
+        ],
+        "title": "DisciplineUpdateEvent"
+      },
       "Exchange": {
         "type": "string",
         "enum": [
@@ -1495,6 +1592,32 @@
         ],
         "title": "ExecutionResult",
         "description": "What happened after an approved card was sent.\n\nSENT      the broker accepted it (see `order` for its live status)\nREJECTED  the broker refused it (`order.rejection_reason` says why)\nUNKNOWN   the request timed out and we could not confirm either way. The order is\n          never re-sent; it is reconciled against the broker's order book."
+      },
+      "ExternalOrderEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "external_order",
+            "title": "Type",
+            "default": "external_order"
+          },
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "order"
+        ],
+        "title": "ExternalOrderEvent",
+        "description": "An order in the broker's book that this app did not send (placed in 021's own app, for example)."
       },
       "Funds": {
         "properties": {
@@ -3608,6 +3731,77 @@
           "tick"
         ],
         "title": "TickEvent"
+      },
+      "TraceEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "trace",
+            "title": "Type",
+            "default": "trace"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "node",
+              "tool",
+              "guard"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "start",
+              "end",
+              "blocked",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "run_id",
+          "node",
+          "kind",
+          "status",
+          "detail",
+          "ms"
+        ],
+        "title": "TraceEvent",
+        "description": "One step of the assistant's work, for the live activity panel (see app/trace.py).\n\n`detail` is a short sentence for people. It never holds keys, passwords or raw broker replies."
       },
       "ValidationError": {
         "properties": {

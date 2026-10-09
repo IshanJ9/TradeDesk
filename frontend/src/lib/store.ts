@@ -2,12 +2,14 @@
 import type {
   Account,
   AuditEvent,
+  DisciplineSummary,
   ExecutionResult,
   Order,
   PendingOrder,
   Plan,
   PlanReport,
   Rule,
+  TraceEvent,
   WsEvent,
 } from "./types";
 
@@ -38,6 +40,9 @@ export interface State {
   notes: Record<string, Note>; // banners on a card: "price moved", "expired", ...
   hidden: Record<string, true>; // resolved cards the trader dismissed
   toasts: Toast[];
+  trace: TraceEvent[]; // newest first: the assistant's steps, for the activity panel
+  external: Order[]; // newest first: orders placed outside this app (021's own app)
+  discipline: DisciplineSummary | null; // today vs the trader's own limits
 }
 
 export type Action =
@@ -51,6 +56,7 @@ export type Action =
   | { type: "dismissToast"; id: string };
 
 export const AUDIT_LIMIT = 150;
+export const TRACE_LIMIT = 200;
 
 export const initialState: State = {
   conn: "connecting",
@@ -67,6 +73,9 @@ export const initialState: State = {
   notes: {},
   hidden: {},
   toasts: [],
+  trace: [],
+  external: [],
+  discipline: null,
 };
 
 let toastCounter = 0;
@@ -124,6 +133,12 @@ function applyEvent(s: State, e: WsEvent): State {
       return { ...s, audit: [e.event, ...s.audit].slice(0, AUDIT_LIMIT) };
     case "chaos_status":
       return s;
+    case "trace":
+      return { ...s, trace: [e, ...s.trace].slice(0, TRACE_LIMIT) };
+    case "external_order":
+      return { ...s, external: upsert(s.external, e.order, (o) => o.order_id === e.order.order_id) };
+    case "discipline_update":
+      return { ...s, discipline: e.summary };
   }
 }
 

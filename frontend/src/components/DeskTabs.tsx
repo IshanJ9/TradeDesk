@@ -4,9 +4,12 @@ import { REASONS, productWord } from "../lib/describe";
 import { clock, rupees } from "../lib/format";
 import type { Action, State } from "../lib/store";
 import type { AuditEvent, Order, Rule } from "../lib/types";
+import { AssistantTrace } from "./AssistantTrace";
+import { DisciplinePanel } from "./DisciplinePanel";
+import { ExternalOrders } from "./ExternalOrders";
 import { Button, Chip, Empty, Section } from "./ui";
 
-type Tab = "orders" | "rules" | "log";
+type Tab = "orders" | "rules" | "assistant" | "external" | "discipline" | "log";
 
 function OrderRow({ o, ask }: { o: Order; ask: (text: string) => void }) {
   const open = o.status === "OPEN" || o.status === "PARTIAL";
@@ -78,6 +81,9 @@ export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dis
   const tabs: [Tab, string][] = [
     ["orders", `Orders${state.orders.length ? ` (${state.orders.length})` : ""}`],
     ["rules", `Standing rules${activeRules ? ` (${activeRules})` : ""}`],
+    ["assistant", "Assistant"],
+    ["external", `021 app${state.external.length ? ` (${state.external.length})` : ""}`],
+    ["discipline", "Discipline"],
     ["log", "Session log"],
   ];
 
@@ -113,6 +119,10 @@ export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dis
               Try &ldquo;Buy 5 TCS if it falls below 3800&rdquo;. When it triggers you get a ticket to approve; nothing is sent on its own.
             </Empty>
           ))}
+
+        {tab === "assistant" && <AssistantTrace state={state} />}
+        {tab === "external" && <ExternalOrders state={state} />}
+        {tab === "discipline" && <DisciplinePanel state={state} />}
 
         {tab === "log" && (
           <>

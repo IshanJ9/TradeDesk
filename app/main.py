@@ -19,6 +19,7 @@ from app.broker.mock import MockBroker
 from app.config import Settings
 from app.db import Database
 from app.events import EventHub
+from app.history.store import InMemoryActivityStore
 from app.orders.approval import ApprovalService
 from app.llm.copilot import Copilot
 from app.llm.factory import make_llm
@@ -31,6 +32,7 @@ from app.pending import PendingStore
 from app.plans.builder import PlanBuilder
 from app.plans.service import PlanAssistant, PlanService
 from app.plans.store import PlanStore
+from app.risk.guard import NoRiskGuard
 from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
@@ -163,7 +165,12 @@ def create_app(
     app.state.audit = audit
     app.state.builder = builder
     app.state.executor = executor
-    cards = CardService(builder, store, hub, audit)
+    # Shared hooks for the parallel workstreams (each owner replaces only their own line):
+    history = InMemoryActivityStore()  # voice-live: database-backed store + order sync
+    risk = NoRiskGuard()  # risk-goals: the trader's own limits
+    app.state.history = history
+    app.state.risk = risk
+    cards = CardService(builder, store, hub, audit, risk)
     tools = build_tools()
     llm = make_llm(settings, {name: t.render for name, t in tools.items()})
     rule_store = RuleStore(db)
@@ -187,7 +194,7 @@ def create_app(
     app.state.plans = plans
     app.state.rule_engine = RuleEngine(rule_store, cards, the_broker.read_only(), audit, hub, settings, clock)
     app.state.copilot = Copilot(llm, tools, the_broker.read_only(), cards, rules, PlanAssistant(plans), audit, clock)
-    app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock)
+    app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock, risk)
 
     app.add_middleware(
         CORSMiddleware,
