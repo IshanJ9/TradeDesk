@@ -266,9 +266,8 @@ async def test_every_step_goes_through_the_executors_one_order_per_step(env):
     rows = env.s.db.query("SELECT client_order_id, status FROM executions")
     assert sorted(r["client_order_id"] for r in rows) == sorted(leg.order.client_order_id for leg in plan.legs)
     assert {r["status"] for r in rows} == {"SENT"}
-    assert len(env.broker._orders) == 2 and {o.client_order_id for o in env.broker._orders.values()} == {
-        leg.order.client_order_id for leg in plan.legs
-    }
+    assert len(env.broker._orders) == 2  # one order per step, and the broker never saw our ids
+    assert {r["broker_order_id"] for r in env.s.db.query("SELECT broker_order_id FROM executions")} == set(env.broker._orders)
 
 
 async def test_a_wrong_plan_hash_voids_the_plan(env):
@@ -483,7 +482,7 @@ def _sale(env, plan, *, qty, avg):
     from app.schemas import Order
 
     return Order(
-        order_id="S1", client_order_id=sell.client_order_id, instrument=sell.instrument, side=Side.SELL, quantity=qty,
+        order_id="S1", instrument=sell.instrument, side=Side.SELL, quantity=qty,
         filled_quantity=qty, avg_fill_price=avg, order_type=sell.order_type, status=OrderStatus.FILLED,
         created_at=T0, updated_at=T0,
     )

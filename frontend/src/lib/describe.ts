@@ -5,10 +5,10 @@ import type { Charges, ExecutionResult, PendingOrder, PlanLeg, PlanLegResult } f
 
 export const productWord = (p: string) => (p === "CNC" ? "Delivery" : p === "MIS" ? "Intraday" : p);
 
-export function validityWord(v: string, minutes?: number | null): string {
+export function validityWord(v: string): string {
   if (v === "DAY") return "Valid for the day";
   if (v === "IOC") return "Fill now or cancel";
-  return `Valid for ${minutes ?? "?"} min`;
+  return v;
 }
 
 export const REASONS: Record<string, string> = {
@@ -29,7 +29,13 @@ export const REASONS: Record<string, string> = {
   OTHER: "the broker refused it",
 };
 
-export function priceLine(o: Pick<PendingOrder, "side" | "limit_price" | "protection_price">): string {
+export function priceLine(o: Pick<PendingOrder, "side" | "limit_price" | "protection_price" | "trigger_price">): string {
+  if (o.trigger_price != null && o.limit_price != null) {
+    // A stop-loss does nothing until the price reaches the trigger.
+    return o.side === "SELL"
+      ? `Stop-loss: if the price falls to ${rupees(o.trigger_price)}, sell at least ${rupees(o.limit_price)}`
+      : `Stop order: if the price rises to ${rupees(o.trigger_price)}, buy up to ${rupees(o.limit_price)}`;
+  }
   if (o.limit_price != null) {
     return o.side === "SELL" ? `Limit: at least ${rupees(o.limit_price)}` : `Limit: up to ${rupees(o.limit_price)}`;
   }
@@ -44,8 +50,9 @@ export function priceLine(o: Pick<PendingOrder, "side" | "limit_price" | "protec
 export function actionTitle(o: PendingOrder): string {
   const sym = o.instrument.symbol;
   if (o.action === "CANCEL") return `Cancel order ${o.target_order_id}`;
-  if (o.action === "MODIFY") return `Change order ${o.target_order_id}`;
-  return `${sideWord(o.side)} ${o.quantity} × ${sym}`;
+  if (o.action === "MODIFY") return `Change ${o.order_type === "STOP_LIMIT" ? "stop-loss" : "order"} ${o.target_order_id}`;
+  const stop = o.order_type === "STOP_LIMIT" ? "Stop-loss · " : "";
+  return `${stop}${sideWord(o.side)} ${o.quantity} × ${sym}`;
 }
 
 /** The non-zero cost lines, in the order 021 lists them. */

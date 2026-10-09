@@ -13,7 +13,7 @@ instrument checks, hard limits, lock checks, charges and warnings. What a plan a
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from decimal import Decimal
+from fractions import Fraction
 
 from pydantic import ValidationError
 
@@ -103,7 +103,6 @@ class PlanBuilder:
             limit_price=paise(lr.limit_price_rupees) if lr.limit_price_rupees is not None else None,
             product=lr.product,
             validity=lr.validity,
-            validity_minutes=lr.validity_minutes,
         )
 
         basis, from_leg, max_quantity, max_spend = QuantityBasis.FIXED, None, None, None
@@ -126,7 +125,8 @@ class PlanBuilder:
                 intent = OrderIntent(**base, quantity=estimate)
             elif lr.fraction_of_holding is not None:
                 held = sum(h.quantity for h in holdings if h.instrument.key == inst.key)
-                quantity = int(Decimal(held) * Decimal(str(lr.fraction_of_holding)))  # whole shares, rounded down
+                exact = held * Fraction(str(lr.fraction_of_holding)).limit_denominator(1000)  # a third of 3 is 1
+                quantity = exact.numerator // exact.denominator  # whole shares, rounded down
                 if quantity < 1:
                     have = f"your {held} shares" if held else "the shares you hold (you hold none)"
                     raise OrderBlocked(

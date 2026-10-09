@@ -612,8 +612,6 @@ export interface components {
             product?: components["schemas"]["Product"];
             /** @default DAY */
             validity?: components["schemas"]["Validity"];
-            /** Validity Minutes */
-            validity_minutes?: number | null;
         };
         /**
          * Exchange
@@ -783,8 +781,6 @@ export interface components {
         Order: {
             /** Order Id */
             order_id: string;
-            /** Client Order Id */
-            client_order_id: string;
             instrument: components["schemas"]["Instrument"];
             side: components["schemas"]["Side"];
             /** Quantity */
@@ -799,6 +795,8 @@ export interface components {
             order_type: components["schemas"]["OrderType"];
             /** Limit Price */
             limit_price: number | null;
+            /** Trigger Price */
+            trigger_price: number | null;
             /** @default CNC */
             product: components["schemas"]["Product"];
             /** @default DAY */
@@ -838,15 +836,17 @@ export interface components {
             quantity?: number | null;
             /** Amount Paise */
             amount_paise?: number | null;
+            /** Fraction Of Holding */
+            fraction_of_holding?: number | null;
             order_type?: components["schemas"]["OrderType"] | null;
             /** Limit Price */
             limit_price?: number | null;
+            /** Trigger Price */
+            trigger_price?: number | null;
             /** @default CNC */
             product?: components["schemas"]["Product"];
             /** @default DAY */
             validity?: components["schemas"]["Validity"];
-            /** Validity Minutes */
-            validity_minutes?: number | null;
             /** Target Order Id */
             target_order_id?: string | null;
         };
@@ -863,15 +863,17 @@ export interface components {
             quantity: number | null;
             /** Amount Paise */
             amount_paise: number | null;
+            /** Fraction Of Holding */
+            fraction_of_holding: number | null;
             order_type: components["schemas"]["OrderType"] | null;
             /** Limit Price */
             limit_price: number | null;
+            /** Trigger Price */
+            trigger_price: number | null;
             /** @default CNC */
             product: components["schemas"]["Product"];
             /** @default DAY */
             validity: components["schemas"]["Validity"];
-            /** Validity Minutes */
-            validity_minutes: number | null;
             /** Target Order Id */
             target_order_id: string | null;
         };
@@ -884,7 +886,7 @@ export interface components {
          * OrderType
          * @enum {string}
          */
-        OrderType: "LIMIT" | "MARKET";
+        OrderType: "LIMIT" | "MARKET" | "STOP_LIMIT";
         /** OrderUpdateEvent */
         OrderUpdateEvent: {
             /** Seq */
@@ -931,12 +933,12 @@ export interface components {
             limit_price: number | null;
             /** Protection Price */
             protection_price: number | null;
+            /** Trigger Price */
+            trigger_price: number | null;
             /** @default CNC */
             product: components["schemas"]["Product"];
             /** @default DAY */
             validity: components["schemas"]["Validity"];
-            /** Validity Minutes */
-            validity_minutes: number | null;
             /** Target Order Id */
             target_order_id: string | null;
             /** Client Order Id */
@@ -1116,8 +1118,6 @@ export interface components {
             product?: components["schemas"]["Product"];
             /** @default DAY */
             validity?: components["schemas"]["Validity"];
-            /** Validity Minutes */
-            validity_minutes?: number | null;
         };
         /** PlanLegResult */
         PlanLegResult: {
@@ -1430,7 +1430,7 @@ export interface components {
          * Validity
          * @enum {string}
          */
-        Validity: "DAY" | "IOC" | "MINUTES";
+        Validity: "DAY" | "IOC";
     };
     responses: never;
     parameters: never;

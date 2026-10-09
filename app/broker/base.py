@@ -10,19 +10,24 @@ Safety shape
   methods at all. (Python cannot truly hide attributes; the point is that no write
   method is part of the surface the LLM tools are built against.)
 - Errors are typed. `BrokerTimeout` means the outcome is UNKNOWN: the caller must
-  reconcile via `get_order(client_order_id)` / `get_orders()` and never retry blindly.
+  reconcile by reading the order book (`find_sent_order`) and never retry blindly.
+- The broker does not know our `client_order_id` (021 has no such field). Orders are identified by
+  the broker's own `order_id`; to find an order we sent but never got an answer for, we match it by
+  what it looks like (see `app/broker/matching.py`).
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Collection, Sequence
 from datetime import date
 from typing import Protocol
 
+from app.broker.matching import match_sent_order
 from app.schemas import (
     AccountLocks,
     Funds,
     Holding,
     Instrument,
+    MatchResult,
     OptionChain,
     Order,
     PendingOrder,
@@ -30,6 +35,7 @@ from app.schemas import (
     Position,
     Quote,
     RejectionReason,
+    SentOrderSpec,
     Tick,
 )
 
@@ -76,7 +82,7 @@ class ReadOnlyBroker(Protocol):
 
     async def get_orders(self) -> list[Order]: ...
 
-    async def get_order(self, client_order_id: str) -> Order | None: ...
+    async def get_order(self, order_id: str) -> Order | None: ...
 
     async def get_quote(self, instrument_key: str) -> Quote: ...
 
@@ -91,6 +97,8 @@ class ReadOnlyBroker(Protocol):
     async def get_account_locks(self) -> AccountLocks: ...
 
     def subscribe_ticks(self, instrument_keys: Sequence[str]) -> AsyncIterator[Tick]: ...
+
+    async def watch(self, instrument_keys: Sequence[str]) -> None: ...
 
 
 class ReadOnlyView:
@@ -111,8 +119,8 @@ class ReadOnlyView:
     async def get_orders(self) -> list[Order]:
         return await self._broker.get_orders()
 
-    async def get_order(self, client_order_id: str) -> Order | None:
-        return await self._broker.get_order(client_order_id)
+    async def get_order(self, order_id: str) -> Order | None:
+        return await self._broker.get_order(order_id)
 
     async def get_quote(self, instrument_key: str) -> Quote:
         return await self._broker.get_quote(instrument_key)
@@ -134,6 +142,9 @@ class ReadOnlyView:
 
     def subscribe_ticks(self, instrument_keys: Sequence[str]) -> AsyncIterator[Tick]:
         return self._broker.subscribe_ticks(instrument_keys)
+
+    async def watch(self, instrument_keys: Sequence[str]) -> None:
+        await self._broker.watch(instrument_keys)  # following a price places nothing
 
 
 # --------------------------------------------------------------------------- #
@@ -160,8 +171,12 @@ class BrokerAdapter(ABC):
         """Order book, newest first."""
 
     @abstractmethod
-    async def get_order(self, client_order_id: str) -> Order | None:
-        """The most recent order carrying this client order id, or None. Used to reconcile."""
+    async def get_order(self, order_id: str) -> Order | None:
+        """One order by the broker's own id, or None."""
+
+    async def find_sent_order(self, spec: SentOrderSpec, exclude_order_ids: Collection[str] = ()) -> MatchResult:
+        """Did an order that looks like `spec` reach the broker? Reads the order book; sends nothing."""
+        return match_sent_order(spec, await self.get_orders(), exclude_order_ids)
 
     @abstractmethod
     async def get_quote(self, instrument_key: str) -> Quote: ...
@@ -196,6 +211,17 @@ class BrokerAdapter(ABC):
 
     @abstractmethod
     async def cancel_order(self, order: PendingOrder) -> Order: ...
+
+    # ---- lifecycle (a real broker connects; the mock needs nothing) ----
+
+    async def start(self) -> None:
+        """Log in and open feeds. Called once when the app starts."""
+
+    async def close(self) -> None:
+        """Release connections. Called once when the app stops."""
+
+    async def watch(self, instrument_keys: Sequence[str]) -> None:
+        """Ask the price feed to follow these instruments (a live broker only streams what it is asked to)."""
 
     # ---- shared helpers ----
 

@@ -226,8 +226,10 @@ def test_valid_intent():
         dict(order_type=None),
         dict(quantity=0),
         dict(quantity=-5),
-        dict(validity="MINUTES"),  # needs validity_minutes
-        dict(validity_minutes=5),  # minutes without MINUTES validity
+        dict(validity="MINUTES"),  # 021 offers only DAY and IOC
+        dict(order_type="STOP_LIMIT", limit_price=None),  # a stop needs a trigger
+        dict(trigger_price=paise(1400)),  # a LIMIT order has no trigger
+        dict(order_type="MARKET", limit_price=None, trigger_price=paise(1400)),
         dict(target_order_id="o1"),  # PLACE cannot target an order
     ],
 )
@@ -295,6 +297,7 @@ def test_hash_is_deterministic():
         dict(validity="IOC"),
         dict(client_order_id="c2"),
         dict(order_type=OrderType.MARKET, limit_price=None, protection_price=paise(1460)),
+        dict(order_type=OrderType.STOP_LIMIT, trigger_price=paise(1440)),
     ],
 )
 def test_changing_any_order_field_voids_the_old_hash(over):
@@ -364,7 +367,6 @@ def test_expiry():
 def broker_order(**over):
     base = dict(
         order_id="o1",
-        client_order_id="c1",
         instrument=inst(),
         side=Side.BUY,
         quantity=10,
@@ -533,3 +535,53 @@ def test_audit_event_sanitizes_summary():
     assert e.summary == "blocked name"
     with pytest.raises(ValidationError):
         AuditEvent(id="a1", ts=NOW, kind=AuditKind.CHAOS, actor="robot")
+
+
+# ---- stop-loss orders ----------------------------------------------------------- #
+
+
+def stop(**over):
+    base = dict(side=Side.SELL, order_type=OrderType.STOP_LIMIT, trigger_price=paise(1400), limit_price=paise(1390))
+    base.update(over)
+    return pending(**base)
+
+
+def test_a_stop_order_needs_both_prices_and_binds_the_trigger_in_the_hash():
+    assert stop().trigger_price == paise(1400)
+    with pytest.raises(ValidationError):
+        stop(trigger_price=None)
+    with pytest.raises(ValidationError):
+        stop(limit_price=None)
+    assert stop(trigger_price=paise(1401)).order_hash != stop().order_hash
+
+
+@pytest.mark.parametrize(
+    "side, trigger, limit",
+    [(Side.SELL, 1400, 1410), (Side.BUY, 1400, 1390)],  # the limit is on the wrong side of the trigger
+)
+def test_a_stop_limit_price_must_be_beyond_its_trigger(side, trigger, limit):
+    with pytest.raises(ValidationError):
+        stop(side=side, trigger_price=paise(trigger), limit_price=paise(limit))
+
+
+def test_only_a_stop_order_may_carry_a_trigger():
+    with pytest.raises(ValidationError):
+        pending(trigger_price=paise(1400))
+
+
+def test_modify_intent_can_move_just_the_trigger():
+    OrderIntent(action="MODIFY", target_order_id="o1", trigger_price=paise(1640))
+    with pytest.raises(ValidationError):
+        OrderIntent(action="CANCEL", target_order_id="o1", trigger_price=paise(1640))
+
+
+def test_a_fraction_of_a_holding_is_only_for_a_sell_and_only_instead_of_a_size():
+    ok = dict(action="PLACE", instrument_ref="TCS", side="SELL", order_type="MARKET", fraction_of_holding=0.5)
+    assert OrderIntent(**ok).fraction_of_holding == 0.5
+    for bad in (dict(side="BUY"), dict(quantity=2), dict(amount_paise=paise(5000)), dict(fraction_of_holding=0), dict(fraction_of_holding=1.01)):
+        with pytest.raises(ValidationError):
+            OrderIntent(**{**ok, **bad})
+    with pytest.raises(ValidationError):
+        OrderIntent(action="MODIFY", target_order_id="o1", limit_price=paise(1400), fraction_of_holding=0.5)
+    with pytest.raises(ValidationError):
+        OrderIntent(action="CANCEL", target_order_id="o1", fraction_of_holding=0.5)

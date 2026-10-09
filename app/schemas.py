@@ -105,6 +105,7 @@ class Side(str, Enum):
 class OrderType(str, Enum):
     LIMIT = "LIMIT"
     MARKET = "MARKET"
+    STOP_LIMIT = "STOP_LIMIT"  # sleeps until the price reaches `trigger_price`, then becomes a limit order
 
 
 class Product(str, Enum):
@@ -114,8 +115,7 @@ class Product(str, Enum):
 
 class Validity(str, Enum):
     DAY = "DAY"
-    IOC = "IOC"
-    MINUTES = "MINUTES"
+    IOC = "IOC"  # 021 offers only these two
 
 
 class OrderAction(str, Enum):
@@ -467,11 +467,12 @@ class OrderIntent(Model):
     side: Side | None = None
     quantity: Quantity | None = None
     amount_paise: PricePaise | None = None  # "worth Rs 10k"; code converts to whole shares
+    fraction_of_holding: Annotated[float, Field(gt=0, le=1)] | None = None  # SELL: "half my TCS"; code does the sum
     order_type: OrderType | None = None
     limit_price: PricePaise | None = None
+    trigger_price: PricePaise | None = None  # STOP_LIMIT: the price that wakes the order up
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
-    validity_minutes: Annotated[int, Field(ge=1, le=60)] | None = None
     target_order_id: str | None = None  # for MODIFY / CANCEL
 
     @field_validator("instrument_ref", mode="before")
@@ -481,12 +482,6 @@ class OrderIntent(Model):
 
     @model_validator(mode="after")
     def _check(self) -> "OrderIntent":
-        if self.validity is Validity.MINUTES:
-            if self.validity_minutes is None:
-                raise ValueError("validity MINUTES needs validity_minutes")
-        elif self.validity_minutes is not None:
-            raise ValueError("validity_minutes only applies to validity MINUTES")
-
         if self.action is OrderAction.PLACE:
             if not self.instrument_ref:
                 raise ValueError("PLACE needs instrument_ref")
@@ -494,25 +489,31 @@ class OrderIntent(Model):
                 raise ValueError("PLACE needs side")
             if self.order_type is None:
                 raise ValueError("PLACE needs order_type")
-            if (self.quantity is None) == (self.amount_paise is None):
-                raise ValueError("give exactly one of quantity or amount_paise")
+            if sum(x is not None for x in (self.quantity, self.amount_paise, self.fraction_of_holding)) != 1:
+                raise ValueError("give exactly one of quantity, amount_paise or fraction_of_holding")
+            if self.fraction_of_holding is not None and self.side is not Side.SELL:
+                raise ValueError("fraction_of_holding only applies to a SELL")
             if self.order_type is OrderType.LIMIT and self.limit_price is None:
                 raise ValueError("LIMIT order needs limit_price")
-            if self.order_type is OrderType.MARKET and self.limit_price is not None:
-                raise ValueError("MARKET order cannot have limit_price")
+            if self.order_type is OrderType.MARKET and (self.limit_price is not None or self.trigger_price is not None):
+                raise ValueError("MARKET order cannot have limit_price or trigger_price")
+            if self.order_type is OrderType.LIMIT and self.trigger_price is not None:
+                raise ValueError("LIMIT order cannot have trigger_price")
+            if self.order_type is OrderType.STOP_LIMIT and self.trigger_price is None:
+                raise ValueError("STOP_LIMIT order needs trigger_price")
             if self.target_order_id is not None:
                 raise ValueError("PLACE cannot have target_order_id")
         elif self.action is OrderAction.MODIFY:
             if not self.target_order_id:
                 raise ValueError("MODIFY needs target_order_id")
-            if self.quantity is None and self.limit_price is None:
-                raise ValueError("MODIFY needs a new quantity or limit_price")
-            if self.amount_paise is not None:
-                raise ValueError("MODIFY cannot use amount_paise")
+            if self.quantity is None and self.limit_price is None and self.trigger_price is None:
+                raise ValueError("MODIFY needs a new quantity, limit_price or trigger_price")
+            if self.amount_paise is not None or self.fraction_of_holding is not None:
+                raise ValueError("MODIFY cannot use amount_paise or fraction_of_holding")
         else:  # CANCEL
             if not self.target_order_id:
                 raise ValueError("CANCEL needs target_order_id")
-            if any(x is not None for x in (self.quantity, self.amount_paise, self.limit_price)):
+            if any(x is not None for x in (self.quantity, self.amount_paise, self.fraction_of_holding, self.limit_price, self.trigger_price)):
                 raise ValueError("CANCEL takes only target_order_id")
         return self
 
@@ -567,11 +568,13 @@ class PendingOrder(Model):
     order_type: OrderType | None = None
     limit_price: PricePaise | None = None
     protection_price: PricePaise | None = None  # bound on a MARKET order (protected limit)
+    trigger_price: PricePaise | None = None  # STOP_LIMIT only
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
-    validity_minutes: int | None = None
     target_order_id: str | None = None
-    client_order_id: str  # idempotency key, unique per PendingOrder
+    # Our own idempotency key. The broker never sees it (021 has no such field); it keys our
+    # write-ahead log so the same order cannot be sent twice from this app.
+    client_order_id: str
     charges: Charges = Field(default_factory=Charges)
     est_total: int = 0  # buy: cost + charges; sell: proceeds - charges (paise)
     ref_ltp: PricePaise  # price the card was shown at; drift is measured from here
@@ -593,6 +596,16 @@ class PendingOrder(Model):
                 raise ValueError("LIMIT order needs limit_price")
             if self.order_type is OrderType.MARKET and self.protection_price is None:
                 raise ValueError("MARKET order needs protection_price")
+            if self.order_type is OrderType.STOP_LIMIT:
+                if self.trigger_price is None or self.limit_price is None:
+                    raise ValueError("STOP_LIMIT order needs trigger_price and limit_price")
+                # 021: a buy stop's price must be at or above its trigger, a sell stop's at or below.
+                if self.side is Side.BUY and self.limit_price < self.trigger_price:
+                    raise ValueError("a buy STOP_LIMIT needs limit_price at or above trigger_price")
+                if self.side is Side.SELL and self.limit_price > self.trigger_price:
+                    raise ValueError("a sell STOP_LIMIT needs limit_price at or below trigger_price")
+            elif self.trigger_price is not None:
+                raise ValueError("only a STOP_LIMIT order has a trigger_price")
         elif not self.target_order_id:
             raise ValueError(f"{self.action.value} needs target_order_id")
         return self
@@ -614,9 +627,9 @@ class PendingOrder(Model):
                 "order_type": self.order_type.value if self.order_type else None,
                 "limit_price": self.limit_price,
                 "protection_price": self.protection_price,
+                "trigger_price": self.trigger_price,
                 "product": self.product.value,
                 "validity": self.validity.value,
-                "validity_minutes": self.validity_minutes,
                 "target_order_id": self.target_order_id,
                 "client_order_id": self.client_order_id,
             }
@@ -639,7 +652,6 @@ class Order(Model):
     """Broker-side order state, as reported by the broker."""
 
     order_id: str
-    client_order_id: str
     instrument: Instrument
     side: Side
     quantity: Quantity
@@ -647,6 +659,7 @@ class Order(Model):
     avg_fill_price: PricePaise | None = None
     order_type: OrderType
     limit_price: PricePaise | None = None
+    trigger_price: PricePaise | None = None
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
     status: OrderStatus
@@ -673,6 +686,44 @@ class Order(Model):
     def pending_quantity(self) -> int:
         active = {OrderStatus.PENDING, OrderStatus.OPEN, OrderStatus.PARTIAL}
         return self.quantity - self.filled_quantity if self.status in active else 0
+
+
+class SentOrderSpec(Model):
+    """What an order looked like on the wire. 021 has no client order id, so after a timeout this is the
+    only way to ask 'did my order get there?': find an order in the book that looks exactly like this."""
+
+    instrument_key: str
+    side: Side
+    quantity: Quantity
+    price: PricePaise  # the limit price actually sent (a protected market order is a limit order on the wire)
+    trigger_price: PricePaise | None = None
+    product: Product
+    validity: Validity
+    sent_after: AwareDatetime  # the order cannot have been placed before we started sending it
+
+    @classmethod
+    def from_pending(cls, p: "PendingOrder", sent_after: Any) -> "SentOrderSpec":
+        return cls(
+            instrument_key=p.instrument.key,
+            side=p.side,
+            quantity=p.quantity,
+            price=p.limit_price or p.protection_price,
+            trigger_price=p.trigger_price,
+            product=p.product,
+            validity=p.validity,
+            sent_after=sent_after,
+        )
+
+
+class MatchKind(str, Enum):
+    FOUND = "FOUND"  # exactly one order in the book looks like it
+    NONE = "NONE"  # the book was read and nothing looks like it
+    AMBIGUOUS = "AMBIGUOUS"  # several look alike: we cannot tell which (if any) is ours
+
+
+class MatchResult(Model):
+    kind: MatchKind
+    order: Order | None = None
 
 
 # --------------------------------------------------------------------------- #

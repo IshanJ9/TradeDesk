@@ -5,14 +5,16 @@ safety layer can be tested against hostile behaviour: timeouts, rejections, part
 duplicate and out-of-order ticks. Charges are not modelled here (see the charges
 calculator in the safety layer).
 
+It behaves like 021, not like a friendlier broker: orders carry no client order id (the broker only
+knows its own order id), a protected market order is simply a limit order on the wire, and a stop-loss
+order sleeps until its trigger is reached.
+
 Test/chaos hooks (all default off):
 - `network_down`            every call raises BrokerTimeout, nothing is recorded
 - `timeout_next_place(accepted=...)`  next place_order raises BrokerTimeout; if
                             accepted=True the order IS recorded (the dangerous case)
 - `reject_next(reason)`     next write is rejected
 - `partial_fill_next(frac)` next order fills only `frac` of its quantity on first match
-- `dedupe_client_ids`       constructor flag; off by default so the executor cannot
-                            lean on the broker deduplicating for it
 """
 
 import asyncio
@@ -85,12 +87,10 @@ class MockBroker(BrokerAdapter):
         *,
         clock: Callable[[], datetime] = _utcnow,
         seed: int = 7,
-        dedupe_client_ids: bool = False,
         cash: str = "250000",
     ):
         self._clock = clock
         self._rng = random.Random(seed)
-        self.dedupe_client_ids = dedupe_client_ids
         self._cash0 = paise(cash)
         self.market_open = True
         self.locks = AccountLocks()
@@ -110,6 +110,7 @@ class MockBroker(BrokerAdapter):
         self._seq: dict[str, int] = {}
         self._orders: dict[str, Order] = {}
         self._limits: dict[str, int] = {}  # effective limit used for matching
+        self._triggers: dict[str, int] = {}  # stop orders still asleep: order id -> trigger price
         self._partial: dict[str, float] = {}
         self._counter = 0
         self._cash = self._cash0
@@ -215,10 +216,9 @@ class MockBroker(BrokerAdapter):
         self._check_network()
         return sorted(self._orders.values(), key=lambda o: o.order_id, reverse=True)
 
-    async def get_order(self, client_order_id: str) -> Order | None:
+    async def get_order(self, order_id: str) -> Order | None:
         self._check_network()
-        matches = [o for o in self._orders.values() if o.client_order_id == client_order_id]
-        return max(matches, key=lambda o: o.order_id) if matches else None
+        return self._orders.get(order_id)
 
     async def get_quote(self, instrument_key: str) -> Quote:
         self._check_network()
@@ -366,14 +366,16 @@ class MockBroker(BrokerAdapter):
     def _build_order(self, p: PendingOrder, status: OrderStatus, **extra) -> Order:
         now = self._clock()
         oid = self._next_id()
+        # On the wire a protected market order is just a limit order at its protection price.
+        wire_type = OrderType.STOP_LIMIT if p.order_type is OrderType.STOP_LIMIT else OrderType.LIMIT
         order = Order(
             order_id=oid,
-            client_order_id=p.client_order_id,
             instrument=p.instrument,
             side=p.side,
             quantity=p.quantity,
-            order_type=p.order_type,
-            limit_price=p.limit_price,
+            order_type=wire_type,
+            limit_price=p.limit_price or p.protection_price,
+            trigger_price=p.trigger_price,
             product=p.product,
             validity=p.validity,
             status=status,
@@ -408,6 +410,8 @@ class MockBroker(BrokerAdapter):
                 self._reject(p, RejectionReason.INVALID_PRICE, "price is not a multiple of the tick size")
             if inst.price_band_low and not inst.price_band_low <= price <= (inst.price_band_high or price):
                 self._reject(p, RejectionReason.PRICE_BAND, "limit price is outside the day's price band")
+        if p.order_type is OrderType.STOP_LIMIT:
+            self._validate_trigger(p, inst, p.trigger_price)
         ref = p.limit_price or p.protection_price or self._prices[inst.key]
         if p.side is Side.BUY and ref * p.quantity > self._cash:
             self._reject(p, RejectionReason.INSUFFICIENT_FUNDS, "not enough funds")
@@ -415,6 +419,18 @@ class MockBroker(BrokerAdapter):
             held = self._holdings.get(inst.key, (0, 0))[0]
             if p.quantity > held:
                 self._reject(p, RejectionReason.INVALID_QUANTITY, "selling more than you hold")
+
+    def _validate_trigger(self, p: PendingOrder, inst: Instrument, trigger: int) -> None:
+        """021: a buy stop's trigger must be above the last price, a sell stop's below it."""
+        if trigger % inst.tick_size:
+            self._reject(p, RejectionReason.INVALID_PRICE, "trigger is not a multiple of the tick size")
+        ltp = self._prices[inst.key]
+        if (p.side is Side.BUY and trigger <= ltp) or (p.side is Side.SELL and trigger >= ltp):
+            self._reject(
+                p,
+                RejectionReason.INVALID_PRICE,
+                f"a {p.side.value.lower()} stop trigger must be {'above' if p.side is Side.BUY else 'below'} the last price",
+            )
 
     async def place_order(self, order: PendingOrder) -> Order:
         self.require_approved(order)
@@ -424,10 +440,6 @@ class MockBroker(BrokerAdapter):
         hook, self._timeout_place = self._timeout_place, None
         if hook is False:
             raise BrokerTimeout("request timed out before reaching the broker")
-        if self.dedupe_client_ids:
-            existing = _find_by_client_id(self._orders.values(), order.client_order_id)
-            if existing is not None:
-                return existing
         if self._reject_next is not None:
             reason, self._reject_next = self._reject_next, None
             self._reject(order, reason, "forced rejection")
@@ -436,6 +448,8 @@ class MockBroker(BrokerAdapter):
         placed = self._build_order(order, OrderStatus.OPEN)
         oid = placed.order_id
         self._limits[oid] = order.limit_price if order.limit_price is not None else order.protection_price
+        if order.trigger_price is not None:
+            self._triggers[oid] = order.trigger_price
         if self._partial_next is not None:
             self._partial[oid], self._partial_next = self._partial_next, None
         self._try_fill(oid)
@@ -469,7 +483,27 @@ class MockBroker(BrokerAdapter):
             if inst.price_band_low and not inst.price_band_low <= order.limit_price <= (inst.price_band_high or order.limit_price):
                 raise BrokerRejected(RejectionReason.PRICE_BAND, "limit price is outside the day's price band", current)
             updates["limit_price"] = order.limit_price
-            self._limits[current.order_id] = order.limit_price
+        if order.trigger_price is not None:
+            if current.order_id not in self._triggers:
+                raise BrokerRejected(RejectionReason.OTHER, "this order has no waiting trigger to change", current)
+            inst = self._instruments[current.instrument.key]
+            if order.trigger_price % inst.tick_size:
+                raise BrokerRejected(RejectionReason.INVALID_PRICE, "trigger is not a multiple of the tick size", current)
+            ltp = self._prices[inst.key]
+            if (current.side is Side.BUY and order.trigger_price <= ltp) or (
+                current.side is Side.SELL and order.trigger_price >= ltp
+            ):
+                raise BrokerRejected(RejectionReason.INVALID_PRICE, "trigger is on the wrong side of the last price", current)
+            updates["trigger_price"] = order.trigger_price
+        if current.order_type is OrderType.STOP_LIMIT:
+            limit = updates.get("limit_price", current.limit_price)
+            trigger = updates.get("trigger_price", current.trigger_price)
+            if (current.side is Side.BUY and limit < trigger) or (current.side is Side.SELL and limit > trigger):
+                raise BrokerRejected(RejectionReason.INVALID_PRICE, "limit price is on the wrong side of the trigger", current)
+        if "limit_price" in updates:
+            self._limits[current.order_id] = updates["limit_price"]
+        if "trigger_price" in updates:
+            self._triggers[current.order_id] = updates["trigger_price"]
         self._set(current.order_id, **updates)
         self._try_fill(current.order_id)
         return self._orders[current.order_id]
@@ -505,6 +539,11 @@ class MockBroker(BrokerAdapter):
         if o.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL):
             return
         ltp = self._prices[o.instrument.key]
+        trigger = self._triggers.get(order_id)
+        if trigger is not None:  # a stop order sleeps until the price reaches its trigger
+            if (o.side is Side.SELL and ltp > trigger) or (o.side is Side.BUY and ltp < trigger):
+                return
+            del self._triggers[order_id]
         limit = self._limits[order_id]
         crosses = ltp <= limit if o.side is Side.BUY else ltp >= limit
         if not crosses:
@@ -535,9 +574,3 @@ class MockBroker(BrokerAdapter):
             book[key] = (new_qty, round((old_avg * abs(old_qty) + price * qty) / abs(new_qty)))
         else:  # reduced: average unchanged
             book[key] = (new_qty, old_avg)
-
-
-def _find_by_client_id(orders, client_order_id: str) -> Order | None:
-    """Synchronous lookup used by the optional client-id dedupe."""
-    matches = [o for o in orders if o.client_order_id == client_order_id]
-    return max(matches, key=lambda o: o.order_id) if matches else None

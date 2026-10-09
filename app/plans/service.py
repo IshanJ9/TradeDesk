@@ -393,7 +393,7 @@ class PlanService:
             )
         order = outcome.order
         if outcome.outcome == "SENT" and order is not None:
-            order = await self._await_fill(order, to_send.client_order_id)
+            order = await self._await_fill(order)
         if order is None:  # UNKNOWN: timed out and not found in the order book; never re-sent
             return (
                 PlanLegResult(index=leg.index, label=label, status=LegStatus.UNKNOWN, requested_quantity=to_send.quantity,
@@ -402,14 +402,14 @@ class PlanService:
             )
         return self._result_from_order(leg, label, to_send.quantity, order), order
 
-    async def _await_fill(self, order: Order, client_order_id: str) -> Order:
+    async def _await_fill(self, order: Order) -> Order:
         """Give a just-sent step a moment to fill; report whatever it is at the end."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._settings.plan_fill_timeout_seconds
         while order.status in (OrderStatus.PENDING, OrderStatus.OPEN, OrderStatus.PARTIAL) and loop.time() < deadline:
             await asyncio.sleep(self._settings.plan_poll_interval)
             try:
-                fresh = await self._broker.get_order(client_order_id)
+                fresh = await self._broker.get_order(order.order_id)
             except BrokerTimeout:
                 break
             if fresh is not None:
@@ -479,7 +479,7 @@ class PlanService:
         for r in report.legs:
             if r.status in (LegStatus.OPEN, LegStatus.PARTIAL):
                 try:
-                    fresh = await self._broker.get_order(plan.legs[r.index].order.client_order_id)
+                    fresh = await self._executor.order_for(plan.legs[r.index].order.client_order_id)
                 except BrokerTimeout:
                     break
                 if fresh is not None and (_LEG_STATUS[fresh.status], fresh.filled_quantity) != (r.status, r.filled_quantity):

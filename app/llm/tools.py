@@ -378,14 +378,28 @@ class ProposeOrderInput(Model):
     action: OrderAction = Field(description="PLACE a new order, MODIFY an open one, or CANCEL an open one")
     instrument: str | None = Field(default=None, max_length=60, description="What the trader called the stock, as they said it")
     side: Side | None = None
-    quantity: int | None = Field(default=None, gt=0, description="Number of shares. Use this OR amount_rupees")
+    quantity: int | None = Field(default=None, gt=0, description="Number of shares. Use this OR amount_rupees OR fraction_of_holding")
     amount_rupees: float | None = Field(default=None, gt=0, description="Rupee amount to spend, e.g. 'buy Infosys worth 10k' -> 10000")
-    order_type: OrderType | None = Field(default=None, description="LIMIT if the trader gave a price, otherwise MARKET")
+    fraction_of_holding: float | None = Field(
+        default=None, gt=0, le=1,
+        description="SELL only, instead of quantity: a fraction of the shares held. 'half my TCS' -> 0.5, 'a third' -> 0.333, "
+        "'30%' -> 0.3, 'all of it' -> 1. Do NOT work out the share count yourself; the code does it.",
+    )
+    order_type: OrderType | None = Field(
+        default=None,
+        description="LIMIT if the trader gave a price, STOP_LIMIT for a stop-loss (give trigger_price_rupees), otherwise MARKET",
+    )
     limit_price_rupees: float | None = Field(default=None, gt=0)
+    trigger_price_rupees: float | None = Field(
+        default=None, gt=0, description="Stop-loss trigger. To move an existing stop-loss, use action MODIFY with the new trigger"
+    )
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
-    validity_minutes: int | None = None
-    target_order_id: str | None = Field(default=None, description="order_id from get_orders, for MODIFY or CANCEL")
+    target_order_id: str | None = Field(
+        default=None,
+        description="order_id from get_orders, for MODIFY or CANCEL. For 'move my stop-loss on X' you may give the "
+        "instrument and trigger_price_rupees instead; the open stop-loss on X is found for you",
+    )
 
     def to_intent(self) -> OrderIntent:
         return OrderIntent(
@@ -394,18 +408,46 @@ class ProposeOrderInput(Model):
             side=self.side,
             quantity=self.quantity,
             amount_paise=paise(self.amount_rupees) if self.amount_rupees is not None else None,
+            fraction_of_holding=self.fraction_of_holding,
             order_type=self.order_type,
             limit_price=paise(self.limit_price_rupees) if self.limit_price_rupees is not None else None,
+            trigger_price=paise(self.trigger_price_rupees) if self.trigger_price_rupees is not None else None,
             product=self.product,
             validity=self.validity,
-            validity_minutes=self.validity_minutes,
             target_order_id=self.target_order_id,
         )
 
 
+async def _open_stop_for(ctx: ToolContext, name: str) -> tuple[str | None, dict | None]:
+    """The id of the one open stop-loss on `name`, or (None, a tool result explaining why not)."""
+    keys = {i.key for i in await ctx.broker.search_instruments(name, limit=10)}
+    stops = [
+        o
+        for o in await ctx.broker.get_orders()
+        if o.order_type is OrderType.STOP_LIMIT and o.status in (OrderStatus.OPEN, OrderStatus.PARTIAL) and o.instrument.key in keys
+    ]
+    if len(stops) == 1:
+        return stops[0].order_id, None
+    if not stops:
+        return None, {"status": "blocked", "message": f"I can't find an open stop-loss order on {name} in your order book."}
+    ids = ", ".join(o.order_id for o in stops)
+    return None, {"status": "blocked", "message": f"You have several open stop-loss orders on {name} ({ids}). Tell me which one."}
+
+
 async def _propose(ctx: ToolContext, args: dict) -> dict:
     try:
-        intent = ProposeOrderInput.model_validate(args).to_intent()
+        parsed = ProposeOrderInput.model_validate(args)
+        if (
+            parsed.action is OrderAction.MODIFY
+            and not parsed.target_order_id
+            and parsed.instrument
+            and parsed.trigger_price_rupees is not None
+        ):
+            found, problem = await _open_stop_for(ctx, parsed.instrument)
+            if problem is not None:
+                return problem
+            parsed = parsed.model_copy(update={"target_order_id": found})
+        intent = parsed.to_intent()
     except ValidationError as exc:
         errors = [f"{'.'.join(map(str, e['loc'])) or 'input'}: {e['msg']}" for e in exc.errors()]
         return {"status": "invalid", "errors": errors, "note": "Fix the arguments, or ask the trader for what is missing."}

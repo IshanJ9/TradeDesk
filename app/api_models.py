@@ -90,7 +90,6 @@ class PlanLegRequest(Model):
     limit_price_rupees: float | None = Field(default=None, gt=0)
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
-    validity_minutes: int | None = None
 
     @model_validator(mode="after")
     def _one_size(self) -> "PlanLegRequest":
@@ -169,7 +168,6 @@ class CreateRuleRequest(Model):
     limit_price_rupees: float | None = Field(default=None, gt=0)
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
-    validity_minutes: int | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "CreateRuleRequest":

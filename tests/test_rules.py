@@ -291,6 +291,31 @@ async def test_a_run_of_different_ticks_below_the_trigger_fires_once(env):
     assert len(env.s.pending.all()) == 1
 
 
+async def test_a_throttled_feed_that_skips_the_crossing_still_fires_on_the_next_snapshot(env):
+    """021's market socket sends a snapshot at most every 300 ms, not every tick. The price may cross the
+    trigger between two snapshots; the rule must still fire (once) when a snapshot shows it below."""
+    await env.s.rules.create(spec())
+    snapshots = []
+    for price in (3810, 3790, 3795, 3805, 3792):  # the engine only ever sees every other price
+        snapshots.append(env.broker.set_price("NSE:TCS", paise(price)))
+    for tick in (snapshots[0], snapshots[2], snapshots[4]):
+        await env.s.rule_engine.on_tick(tick)
+    assert len(env.s.pending.all()) == 1
+    assert len(env.s.audit.list(kind=AuditKind.RULE_FIRED)) == 1
+
+
+async def test_a_dip_that_recovers_between_two_snapshots_is_not_seen(env):
+    """The honest limit of a 300 ms feed: a dip that comes and goes inside one interval is invisible,
+    so nothing fires. (Written down here so the README can say it.)"""
+    await env.s.rules.create(spec())
+    before = env.broker.set_price("NSE:TCS", paise(3810))
+    env.broker.set_price("NSE:TCS", paise(3790))  # the dip, never delivered
+    after = env.broker.set_price("NSE:TCS", paise(3805))
+    await env.s.rule_engine.on_tick(before)
+    await env.s.rule_engine.on_tick(after)
+    assert env.s.pending.all() == []
+
+
 async def test_a_late_out_of_order_tick_is_ignored(env):
     await env.s.rules.create(spec())
     t1 = env.broker.set_price("NSE:TCS", paise(3900))

@@ -36,7 +36,7 @@ def _num(raw: str, suffix: str | None = None) -> float:
 
 
 def _clean_name(name: str) -> str:
-    name = re.sub(r"\b(shares?|stocks?|of|the|my|please|rs\.?|inr)\b|₹", " ", name, flags=re.I)
+    name = re.sub(r"\b(shares?|stocks?|of|the|my|please|rs\.?|inr|intraday|delivery)\b|₹", " ", name, flags=re.I)
     return " ".join(name.split())
 
 
@@ -149,6 +149,44 @@ class RuleBasedLLM:
             t,
         ):
             return [_call("propose_order", action="MODIFY", target_order_id=m["id"].upper(), limit_price_rupees=_num(m["price"]))]
+
+        # stop-loss: "sell 10 hdfc bank with a stop loss at 1600", "set a stop loss for 10 infy at 1400"
+        if m := re.match(
+            r"(?:please\s+)?(?:(?P<side>sell|buy)\s+" + _NUM.format(n="qty") + r"\s+(?P<name>.+?)\s+(?:with\s+)?(?:a\s+)?stop[\s-]?loss"
+            r"|(?:set|place|put)\s+(?:a\s+)?stop[\s-]?loss\s+(?:order\s+)?(?:for|on)\s+" + _NUM.format(n="qty2") + r"\s+(?P<name2>.+?))"
+            r"\s+(?:at|of|@|trigger(?:ing)?\s+(?:at)?)\s*₹?" + _NUM.format(n="trig") + r"$",
+            t,
+        ):
+            return [
+                _call("propose_order", action="PLACE", instrument=_clean_name(m["name"] or m["name2"]),
+                      side=(m["side"] or "sell").upper(), quantity=int(_num(m["qty"] or m["qty2"])),
+                      order_type="STOP_LIMIT", trigger_price_rupees=_num(m["trig"]),
+                      product="MIS" if "intraday" in t else "CNC")
+            ]
+        # "move my stop loss on hdfc bank up to 1640"
+        if m := re.match(
+            r"(?:please\s+)?(?:move|raise|lift|lower|change|update)\s+(?:my\s+)?stop[\s-]?loss(?:\s+order)?\s+(?:on|for)\s+(?P<name>.+?)"
+            r"\s+(?:(?:up|down)\s+)?(?:to|at)\s*₹?" + _NUM.format(n="trig") + r"$",
+            t,
+        ):
+            return [_call("propose_order", action="MODIFY", instrument=_clean_name(m["name"]), trigger_price_rupees=_num(m["trig"]))]
+
+        # one-step sale of a share of what is held: "sell half my tcs", "sell all my infy", "sell 30% of itc at 410"
+        if m := re.match(
+            r"(?:please\s+)?sell\s+(?P<size>half|a\s+half|a\s+third|a\s+quarter|all|everything|\d+(?:\.\d+)?\s*%)\s+(?:(?:of|in)\s+)?(?:my\s+)?"
+            r"(?P<name>.+?)(?:\s+(?:at|@|for)\s*₹?" + _NUM.format(n="price") + r")?$",
+            t,
+        ):
+            name = _clean_name(m["name"])
+            if name:
+                size = m["size"].replace(" ", "")
+                fraction = _FRACTIONS.get(size) or float(size.rstrip("%")) / 100
+                return [
+                    _call("propose_order", action="PLACE", instrument=name, side="SELL", fraction_of_holding=fraction,
+                          order_type="LIMIT" if m["price"] else "MARKET",
+                          limit_price_rupees=_num(m["price"]) if m["price"] else None,
+                          product="MIS" if "intraday" in t else "CNC")
+                ]
 
         if m := re.match(
             r"(?:please\s+)?(?P<side>buy|sell)\s+(?P<name>.+?)\s+worth\s+₹?" + _NUM.format(n="amt")

@@ -6,6 +6,7 @@ import pytest
 from app.broker.base import BrokerAdapter, BrokerRejected, BrokerTimeout, OrderNotApproved
 from app.broker.mock import MockBroker
 from app.schemas import (
+    MatchKind,
     OrderAction,
     OrderStatus,
     OrderType,
@@ -13,6 +14,7 @@ from app.schemas import (
     PendingState,
     Product,
     RejectionReason,
+    SentOrderSpec,
     Side,
     Validity,
     paise,
@@ -161,7 +163,7 @@ async def test_non_marketable_limit_stays_open_until_price_crosses(broker):
     order = await broker.place_order(await approved(broker, limit="1400"))
     assert order.status is OrderStatus.OPEN and order.filled_quantity == 0
     broker.set_price("NSE:INFY", paise(1399.95))
-    filled = await broker.get_order(order.client_order_id)
+    filled = await broker.get_order(order.order_id)
     assert filled.status is OrderStatus.FILLED and filled.avg_fill_price == paise(1399.95)
 
 
@@ -204,7 +206,7 @@ async def test_partial_fill_then_the_rest_on_the_next_match(broker):
     assert order.status is OrderStatus.PARTIAL and order.filled_quantity == 6
     assert order.pending_quantity == 4
     broker.set_price("NSE:INFY", paise(1447))
-    done = await broker.get_order(order.client_order_id)
+    done = await broker.get_order(order.order_id)
     assert done.status is OrderStatus.FILLED and done.filled_quantity == 10
 
 
@@ -259,15 +261,17 @@ async def test_timeout_after_accept_leaves_a_discoverable_order(broker):
     p = await approved(broker, client_id="cid-1")
     with pytest.raises(BrokerTimeout):
         await broker.place_order(p)
-    found = await broker.get_order("cid-1")  # this is the reconcile step
-    assert found is not None and found.status is OrderStatus.FILLED
+    # the reconcile step: the broker has no client id, so we look for an order that looks like ours
+    found = await broker.find_sent_order(SentOrderSpec.from_pending(p, NOW))
+    assert found.kind is MatchKind.FOUND and found.order.status is OrderStatus.FILLED
 
 
 async def test_timeout_before_accept_leaves_nothing(broker):
     broker.timeout_next_place(accepted=False)
     with pytest.raises(BrokerTimeout):
-        await broker.place_order(await approved(broker, client_id="cid-2"))
-    assert await broker.get_order("cid-2") is None
+        p = await approved(broker, client_id="cid-2")
+        await broker.place_order(p)
+    assert (await broker.find_sent_order(SentOrderSpec.from_pending(p, NOW))).kind is MatchKind.NONE
     assert await broker.get_orders() == []
 
 
@@ -288,18 +292,40 @@ async def approved_offline(broker):
     return p
 
 
-async def test_same_client_id_is_not_deduplicated_by_default(broker):
-    """The executor must not rely on the broker to stop a duplicate."""
+async def test_the_broker_never_learns_our_client_order_id(broker):
+    """021 has no such field. The same id sent twice is two orders, and the order carries no trace of it."""
+    first = await broker.place_order(await approved(broker, qty=1, client_id="same"))
     await broker.place_order(await approved(broker, qty=1, client_id="same"))
-    await broker.place_order(await approved(broker, qty=1, client_id="same"))
-    assert len([o for o in await broker.get_orders() if o.client_order_id == "same"]) == 2
+    assert len(await broker.get_orders()) == 2
+    assert "client_order_id" not in first.model_dump()
 
 
-async def test_dedupe_flag_makes_the_broker_idempotent():
-    b = MockBroker(clock=lambda: NOW, dedupe_client_ids=True)
-    first = await b.place_order(await approved(b, qty=1, client_id="same"))
-    again = await b.place_order(await approved(b, qty=1, client_id="same"))
-    assert again.order_id == first.order_id and len(await b.get_orders()) == 1
+async def test_look_alike_orders_are_reported_as_ambiguous_not_guessed(broker):
+    p = await approved(broker, qty=1, limit="1400")
+    await broker.place_order(p)
+    await broker.place_order(await approved(broker, qty=1, limit="1400"))  # an identical order from elsewhere
+    assert (await broker.find_sent_order(SentOrderSpec.from_pending(p, NOW))).kind is MatchKind.AMBIGUOUS
+
+
+async def test_an_order_already_attributed_to_another_send_is_not_claimed_twice(broker):
+    p = await approved(broker, qty=1, limit="1400")
+    mine = await broker.place_order(p)
+    other = await broker.place_order(await approved(broker, qty=1, limit="1400"))
+    spec = SentOrderSpec.from_pending(p, NOW)
+    found = await broker.find_sent_order(spec, exclude_order_ids={other.order_id})
+    assert found.kind is MatchKind.FOUND and found.order.order_id == mine.order_id
+
+
+async def test_an_older_order_cannot_be_mistaken_for_ours(broker):
+    p = await approved(broker, qty=1, limit="1400")
+    await broker.place_order(p)
+    later = NOW + timedelta(minutes=10)  # we started sending ten minutes after that order was placed
+    assert (await broker.find_sent_order(SentOrderSpec.from_pending(p, later))).kind is MatchKind.NONE
+
+
+async def test_a_protected_market_order_is_a_plain_limit_order_on_the_wire(broker):
+    order = await broker.place_order(await approved(broker, market=True, protection="1460"))
+    assert order.order_type is OrderType.LIMIT and order.limit_price == paise(1460)
 
 
 # ---- modify and cancel -------------------------------------------------------- #
@@ -335,7 +361,7 @@ async def test_cancel_open_order_and_refuse_cancelling_a_filled_one(broker):
     cancelled = await broker.cancel_order(await _action(broker, OrderAction.CANCEL, open_order.order_id))
     assert cancelled.status is OrderStatus.CANCELLED
     broker.set_price("NSE:INFY", paise(1390))
-    assert (await broker.get_order(open_order.client_order_id)).status is OrderStatus.CANCELLED  # stays cancelled
+    assert (await broker.get_order(open_order.order_id)).status is OrderStatus.CANCELLED  # stays cancelled
     filled = await broker.place_order(await approved(broker, limit="1450", qty=1))
     with pytest.raises(BrokerRejected):
         await broker.cancel_order(await _action(broker, OrderAction.CANCEL, filled.order_id))
@@ -403,3 +429,54 @@ async def test_reset_restores_the_seeded_account(broker):
     broker.reset()
     assert await broker.get_orders() == []
     assert (await broker.get_funds()).available_cash == paise(250000)
+
+
+# ---- stop-loss orders: asleep until the trigger is reached ---------------------- #
+
+
+async def stop(broker, *, side=Side.SELL, trigger="1400", limit="1390", qty=5, **over):
+    return await approved(
+        broker, side=side, qty=qty, order_type=OrderType.STOP_LIMIT,
+        limit_price=paise(limit), trigger_price=paise(trigger), **over,
+    )
+
+
+async def test_a_sell_stop_sleeps_until_the_price_falls_to_its_trigger(broker):
+    placed = await broker.place_order(await stop(broker))
+    assert placed.status is OrderStatus.OPEN and placed.order_type is OrderType.STOP_LIMIT
+    assert placed.trigger_price == paise(1400)
+    broker.set_price("NSE:INFY", paise(1410))  # still above the trigger: nothing happens
+    assert (await broker.get_order(placed.order_id)).filled_quantity == 0
+    broker.set_price("NSE:INFY", paise(1399))  # trigger reached; 1399 is above the 1390 limit, so it fills
+    assert (await broker.get_order(placed.order_id)).status is OrderStatus.FILLED
+
+
+async def test_a_sell_stop_that_gaps_below_its_limit_stays_open_not_filled_at_a_bad_price(broker):
+    placed = await broker.place_order(await stop(broker))
+    broker.set_price("NSE:INFY", paise(1385))  # past the 1390 limit in one move
+    still = await broker.get_order(placed.order_id)
+    assert still.status is OrderStatus.OPEN and still.filled_quantity == 0
+
+
+@pytest.mark.parametrize("side, trigger, limit", [(Side.SELL, "1450", "1440"), (Side.BUY, "1440", "1450")])
+async def test_a_stop_on_the_wrong_side_of_the_price_is_rejected(broker, side, trigger, limit):
+    with pytest.raises(BrokerRejected) as exc:
+        await broker.place_order(await stop(broker, side=side, trigger=trigger, limit=limit))
+    assert exc.value.reason is RejectionReason.INVALID_PRICE
+
+
+async def test_moving_a_stop_trigger_changes_when_it_wakes(broker):
+    placed = await broker.place_order(await stop(broker, trigger="1400", limit="1390"))
+    mod = await _action(broker, OrderAction.MODIFY, placed.order_id,
+                        order_type=OrderType.STOP_LIMIT, trigger_price=paise(1430), limit_price=paise(1420))
+    changed = await broker.modify_order(mod)
+    assert changed.trigger_price == paise(1430) and changed.limit_price == paise(1420)
+    broker.set_price("NSE:INFY", paise(1429))
+    assert (await broker.get_order(placed.order_id)).status is OrderStatus.FILLED
+
+
+async def test_a_trigger_cannot_be_set_on_an_order_that_has_none(broker):
+    placed = await broker.place_order(await approved(broker, limit="1400"))
+    with pytest.raises(BrokerRejected):
+        await broker.modify_order(await _action(broker, OrderAction.MODIFY, placed.order_id,
+                                                order_type=OrderType.STOP_LIMIT, trigger_price=paise(1430), limit_price=paise(1420)))
