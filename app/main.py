@@ -32,8 +32,8 @@ from app.pending import PendingStore
 from app.plans.builder import PlanBuilder
 from app.plans.service import PlanAssistant, PlanService
 from app.plans.store import PlanStore
-from app.risk.guard import NoRiskGuard
-# risk-goals: profile/goal persistence and routes (guard is wired in Step 3).
+# risk-goals: profile/goal persistence, routes and trader-selected limits.
+from app.risk.engine import ProfileGuard
 from app.risk.api import router as risk_router
 from app.risk.store import ProfileStore
 from app.rules.engine import RuleEngine
@@ -170,10 +170,11 @@ def create_app(
     app.state.executor = executor
     # Shared hooks for the parallel workstreams (each owner replaces only their own line):
     history = InMemoryActivityStore()  # voice-live: database-backed store + order sync
-    risk = NoRiskGuard()  # risk-goals: the trader's own limits
+    profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
+    risk = ProfileGuard(the_broker.read_only(), profile_store, clock)  # risk-goals
     app.state.history = history
     app.state.risk = risk
-    app.state.profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
+    app.state.profile_store = profile_store  # risk-goals
     cards = CardService(builder, store, hub, audit, risk)
     tools = build_tools()
     llm = make_llm(settings, {name: t.render for name, t in tools.items()})
