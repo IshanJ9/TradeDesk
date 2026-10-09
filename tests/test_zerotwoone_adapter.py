@@ -119,6 +119,17 @@ async def test_an_expired_token_on_an_order_is_refreshed_and_the_order_placed_ex
     assert [r for r in fake.requests if r[0] == "POST" and r[1] == "/orders"].__len__() == 2  # one refused 401, one processed
 
 
+async def test_when_another_copy_keeps_taking_the_login_we_say_so_and_do_not_loop_forever(adapter, fake):
+    fake.lock_out = True
+    logins = fake.logins
+    with pytest.raises(BrokerTimeout, match="only one login per account"):
+        await adapter.get_orders()
+    with pytest.raises(BrokerRejected, match="only one login per account"):
+        await adapter.place_order(await approved(adapter))
+    assert fake.logins - logins <= 4  # a couple of fresh logins, never an endless loop
+    assert not fake.orders  # and an order refused for that reason was never processed
+
+
 def test_the_websocket_address_is_derived_from_the_rest_address():
     assert websocket_base("https://devapi.021.trade/api/developer-api/v1") == "wss://devapi.021.trade/api/developer/websocket"
 
@@ -454,15 +465,15 @@ async def test_an_option_chain_is_built_around_the_money_from_a_separate_feed(ad
             break
         await asyncio.sleep(0.005)
     sub = json.loads(conn.sockets[1].sent[0])
-    assert sub["Mode"] == "oc" and sub["Filters"] == "l,o,v"  # its own connection: a bad filter can't stall prices
+    assert sub["Mode"] == "oc" and sub["Filters"] == "l"  # prices only; its own connection, so a bad filter can't stall prices
     tokens = [t for _, t in sub["Instruments"]]
     for i, token in enumerate(sorted(tokens)):
-        conn.sockets[1].push(chain_packet(token, 10000 + i, 1000 * (i + 1)))
+        conn.sockets[1].push(chain_packet(token, 10000 + i))
     chain = await asyncio.wait_for(task, 2)
     assert chain.spot == paise(24520) and chain.expiry == date(2026, 10, 13)
     assert [r.strike for r in chain.rows] == [paise(24450), paise(24500), paise(24550)]  # the money +/- one step
     assert all(r.call and r.put for r in chain.rows)
-    assert chain.rows[0].call.oi > 0
+    assert chain.rows[0].call.oi is None and chain.rows[0].call.volume is None  # 021's OI/volume are junk: never shown
 
 
 async def test_an_option_chain_with_no_prices_is_a_timeout_not_an_empty_table(adapter, conn):

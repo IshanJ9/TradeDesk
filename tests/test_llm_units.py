@@ -159,3 +159,13 @@ def test_instruction_like_text_is_flagged(text):
 )
 def test_ordinary_names_and_messages_are_not_flagged(text):
     assert scan(text) == (), text
+
+
+def test_the_option_chain_answer_shows_open_interest_only_when_the_broker_gave_one():
+    from app.llm.tools import _render_chain
+
+    row = dict(strike="₹22,500.00", call_ltp="₹132.50", call_oi=None, put_ltp="₹102.09", put_oi=None)
+    base = dict(status="ok", underlying="NIFTY", spot="₹22,511.80", expiry="2026-10-13", at_the_money_strike="₹22,500.00")
+    assert "OI" not in _render_chain({**base, "rows": [row]})  # 021's live OI is junk, so it is left unset and unshown
+    with_oi = _render_chain({**base, "rows": [{**row, "call_oi": 150000, "put_oi": 90000}]})
+    assert "(OI 150,000)" in with_oi and "(OI 90,000)" in with_oi  # the mock still has it

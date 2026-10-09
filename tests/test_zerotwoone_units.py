@@ -24,7 +24,7 @@ from app.schemas import (
     Validity,
     paise,
 )
-from fake021 import FakeConnector, FakeSocket, HEARTBEAT, chain_packet, csv_text, exchange_seconds, full_index, full_nse_cash, ltp_packet
+from fake021 import FakeConnector, FakeSocket, HEARTBEAT, chain_packet, csv_text, expiry_seconds, full_index, full_nse_cash, ltp_packet
 
 NOW = datetime(2026, 10, 9, 10, 0, tzinfo=timezone.utc)
 
@@ -93,13 +93,22 @@ def test_options_are_built_per_underlying_with_real_expiries(master):
     assert master.option_expiries("BANKNIFTY") == []
 
 
-def test_expiry_epochs_are_read_whichever_way_021_means_them():
+def test_expiries_are_unix_seconds_as_in_the_real_file():
     today = date(2026, 10, 9)
-    assert expiry_to_date(exchange_seconds(2026, 10, 13), today) == date(2026, 10, 13)  # seconds since 1980
-    unix = int(datetime(2026, 10, 13, 10, tzinfo=timezone.utc).timestamp())
-    assert expiry_to_date(unix, today) == date(2026, 10, 13)  # or plain Unix seconds
+    assert expiry_to_date(1791882000, today) == date(2026, 10, 13)  # a value from 021's live file: a Tuesday
     assert expiry_to_date(0, today) is None  # cash instruments
-    assert expiry_to_date(exchange_seconds(2020, 1, 1), today) is None  # long expired: not a live contract
+    assert expiry_to_date(expiry_seconds(2020, 1, 1), today) is None  # long expired: not a live contract
+    assert expiry_to_date(expiry_seconds(2040, 1, 1), today) is None  # absurdly far away
+
+
+def test_the_index_has_no_name_in_the_file_so_it_is_named_from_its_option_contracts():
+    """The real file's index rows have empty symbols. NIFTY exists only as the name on its option rows."""
+    text = csv_text()
+    assert ',"",0,"",IDX,' in text  # the fixture really does look like the live file
+    m = InstrumentMaster.from_csv(text, today=date(2026, 10, 9))
+    assert m.index("nifty").token == 26000 and m.index("NIFTY").ws == (3, 26000)
+    assert m.index("INFY") is None  # a stock is not an index
+    assert m.index("NOSUCH") is None
 
 
 def test_option_symbols_keep_half_rupee_strikes_apart():

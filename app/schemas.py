@@ -317,8 +317,9 @@ class Tick(Model):
 class OptionQuote(Model):
     instrument_key: str
     ltp: Paise
-    oi: Annotated[int, Field(ge=0)] = 0
-    volume: Annotated[int, Field(ge=0)] = 0
+    # None = not known. 021's sandbox fills these two with random numbers, so the live adapter leaves them unset.
+    oi: Annotated[int, Field(ge=0)] | None = None
+    volume: Annotated[int, Field(ge=0)] | None = None
 
 
 class OptionChainRow(Model):

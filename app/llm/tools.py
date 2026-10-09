@@ -8,6 +8,7 @@ that approves, sends, or executes anything; `ToolContext` holds no reference to 
 the approval service, so a model that is fooled by hostile text still cannot place an order.
 """
 
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -15,8 +16,9 @@ from typing import Any
 
 from pydantic import Field, ValidationError
 
-from app.api_models import Card, CreateRuleRequest, ProposePlanRequest
+from app.api_models import Card, CreateRuleRequest, NoticeCard, ProposePlanRequest
 from app.broker.base import ReadOnlyBroker
+from app.llm.grounding import numbers_not_typed
 from app.llm.injection import Finding, scan
 from app.llm.types import ToolSpec
 from app.orders.cards import CardService
@@ -47,6 +49,7 @@ class ToolContext:
     rules: RuleService
     plans: PlanAssistant  # can draft a plan card and read reports; it cannot approve or run anything
     clock: Callable[[], datetime]
+    user_texts: list[str] = field(default_factory=list)  # what the trader actually wrote (this turn and recent ones)
     findings: list[Finding] = field(default_factory=list)
     reply_cards: list[Card] = field(default_factory=list)
     proposal_texts: list[str] = field(default_factory=list)
@@ -72,6 +75,39 @@ class Tool:
     run: Callable[[ToolContext, dict], Awaitable[dict]]
     render: Callable[[dict], str]
     read_only: bool = True
+
+
+_RUPEE_WORDS = re.compile(r"₹|\brs\.?(?!\w)|\brupees?\b|\brupay\w*|\binr\b|\bworth\b|\bamount\b|\bk\b|\blakh|\blac\b|\bcrore|\bcr\b|\bka\b|\d\s?k\b", re.IGNORECASE)
+
+
+def _amount_without_rupees(ctx: ToolContext, amount_rupees: float | int | None) -> dict | None:
+    """A bare number before a stock name ("sell 100000 infosys") means SHARES. A model that reads it as rupees
+    must be stopped unless the trader said something about money; the trader is asked, in code-written words."""
+    if amount_rupees is None or any(_RUPEE_WORDS.search(t) for t in ctx.user_texts):
+        return None
+    message = (
+        f"I read {amount_rupees:g} as an amount in rupees, but you didn't mention rupees. "
+        "Nothing was prepared. Did you mean that many shares? Please tell me again, for example "
+        "\"sell 10 shares\" or \"buy ₹10,000 worth\"."
+    )
+    ctx.reply_cards.append(NoticeCard(level="warning", message=message))
+    ctx.proposal_texts.append(message)
+    return {"status": "blocked", "message": message}
+
+
+def _misread(ctx: ToolContext, **named: float | int | None) -> dict | None:
+    """A model can corrupt a number ("sell 100000" became "69"). Every figure it puts into an order, rule or plan
+    must be one the trader wrote. If not, nothing is prepared, and the trader is asked again in code-written words."""
+    bad = numbers_not_typed(named, ctx.user_texts)
+    if not bad:
+        return None
+    label = {"quantity": "the quantity", "amount_rupees": "the amount", "limit_price_rupees": "the price",
+             "trigger_price_rupees": "the trigger price", "price_rupees": "the price", "percent": "the percentage"}
+    parts = ", ".join(f"{label.get(k, k)} as {v.normalize():f}" for k, v in bad)
+    message = f"I read {parts}, but that number isn't in what you wrote. Nothing was prepared. Please tell me again."
+    ctx.reply_cards.append(NoticeCard(level="warning", message=message))
+    ctx.proposal_texts.append(message)
+    return {"status": "blocked", "message": message}
 
 
 def _error(message: str) -> dict:
@@ -129,19 +165,35 @@ def _select(items: list, down_more_than_pct: float | None, symbol: str | None) -
     return out
 
 
-def _valued_tool(kind: str, fetch: Callable[[ReadOnlyBroker], Awaitable[list]]) -> Tool:
+def _valued_tool(
+    kind: str,
+    fetch: Callable[[ReadOnlyBroker], Awaitable[list]],
+    other_kind: str,
+    other_fetch: Callable[[ReadOnlyBroker], Awaitable[list]],
+) -> Tool:
     async def run(ctx: ToolContext, args: dict) -> dict:
         threshold, symbol = args.get("down_more_than_pct"), args.get("symbol")
         buffett = await _buffett(ctx)
         items = await fetch(ctx.broker)
         chosen = _select(items, threshold, symbol)
-        return {
+        out = {
             "count": len(chosen),
             "total_held": len(items),
             "filter": {"down_more_than_pct": threshold, "symbol": symbol},
             kind: [_row(ctx, v, buffett) for v in chosen],
             "buffett_mode": buffett,
         }
+        if threshold is not None or symbol is not None:
+            # "positions" in everyday speech means everything the trader is invested in, and a model may ask only
+            # one of the two lists. A share bought today sits under positions until the next day, so a "down more
+            # than X%" or a single-stock question always answers for BOTH, in code.
+            others = _select(await other_fetch(ctx.broker), threshold, symbol)
+            out[f"also_down_in_{other_kind}"] = [_row(ctx, v, buffett) for v in others]
+            out["note"] = (
+                "Holdings are shares the trader owns; positions are what they traded today. "
+                "Both lists are included here, so mention both."
+            )
+        return out
 
     def render(o: dict) -> str:
         rows, f = o[kind], o["filter"]
@@ -152,14 +204,16 @@ def _valued_tool(kind: str, fetch: Callable[[ReadOnlyBroker], Awaitable[list]]) 
             head = f"Matching {label} for “{f['symbol']}”: {o['count']}"
         else:
             head = f"You have {o['count']} {label}"
-        if not rows:
-            return head + "."
-        lines = [
-            f"{r['symbol']}: {r['quantity']} @ avg {r['avg_buy_price']}, now {r['ltp']}, "
-            f"{r['pnl_pct']:+.2f}% ({r['pnl']})"
-            for r in rows
-        ]
-        return head + ":\n" + "\n".join(lines)
+        def describe(r: dict) -> str:
+            return f"{r['symbol']}: {r['quantity']} @ avg {r['avg_buy_price']}, now {r['ltp']}, {r['pnl_pct']:+.2f}% ({r['pnl']})"
+
+        text = head + (":\n" + "\n".join(describe(r) for r in rows) if rows else ".")
+        extra = o.get(f"also_down_in_{other_kind}") or []
+        if extra:
+            pct = f["down_more_than_pct"]
+            heading = f"Also down more than {pct:g}% in your {other_kind}" if pct is not None else f"Also in your {other_kind}"
+            text += f"\n{heading}:\n" + "\n".join(describe(r) for r in extra)
+        return text
 
     verb = "positions" if kind == "positions" else "holdings"
     return Tool(
@@ -217,7 +271,11 @@ async def _orders(ctx: ToolContext, args: dict) -> dict:
     status = args.get("status")
     orders = await ctx.broker.get_orders()
     if status:
-        orders = [o for o in orders if o.status.value == status.upper()]
+        wanted = {status.upper()}
+        if wanted & {"OPEN", "PENDING", "PARTIAL"}:
+            # "open orders" in everyday speech means every order still live, including a part-filled one
+            wanted = {"OPEN", "PENDING", "PARTIAL"}
+        orders = [o for o in orders if o.status.value in wanted]
     rows = [
         {
             "order_id": o.order_id,
@@ -359,10 +417,11 @@ async def _chain(ctx: ToolContext, args: dict) -> dict:
 def _render_chain(o: dict) -> str:
     if o.get("status") == "error":
         return o["message"]
-    lines = [
-        f"{r['strike']}: call {r['call_ltp']} (OI {r['call_oi']:,}) | put {r['put_ltp']} (OI {r['put_oi']:,})"
-        for r in o["rows"]
-    ]
+    def leg(kind: str, r: dict) -> str:
+        oi = r[f"{kind}_oi"]
+        return f"{r[f'{kind}_ltp']}" + (f" (OI {oi:,})" if oi is not None else "")  # OI only when the broker gave one
+
+    lines = [f"{r['strike']}: call {leg('call', r)} | put {leg('put', r)}" for r in o["rows"]]
     return (
         f"{o['underlying']} is at {o['spot']}. Strikes around the money for the {o['expiry']} expiry "
         f"(at-the-money {o['at_the_money_strike']}):\n" + "\n".join(lines)
@@ -376,7 +435,7 @@ def _render_chain(o: dict) -> str:
 
 class ProposeOrderInput(Model):
     action: OrderAction = Field(description="PLACE a new order, MODIFY an open one, or CANCEL an open one")
-    instrument: str | None = Field(default=None, max_length=60, description="What the trader called the stock, as they said it")
+    instrument: str | None = Field(default=None, max_length=60, description="ONLY the stock's name, as the trader said it, e.g. 'ITC' or 'HDFC Bank'. Never put the price, the quantity or words like 'at market' in here; those have their own fields")
     side: Side | None = None
     quantity: int | None = Field(default=None, gt=0, description="Number of shares. Use this OR amount_rupees OR fraction_of_holding")
     amount_rupees: float | None = Field(default=None, gt=0, description="Rupee amount to spend, e.g. 'buy Infosys worth 10k' -> 10000")
@@ -454,6 +513,14 @@ async def _propose(ctx: ToolContext, args: dict) -> dict:
     except ValueError as exc:  # OrderIntent's own checks
         return {"status": "invalid", "errors": [str(exc)], "note": "Fix the arguments, or ask the trader for what is missing."}
 
+    if intent.action in (OrderAction.PLACE, OrderAction.MODIFY):
+        wrong = _amount_without_rupees(ctx, parsed.amount_rupees) or _misread(
+            ctx, quantity=parsed.quantity, amount_rupees=parsed.amount_rupees,
+            limit_price_rupees=parsed.limit_price_rupees, trigger_price_rupees=parsed.trigger_price_rupees,
+        )
+        if wrong:
+            return wrong
+
     proposal = await ctx.cards.propose(intent)
     ctx.reply_cards.extend(proposal.reply.cards)
     ctx.proposal_texts.append(proposal.reply.text)  # the reply shown to the trader is written by code
@@ -485,6 +552,13 @@ async def _create_rule(ctx: ToolContext, args: dict) -> dict:
     except ValidationError as exc:
         errors = [f"{'.'.join(map(str, e['loc'])) or 'input'}: {e['msg']}" for e in exc.errors()]
         return {"status": "invalid", "errors": errors, "note": "Fix the arguments, or ask the trader for what is missing."}
+
+    wrong = _amount_without_rupees(ctx, req.amount_rupees) or _misread(
+        ctx, quantity=req.quantity, amount_rupees=req.amount_rupees, price_rupees=req.price_rupees,
+        limit_price_rupees=req.limit_price_rupees, percent=req.percent,
+    )
+    if wrong:
+        return wrong
 
     outcome = await ctx.rules.create(req)
     ctx.reply_cards.extend(outcome.reply.cards)
@@ -550,6 +624,13 @@ async def _propose_plan(ctx: ToolContext, args: dict) -> dict:
         errors = [f"{'.'.join(map(str, e['loc'])) or 'input'}: {e['msg']}" for e in exc.errors()]
         return {"status": "invalid", "errors": errors, "note": "Fix the arguments, or ask the trader for what is missing."}
 
+    for leg in req.legs:
+        wrong = _amount_without_rupees(ctx, leg.amount_rupees) or _misread(
+            ctx, quantity=leg.quantity, amount_rupees=leg.amount_rupees, limit_price_rupees=leg.limit_price_rupees
+        )
+        if wrong:
+            return wrong
+
     proposal = await ctx.plans.propose(req)
     ctx.reply_cards.extend(proposal.reply.cards)
     ctx.proposal_texts.append(proposal.reply.text)  # the plan description is written by code
@@ -609,8 +690,8 @@ async def _plan_report(ctx: ToolContext, args: dict) -> dict:
 def build_tools() -> dict[str, Tool]:
     tools = [
         Tool(ToolSpec("get_funds", "Available cash and used margin.", _schema()), _funds, _render_funds),
-        _valued_tool("holdings", lambda b: b.get_holdings()),
-        _valued_tool("positions", lambda b: b.get_positions()),
+        _valued_tool("holdings", lambda b: b.get_holdings(), "positions", lambda b: b.get_positions()),
+        _valued_tool("positions", lambda b: b.get_positions(), "holdings", lambda b: b.get_holdings()),
         Tool(
             ToolSpec(
                 "get_pnl_summary",
@@ -624,7 +705,8 @@ def build_tools() -> dict[str, Tool]:
         Tool(
             ToolSpec(
                 "get_orders",
-                "Today's orders with their status. Use this to find an order_id before modifying or cancelling.",
+                "Today's orders with their status. Use this to find an order_id before modifying or cancelling. "
+                "Asking for OPEN (or PENDING or PARTIAL) returns every order still live, including part-filled ones.",
                 _schema(status={"type": "string", "enum": [s.value for s in OrderStatus], "description": "Only orders in this status"}),
             ),
             _orders,

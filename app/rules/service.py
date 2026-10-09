@@ -19,6 +19,7 @@ from app.config import Settings
 from app.events import EventHub
 from app.orders.cards import CardService
 from app.orders.limits import HardLimits, OrderBlocked, check_instrument, check_price, check_size
+from app.orders.owned import delivery_owned, owned_average_price
 from app.rules.store import RuleStore
 from app.schemas import (
     AuditKind,
@@ -191,10 +192,9 @@ class RuleService:
             )
         basis = req.basis or RuleBasis.AT_CREATION
         if basis is RuleBasis.AVG_BUY:
-            held = [h for h in await self._broker.get_holdings() if h.instrument.key == inst.key]
-            if not held:
+            reference = owned_average_price(await delivery_owned(self._broker), inst.key)  # holdings + today's buys
+            if reference is None:
                 return self._blocked(f"You don't hold {inst.symbol}, so there's no buy price to measure from.")
-            reference = held[0].avg_price
         elif basis is RuleBasis.PREV_CLOSE:
             reference = quote.prev_close
         else:

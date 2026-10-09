@@ -88,10 +88,13 @@ class MockBroker(BrokerAdapter):
         clock: Callable[[], datetime] = _utcnow,
         seed: int = 7,
         cash: str = "250000",
+        delivery_as_positions: bool = False,
     ):
         self._clock = clock
         self._rng = random.Random(seed)
         self._cash0 = paise(cash)
+        # 021 lists a delivery (CNC) share bought TODAY under positions, not holdings. True mimics that.
+        self.delivery_as_positions = delivery_as_positions
         self.market_open = True
         self.locks = AccountLocks()
         self.network_down = False
@@ -116,6 +119,7 @@ class MockBroker(BrokerAdapter):
         self._cash = self._cash0
         self._holdings: dict[str, tuple[int, int]] = {}
         self._positions: dict[str, tuple[int, int]] = {}
+        self._position_product: dict[str, Product] = {}  # product of each position row (default intraday)
         self._subs: list[tuple[frozenset[str] | None, asyncio.Queue[Tick]]] = []
         self._timeout_place: bool | None = None  # None = off, else "accepted?"
         self._reject_next: RejectionReason | None = None
@@ -210,7 +214,11 @@ class MockBroker(BrokerAdapter):
 
     async def get_positions(self) -> list[Position]:
         self._check_network()
-        return [Position(**self._valued(k, q, a)) for k, (q, a) in self._positions.items() if q != 0]
+        return [
+            Position(**self._valued(k, q, a), product=self._position_product.get(k, Product.MIS))
+            for k, (q, a) in self._positions.items()
+            if q != 0
+        ]
 
     async def get_orders(self) -> list[Order]:
         self._check_network()
@@ -417,6 +425,8 @@ class MockBroker(BrokerAdapter):
             self._reject(p, RejectionReason.INSUFFICIENT_FUNDS, "not enough funds")
         if p.side is Side.SELL and p.product is Product.CNC:
             held = self._holdings.get(inst.key, (0, 0))[0]
+            if self._position_product.get(inst.key) is Product.CNC:  # today's delivery buys can be sold too
+                held += max(self._positions.get(inst.key, (0, 0))[0], 0)
             if p.quantity > held:
                 self._reject(p, RejectionReason.INVALID_QUANTITY, "selling more than you hold")
 
@@ -563,7 +573,13 @@ class MockBroker(BrokerAdapter):
         key = o.instrument.key
         signed = qty if o.side is Side.BUY else -qty
         self._cash += -price * qty if o.side is Side.BUY else price * qty
-        book = self._holdings if o.product is Product.CNC else self._positions
+        to_holdings = o.product is Product.CNC and not (self.delivery_as_positions and o.side is Side.BUY)
+        if o.product is Product.CNC and o.side is Side.SELL:  # sells use holdings first, then today's delivery buys
+            todays = self._position_product.get(key) is Product.CNC and self._positions.get(key, (0, 0))[0] > 0
+            to_holdings = not todays or self._holdings.get(key, (0, 0))[0] > 0
+        book = self._holdings if to_holdings else self._positions
+        if book is self._positions:
+            self._position_product[key] = o.product
         old_qty, old_avg = book.get(key, (0, 0))
         new_qty = old_qty + signed
         if new_qty == 0:

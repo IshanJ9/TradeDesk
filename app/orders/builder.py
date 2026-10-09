@@ -6,6 +6,7 @@ raises `NeedsClarification` (ambiguous or unknown instrument: ask, never guess),
 `OrderBlocked` (a hard limit or lock: tell the trader why).
 """
 
+import re
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from fractions import Fraction
 from app.broker.base import BrokerAdapter
 from app.config import Settings
 from app.orders.charges import compute_charges, estimated_total
+from app.orders.owned import delivery_owned, owned_quantity
 from app.orders.limits import (
     HardLimits,
     OrderBlocked,
@@ -37,6 +39,17 @@ from app.schemas import (
 )
 
 FAR_FROM_LTP_PCT = 5.0  # warn when a limit price is this far from the current price
+
+# Order words that a model sometimes leaves inside the stock name ("itc at market", "hdfc bank at 1450.50").
+_ORDER_TAIL = re.compile(
+    r"\s+(?:at|for|limit|market|mkt|cmp|price|intraday|delivery|rs\.?|inr)\b.*$|\s+[@₹].*$|\s+₹?\d[\d,.]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_order_words(ref: str) -> str:
+    """'itc at market' -> 'itc'. Only ever removes order wording after the name, never part of a name."""
+    return _ORDER_TAIL.sub("", ref.strip()).strip()
 
 
 class NeedsClarification(Exception):
@@ -72,6 +85,11 @@ class OrderBuilder:
         """Words -> exactly one instrument, or a list of candidates to ask about."""
         query = ref.strip()
         hits = await self._broker.search_instruments(query, limit=10) if query else []
+        if not hits and query:  # a model may have left "at market" / "at 1450" in the name: try without it
+            trimmed = strip_order_words(query)
+            if trimmed and trimmed != query:
+                query = trimmed
+                hits = await self._broker.search_instruments(query, limit=10)
         if not hits:
             return ResolutionResult(status="not_found", query=query)
         exact = [i for i in hits if i.symbol.lower() == query.lower()]
@@ -203,7 +221,7 @@ class OrderBuilder:
             )
             what = f"your intraday position of {held}"
         else:
-            held = sum(h.quantity for h in await self._broker.get_holdings() if h.instrument.key == inst.key)
+            held = owned_quantity(await delivery_owned(self._broker), inst.key)  # holdings + today's delivery buys
             what = f"your {held}"
         # Exact fractions: a third of 3 shares is 1, not 0.9999999 rounded down to nothing.
         fraction = Fraction(str(intent.fraction_of_holding)).limit_denominator(1000)
@@ -279,9 +297,13 @@ class OrderBuilder:
         check_locks(locks, OrderAction.PLACE, quantity * price)
 
         if side is Side.SELL and intent.product is Product.CNC:
-            held = sum(h.quantity for h in await self._broker.get_holdings() if h.instrument.key == inst.key)
+            held = owned_quantity(await delivery_owned(self._broker), inst.key)  # holdings + today's delivery buys
             if quantity > held:
                 have = f"You hold {held} shares of {inst.symbol}" if held else f"You don't hold any {inst.symbol}"
+                if intent.amount_paise is not None:  # say how the number was read, so a rupee reading is not a mystery
+                    ask = f"{fmt_rupees(intent.amount_paise)} of {inst.symbol} is about {quantity} shares at {fmt_rupees(sizing_price)}"
+                    mine = f"you hold {held}" if held else "you don't hold any"
+                    raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"{ask}, but {mine}.")
                 raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"{have}, so you can't sell {quantity}.")
 
         charges = compute_charges(

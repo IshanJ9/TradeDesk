@@ -22,6 +22,7 @@ from app.broker.base import ReadOnlyBroker
 from app.config import Settings
 from app.orders.builder import OrderBuilder
 from app.orders.limits import OrderBlocked
+from app.orders.owned import delivery_owned
 from app.schemas import (
     OrderAction,
     OrderIntent,
@@ -67,7 +68,7 @@ class PlanBuilder:
 
     async def build(self, req: ProposePlanRequest) -> Plan:
         plan_id = self._new_id("plan")
-        holdings = await self._broker.get_holdings()
+        holdings = await delivery_owned(self._broker)  # holdings + today's delivery buys
         legs: list[PlanLeg] = []
         for i, lr in enumerate(req.legs):
             try:
