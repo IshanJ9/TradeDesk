@@ -42,6 +42,11 @@ HIGH_RISK_VOICE_REFUSAL = (
     "Futures and selling options you don't hold can't be started from a voice message, because a mis-heard "
     "number is costly. Please type the order."
 )
+UNLIMITED_RISK_OFF_REFUSAL = (
+    "TradeDesk does not open futures or sell options you don't hold: a loss on them can be larger than what you put "
+    "in, and can be unlimited for a written call. You can still buy options, and close any futures or options you "
+    "already hold."
+)
 FAR_FROM_LTP_PCT = 5.0  # warn when a limit price is this far from the current price
 
 # Order words that a model sometimes leaves inside the stock name ("itc at market", "hdfc bank at 1450.50").
@@ -466,6 +471,8 @@ class OrderBuilder:
         opening = quantity - closing
         writing = side is Side.SELL and opening > 0  # selling options the trader does not hold
         if writing:
+            if not self.limits.allow_unlimited_risk_fo:
+                raise OrderBlocked(RejectionReason.SEGMENT_NOT_ALLOWED, UNLIMITED_RISK_OFF_REFUSAL)
             if intent.via_voice:
                 raise OrderBlocked(RejectionReason.OTHER, HIGH_RISK_VOICE_REFUSAL)
             self._check_new_exposure_cap(inst, opening)
@@ -601,6 +608,8 @@ class OrderBuilder:
         warnings.append(sizing)
         closing = min(quantity, abs(net)) if net and (net > 0) != (side is Side.BUY) else 0
         opening = quantity - closing
+        if opening and not self.limits.allow_unlimited_risk_fo:
+            raise OrderBlocked(RejectionReason.SEGMENT_NOT_ALLOWED, UNLIMITED_RISK_OFF_REFUSAL)
         self._check_new_exposure_cap(inst, opening)
         check_size(quantity, price, self.limits)
         check_locks(locks, OrderAction.PLACE, quantity * price)

@@ -25,7 +25,7 @@ def broker():
 
 @pytest.fixture
 def client(broker):
-    settings = Settings(ticker_interval=None, reconcile_interval=None, timeout_reconcile_delay=0, account_push_interval=3600)
+    settings = Settings(allow_unlimited_risk_fo=True, ticker_interval=None, reconcile_interval=None, timeout_reconcile_delay=0, account_push_interval=3600)
     with TestClient(create_app(settings, broker=broker, clock=lambda: T0)) as c:
         yield c
 

@@ -31,12 +31,14 @@ class HardLimits:
     allowed_series: frozenset[str] = frozenset({"EQ", "BE"})  # equity; no futures, no indices
     allow_options: bool = True  # buying options, selling ones held, and writing (the builder adds the extra checks)
     allow_futures: bool = True
+    allow_unlimited_risk_fo: bool = False  # opening futures / writing options; off unless the operator turns it on
     max_fo_lots: int = 2  # new futures / written-option exposure per order, in lots; closing is never capped
 
     @classmethod
     def from_settings(cls, s: Settings) -> "HardLimits":
         return cls(max_quantity=s.max_order_quantity, max_order_value=paise(s.max_order_value_rupees),
-                   max_fo_lots=s.max_fo_lots_per_order)
+                   max_fo_lots=s.max_fo_lots_per_order,
+                   allow_unlimited_risk_fo=s.allow_unlimited_risk_fo)
 
 
 def check_instrument(inst: Instrument, limits: HardLimits) -> None:
