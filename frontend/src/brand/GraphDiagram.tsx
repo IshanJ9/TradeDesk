@@ -1,7 +1,7 @@
 // The LangGraph orchestrator, drawn. Pick an example message and watch it travel through the real nodes; the
 // log beside it says what each node did. Plays step by step; with reduced motion it shows the whole path at once.
 import { Fragment, useEffect, useState } from "react";
-import { APPROVAL, NODES, SCENARIOS, nodeStates, type GraphNode, type NodeId, type NodeState } from "./graph";
+import { APPROVAL, NODES, ROUTES, SCENARIOS, nodeStates, type GraphNode, type NodeId, type NodeState, type RouteId } from "./graph";
 
 const STEP_MS = 1100;
 const WHO_LABEL = { you: "YOU", ai: "AI", code: "CODE" } as const;
@@ -33,6 +33,32 @@ function Row({ nodes, states }: { nodes: GraphNode[]; states: Record<NodeId, Nod
           <Node node={n} state={states[n.id]} />
         </Fragment>
       ))}
+    </div>
+  );
+}
+
+// The router's five routes; the one this message took lights up once the router has run.
+function Routes({ chosen }: { chosen: RouteId | null }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="The router's five routes">
+      <span className="b-muted text-[12.5px]">Routes:</span>
+      {ROUTES.map((r) => {
+        const on = r.id === chosen;
+        return (
+          <span
+            key={r.id}
+            title={`${r.title}: ${r.allows}`}
+            aria-current={on ? "true" : undefined}
+            className="rounded-full px-3 py-1 text-[12.5px]"
+            style={on
+              ? { background: "var(--b-ink)", color: "var(--b-ink-inverse)", fontWeight: 700 }
+              : { color: "var(--b-muted)", boxShadow: "inset 0 0 0 1px var(--b-line-strong)" }}
+          >
+            {r.title}
+            {on && <span className="font-normal"> · {r.allows}</span>}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -89,7 +115,8 @@ export function GraphDiagram() {
       <div className="mt-6">
         <div className="b-eyebrow mb-3" style={{ color: "var(--b-muted)" }}>Inside the graph · <span className="n">app/agent/graph.py</span></div>
         <Row nodes={NODES} states={states} />
-        <p className="b-muted mb-0 mt-3 text-[12.5px]">The model and the tools can go back and forth, at most 6 rounds, before the output guard. The router picks tools only: it never decides a price or a quantity.</p>
+        <Routes chosen={lit(states.router) && states.router !== "blocked" ? scenario.route : null} />
+        <p className="b-muted mb-0 mt-3 text-[12.5px]">Each route allows only its own tools, and code refuses any other. The model and the tools can go back and forth, at most 6 rounds, before the output guard. The router picks tools only: it never decides a price or a quantity.</p>
       </div>
 
       <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--b-line)", opacity: usesApproval ? 1 : 0.5 }}>

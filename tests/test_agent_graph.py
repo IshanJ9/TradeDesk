@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.agent.graph import GraphCopilot
-from app.agent.router import route
+from app.agent.router import ROUTES, allowed_tools, route
 from app.api_models import TraceEvent
 from app.broker.mock import MockBroker
 from app.config import Settings
@@ -17,6 +17,7 @@ from app.llm.tools import build_tools
 from app.llm.types import LLMTurn, ToolCall
 from app.main import create_app
 from app.plans.service import PlanAssistant
+from scripts.model_eval import CASES
 
 T0 = datetime(2026, 10, 8, 5, 0, tzinfo=timezone.utc)
 
@@ -68,30 +69,76 @@ def env():
 
 
 @pytest.mark.parametrize(
-    "text",
-    ["what's my P&L today?", "show my holdings", "how is TCS doing", "which positions are down more than 5%?", "NIFTY options near the money"],
-)
-def test_questions_get_the_read_route(text):
-    assert route(text) == "read"
-
-
-@pytest.mark.parametrize(
-    "text",
+    "text, expected",
     [
-        "buy 10 infosys at 1450",
-        "Sell half my TCS",
-        "exit all my losing intraday positions",
-        "cancel order 256294",
-        "alert me if HDFC Bank drops 3% from my buy price",
-        "tell me when ITC crosses 450",
-        "if TCS falls below 3800 get 5",
-        "rebalance so no stock exceeds 20%",
-        "infosys ke 10 share kharido",
-        "get rid of my zomato",
+        ("what's my P&L today?", "read"),
+        ("show my holdings", "read"),
+        ("how is TCS doing", "read"),
+        ("which positions are down more than 5%?", "read"),
+        ("NIFTY options near the money", "read"),
+        ("what would 10 infosys shares cost?", "read"),
+        ("meri holdings dikhao", "read"),
+        ("Show my risk profile", "risk"),
+        ("Show my average risk and trading patterns", "risk"),
+        ("what are my limits", "risk"),
+        ("change my daily order limit to 5", "risk"),  # no tool can change settings: it reads
+        ("am I overtrading?", "risk"),
+        ("buy 10 infosys at 1450", "order"),
+        ("Sell half my TCS", "order"),
+        ("sell all my infy", "order"),
+        ("cancel order 256294", "order"),
+        ("Move my stop-loss on HDFC Bank up to 1640", "order"),
+        ("infosys ke 10 share kharido", "order"),
+        ("TCS aadha bech do", "order"),
+        ("get rid of my zomato", "order"),
+        ("buy 10 infy, is that within my limits?", "order"),  # an order verb wins over risk words
+        ("alert me if HDFC Bank drops 3% from my buy price", "rule"),
+        ("tell me when ITC crosses 450", "rule"),
+        ("Buy 5 TCS if it falls below 3800", "rule"),
+        ("tell me when any of my holdings falls 3% in a day", "rule"),
+        ("list my rules", "rule"),
+        ("cancel rule r-1a2b", "rule"),
+        ("exit all my losing intraday positions", "plan"),
+        ("rebalance so no stock exceeds 20%", "plan"),
+        ("Sell half my Infosys and buy ITC with the money", "plan"),
+        ("sell all my stocks", "plan"),
+        ("how did my plan go", "plan"),
     ],
 )
-def test_possible_actions_get_every_tool(text):
-    assert route(text) == "act"
+def test_each_message_takes_one_of_five_routes(text, expected):
+    assert route(text) == expected
+
+
+def test_each_route_offers_only_its_own_drafting_tools():
+    tools = build_tools()
+    reads = {n for n, t in tools.items() if t.read_only}
+    writes = set(tools) - reads
+    assert allowed_tools("read", reads) & writes == set()
+    assert allowed_tools("risk", reads) & writes == set()
+    assert {"get_risk_profile", "get_discipline"} <= allowed_tools("risk", reads) < reads
+    assert allowed_tools("order", reads) & writes == {"propose_order"}
+    assert allowed_tools("rule", reads) & writes == {"create_rule", "cancel_rule", "alert_on_holdings"}
+    assert allowed_tools("plan", reads) & writes == {"propose_plan", "exit_losing_positions", "trim_to_max_weight", "propose_order"}
+    # every drafting tool belongs to some route, so nothing became unreachable
+    assert set().union(*(allowed_tools(r, reads) for r in ROUTES)) == set(tools)
+
+
+def test_rules_mode_never_asks_for_a_tool_outside_its_route():
+    """The built-in stand-in picks tools by its own keywords; its picks must fit the router's route."""
+    tools = build_tools()
+    reads = {n for n, t in tools.items() if t.read_only}
+    llm = RuleBasedLLM(build_tools_render())
+    messages = [c.prompt for c in CASES] + ["Show my risk profile", "Show my average risk and trading patterns",
+                                             "how did my plan go", "list my rules", "cancel rule r-1a2b", "sell all my infy"]
+    for m in messages:
+        picked = {c.name for c in llm.parse(m)}
+        assert picked <= allowed_tools(route(m), reads), m
+
+
+def test_the_graph_branches_into_the_five_routes(env):
+    graph = env.state.copilot._graph.get_graph()
+    assert {e.target for e in graph.edges if e.source == "router"} == set(ROUTES)
+    assert all(any(e.source == r and e.target == "model" for e in graph.edges) for r in ROUTES)
 
 
 # ---- the graph with the real wiring -------------------------------------------------------- #
@@ -138,6 +185,29 @@ async def test_a_drafting_tool_called_on_a_question_is_refused_in_code(env):
     assert not any(c.type == "pending_order" for c in reply.cards)
     assert env.state.pending.all() == []
     assert any(e.node == "tool:propose_order" and e.status == "blocked" for e in env.trace())
+
+
+async def test_an_order_request_cannot_save_a_standing_rule(env):
+    # a valid rule using only numbers the trader typed, so only the route check can stop it
+    sneaky = call("create_rule", kind="ALERT", instrument="INFY", comparator="BELOW", price_rupees=1400)
+    llm = ScriptedLLM(LLMTurn(tool_calls=[sneaky]), LLMTurn(text="Please say if you want an alert or an order."))
+    message = "buy 10 infosys at 1400"
+    assert route(message) == "order"
+    reply = await env.copilot(llm).handle(message)
+    assert env.state.rules.list() == []
+    assert not any(c.type == "rule" for c in reply.cards)
+    assert "create_rule" not in llm.offered[0]
+    assert any(e.node == "tool:create_rule" and e.status == "blocked" for e in env.trace())
+
+
+async def test_a_risk_question_is_offered_the_profile_tools_and_nothing_that_drafts(env):
+    llm = ScriptedLLM(LLMTurn(text="Here are your limits."))
+    await env.copilot(llm).handle("what are my limits?")
+    tools = build_tools()
+    assert {"get_risk_profile", "get_discipline"} <= set(llm.offered[0])
+    assert all(tools[n].read_only for n in llm.offered[0])
+    router = [e for e in env.trace() if e.node == "router"]
+    assert router and router[0].detail.startswith("risk")
 
 
 async def test_output_guard_replaces_a_false_claim_and_says_so(env):

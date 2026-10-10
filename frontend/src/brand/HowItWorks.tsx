@@ -6,7 +6,7 @@ import { Link, SiteFooter, SiteHeader } from "./parts";
 const STEPS: { who: "you" | "ai" | "code"; title: string; body: string }[] = [
   { who: "you", title: "You ask", body: "Type or speak: “sell half my Infosys and buy ITC with the money”. Spoken words land in the box for you to check; they're never sent on their own." },
   { who: "code", title: "Input guard", body: "A message that tries to change the rules (“ignore your limits”) is answered by code. The model never sees it." },
-  { who: "code", title: "Router", body: "A question gets only the tools that read. Only a possible action may draft a card, so a question can never produce an order." },
+  { who: "code", title: "Router", body: "Code sends each message down one of five routes: read, risk, order, rule or plan. Each route allows only its own tools, so a question can never draft an order and an order request can't save a standing rule." },
   { who: "ai", title: "The model reads and drafts", body: "It looks up holdings, positions and prices through tools, and asks for a card. Every figure it puts in must be one you typed." },
   { who: "code", title: "The card is built and checked", body: "Code checks the price band, your holdings, cash and your own limits, adds every charge, and writes the card's words." },
   { who: "code", title: "Output guard", body: "If the reply claims an order was placed, gives advice, or uses a number not in your data, code replaces it." },

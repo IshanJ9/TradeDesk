@@ -21,7 +21,7 @@ export interface Pipeline {
   ms: Record<PipeNode, number>;
   modelRounds: number;
   tools: ToolChip[];
-  route: string | null; // the router's verdict, e.g. "question: read-only tools"
+  route: string | null; // the router's verdict, e.g. "order · one order: may draft an order card for your approval"
   blocked: { node: PipeNode; detail: string } | null;
   finished: boolean;
 }

@@ -23,11 +23,15 @@ def test_prompt_md_holds_the_real_system_prompt_and_every_tool():
 
 
 def test_prompt_md_shows_the_langgraph_agent():
-    from app.agent.router import _ACTION
+    from app.agent.router import PATTERNS, ROUTES
 
     text = (ROOT / "PROMPT.md").read_text(encoding="utf-8")
     assert "## 2. The agent: a LangGraph graph" in text
     assert "```mermaid" in text
     for node in ("input_guard", "router", "model", "tools", "output_guard"):
         assert f"| `{node}` |" in text
-    assert _ACTION.pattern in text
+    for r in ROUTES:
+        assert f"\t{r}({r})" in text  # each route is a node in the drawn graph
+        assert f"- **{r}**:" in text  # and lists its tools
+    for _route, pattern, _condition in PATTERNS:
+        assert pattern in text

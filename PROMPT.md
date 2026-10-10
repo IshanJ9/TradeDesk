@@ -31,6 +31,11 @@ graph TD;
 	__start__([<p>__start__</p>]):::first
 	input_guard(input_guard)
 	router(router)
+	read(read)
+	risk(risk)
+	order(order)
+	rule(rule)
+	plan(plan)
 	model(model)
 	tools(tools)
 	output_guard(output_guard)
@@ -40,7 +45,16 @@ graph TD;
 	input_guard -. &nbsp;next&nbsp; .-> router;
 	model -. &nbsp;answer&nbsp; .-> output_guard;
 	model -.-> tools;
-	router --> model;
+	order --> model;
+	plan --> model;
+	read --> model;
+	risk --> model;
+	router -.-> order;
+	router -.-> plan;
+	router -.-> read;
+	router -.-> risk;
+	router -.-> rule;
+	rule --> model;
 	tools -. &nbsp;again&nbsp; .-> model;
 	tools -. &nbsp;stop&nbsp; .-> output_guard;
 	output_guard --> __end__;
@@ -52,26 +66,47 @@ graph TD;
 | Node | Runs as | What it does |
 |---|---|---|
 | `input_guard` | code | Checks the message for attempts to change the assistant's rules. If it finds one, it answers with the fixed refusal in section 5 and ends the turn; the model never sees the message. |
-| `router` | code | Chooses the tool set with the rule below: **READ** (a question: read-only tools only) or **ACT** (all tools). It never decides prices, quantities or whether anything is sent. |
-| `model` | language model | Receives the system prompt (section 3), the conversation and the tools for the route. Asks for tools or answers. |
-| `tools` | code | Runs each tool the model asked for. On the READ route a drafting tool is refused. After 6 rounds the turn stops with a fixed reply. |
+| `router` | code | Sends the message down one of five routes with the rules below. It never decides prices, quantities or whether anything is sent. |
+| `read`, `risk`, `order`, `rule`, `plan` | code | One node per route. Each fixes the exact tools the model may use for this message (list below). |
+| `model` | language model | Receives the system prompt (section 3), the conversation and only the route's tools. Asks for tools or answers. |
+| `tools` | code | Runs each tool the model asked for. A tool outside the route is refused, however the model was asked. After 6 rounds the turn stops with a fixed reply. |
 | `output_guard` | code | Order wording comes from the card, not the model. Replaces any answer that claims an order was placed, gives advice, or uses a number not found in the data (section 5). |
 
 Every node reports its step and timing to the live trace in the app. No node can send an order: the tools
 only read or draft, and only the trader's Approve click (a separate route, outside the graph) sends anything.
 
-**Router rule** (`app/agent/router.py`). A message matching this pattern takes the ACT route; anything else is
-a question and takes the READ route. When unsure it chooses ACT, because the approval card still stands
-between any draft and the broker.
+**Router rules** (`app/agent/router.py`), checked in this order; the first that applies wins. These are
+case-insensitive regular expressions.
 
-```text
-\b(buy|sell|purchase|acquire|exit|square|close|cancel|modify|change|amend|move|update|stop|sl|trail\w*|alert|notify|remind|warn|tell me (?:when|if)|let me know|ping|watch|rebalance|trim|reduce|cut|book|dump|get rid|offload|unload|liquidat\w*|add|accumulate|invest|put|place|order(?:s)? to|plan|rule|limit|target|half|quarter|third|all my|kharid\w*|bech\w*|lena|lelo|nikal\w*)\b|\bif\b.*\b(falls?|drops?|rises?|goes|crosses|hits|reaches|below|above)\b
-```
+1. **rule** if the message matches:
+   ```text
+   \b(?:alert|notify|remind|warn|ping|watch|rules?|standing|instructions?|tell me (?:when|if)|let me know)\b|\b(?:if|when|once)\b.*\b(?:falls?|drops?|rises?|goes|crosses|hits|reaches|below|above|under|over)\b
+   ```
+2. **plan** if the message matches:
+   ```text
+   \bplan\b|\b(?:rebalanc\w*|trim)\b|\b(?:buy|sell|purchase|acquire|exit|square|close|cancel|modify|amend|book|dump|get rid|offload|unload|liquidat\w*|accumulate|invest|add|put|place|trim|reduce|cut|rebalance|change|move|update|raise|lower|set|trail\w*|kharid\w*|bech\w*|lena|lelo|nikal\w*)\b.*\b(?:all|every|each|any)\s+(?:of\s+)?(?:my\s+)?(?:positions?|holdings?|stocks?|shares?|losers?|losing)\b|\b(?:buy|sell|purchase|acquire|exit|square|close|cancel|modify|amend|book|dump|get rid|offload|unload|liquidat\w*|accumulate|invest|add|put|place|trim|reduce|cut|rebalance|change|move|update|raise|lower|set|trail\w*|kharid\w*|bech\w*|lena|lelo|nikal\w*)\b.*(?:\blos(?:ing|ers?)\b|\bin\s+(?:a\s+)?loss\b)|\bsell\b.*\b(?:and|then|&)\b.*\bbuy\b|\bwith\s+the\s+(?:money|proceeds)\b|\b(?:cap|reduce)\b.*\b(?:exceeds?|above|over|more\s+than|max(?:imum)?|at\s+most)\s+\d+(?:\.\d+)?\s*%
+   ```
+3. **risk** if the message matches:
+   ```text
+   \b(?:risk|discipline|profile|limits?|goals?|pace|patterns?|overtrad\w*|cooling|streak|mindful|charges)\b
+   ```
+   unless one of these order verbs appears (then the next rules decide):
+   ```text
+   \b(?:buy|sell|purchase|exit|square|close|cancel|modify|amend|place|kharid\w*|bech\w*|nikal\w*|lelo|lena)\b
+   ```
+4. **order** if the message matches:
+   ```text
+   \b(?:buy|sell|purchase|acquire|exit|square|close|cancel|modify|amend|book|dump|get rid|offload|unload|liquidat\w*|accumulate|invest|add|put|place|trim|reduce|cut|rebalance|change|move|update|raise|lower|set|trail\w*|kharid\w*|bech\w*|lena|lelo|nikal\w*)\b|\bstop[\s-]?loss\b|\border(?:s)?\s+(?:to|for)\b
+   ```
+5. **read**: anything else.
 
-**Tools per route:**
+**Tools per route** (enforced in code; the model is shown only these):
 
-- READ: `get_risk_profile`, `get_discipline`, `get_funds`, `get_holdings`, `get_positions`, `get_pnl_summary`, `get_orders`, `get_quote`, `find_instrument`, `get_option_expiries`, `get_option_chain`, `list_rules`, `get_plan_report`
-- ACT: all of them (section 4)
+- **read**: every tool that reads (nothing that drafts)
+- **risk**: `get_risk_profile`, `get_discipline`, `get_funds`, `get_holdings`, `get_positions`, `get_pnl_summary`, `get_orders` (nothing that drafts)
+- **order**: every tool that reads + `propose_order`
+- **rule**: every tool that reads + `create_rule`, `cancel_rule`, `alert_on_holdings`
+- **plan**: every tool that reads + `propose_order`, `propose_plan`, `exit_losing_positions`, `trim_to_max_weight`
 
 With `ORCHESTRATOR=classic` the same prompt, tools and guards run as a plain loop (`app/llm/copilot.py`),
 without the router: every message is offered all the tools.

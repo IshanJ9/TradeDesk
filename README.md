@@ -67,18 +67,25 @@ card still shows the exact quantity for the trader to confirm.
 `ORCHESTRATOR=langgraph` runs the same assistant as a LangGraph state graph (`app/agent/graph.py`) inside the
 backend process; `classic` (the default) keeps the plain loop. The graph:
 
-    START -> input_guard -> router -> model <-> tools (at most 6 rounds) -> output_guard -> END
+    START -> input_guard -> router -> read | risk | order | rule | plan -> model <-> tools (at most 6 rounds)
+          -> output_guard -> END
 
 - **input_guard**: the rule-override check; such a message ends here, answered by code.
-- **router** (plain code, no model call): a question gets only the tools that read, so it cannot produce an
-  order card, rule or plan even if the model asks for one (that call is refused in code). Anything that might
-  be an action gets every tool. The router chooses tools only; prices, quantities and sending are never its call.
+- **router** (plain code, no model call) sends each message down one of five routes, and each route's node fixes
+  the tools the model may use. **read** (a question) and **risk** (your limits and discipline report) get only
+  tools that read; **order** adds the order-card tool; **rule** adds alerts and standing rules; **plan** adds
+  multi-step plans and the whole-portfolio tools. A tool outside the route is refused in code even if the model
+  asks for it, so a question can never draft an order and an order request can never save a rule. The router
+  chooses tools only; prices, quantities and sending are never its call. Its exact rules are in
+  [PROMPT.md](PROMPT.md).
 - **output_guard**: every check listed above (code-written card text, grounded numbers, no "I placed it", no advice).
 - Every step is published live to the desk's **Assistant** tab (node, tool, guard verdict, time taken).
 
 Nothing in the graph can send an order: the tools only read or draft, and only the Approve click sends. Checked
 by running the whole test suite with the graph as the default (identical except the extra trace messages) and
-`scripts/model_eval.py --orchestrator langgraph` with the real Bedrock model: 31 prompts, 0 failures.
+`scripts/model_eval.py --orchestrator langgraph` with the real Bedrock model: 31 prompts, 0 failures. That
+real-model run used the earlier two-route router (read or act); it has not yet been repeated with five routes.
+The tests check that the built-in keyword reader's tool choices fall inside each route for every eval prompt.
 
 ### Whole-portfolio requests (level 4)
 

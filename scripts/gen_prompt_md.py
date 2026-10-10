@@ -31,7 +31,8 @@ def graph_mermaid() -> str:
     async def noop(_state):
         return {}
 
-    stub = SimpleNamespace(**{n: noop for n in ("_input_guard", "_router", "_model", "_tools_node", "_output_guard")})
+    stub = SimpleNamespace(**{n: noop for n in ("_input_guard", "_router", "_model", "_tools_node", "_output_guard")},
+                           _scope=lambda _route: noop)
     return GraphCopilot._build(stub).get_graph().draw_mermaid().rstrip("\n")
 
 
@@ -65,22 +66,38 @@ def render() -> str:
     w("| Node | Runs as | What it does |")
     w("|---|---|---|")
     w("| `input_guard` | code | Checks the message for attempts to change the assistant's rules. If it finds one, it answers with the fixed refusal in section 5 and ends the turn; the model never sees the message. |")
-    w("| `router` | code | Chooses the tool set with the rule below: **READ** (a question: read-only tools only) or **ACT** (all tools). It never decides prices, quantities or whether anything is sent. |")
-    w("| `model` | language model | Receives the system prompt (section 3), the conversation and the tools for the route. Asks for tools or answers. |")
-    w(f"| `tools` | code | Runs each tool the model asked for. On the READ route a drafting tool is refused. After {copilot.MAX_STEPS} rounds the turn stops with a fixed reply. |")
+    w("| `router` | code | Sends the message down one of five routes with the rules below. It never decides prices, quantities or whether anything is sent. |")
+    w("| `read`, `risk`, `order`, `rule`, `plan` | code | One node per route. Each fixes the exact tools the model may use for this message (list below). |")
+    w("| `model` | language model | Receives the system prompt (section 3), the conversation and only the route's tools. Asks for tools or answers. |")
+    w(f"| `tools` | code | Runs each tool the model asked for. A tool outside the route is refused, however the model was asked. After {copilot.MAX_STEPS} rounds the turn stops with a fixed reply. |")
     w("| `output_guard` | code | Order wording comes from the card, not the model. Replaces any answer that claims an order was placed, gives advice, or uses a number not found in the data (section 5). |")
     w("")
     w("Every node reports its step and timing to the live trace in the app. No node can send an order: the tools")
     w("only read or draft, and only the trader's Approve click (a separate route, outside the graph) sends anything.\n")
-    w("**Router rule** (`app/agent/router.py`). A message matching this pattern takes the ACT route; anything else is")
-    w("a question and takes the READ route. When unsure it chooses ACT, because the approval card still stands")
-    w("between any draft and the broker.\n")
-    w("```text")
-    w(router._ACTION.pattern)
-    w("```\n")
-    w("**Tools per route:**\n")
-    w("- READ: " + ", ".join(f"`{n}`" for n, t in tools.items() if t.read_only))
-    w("- ACT: all of them (section 4)\n")
+    w("**Router rules** (`app/agent/router.py`), checked in this order; the first that applies wins. These are")
+    w("case-insensitive regular expressions.\n")
+    for i, (r, pattern, condition) in enumerate(router.PATTERNS, 1):
+        if pattern:
+            w(f"{i}. **{r}** if the message matches:")
+            w("   ```text")
+            w(f"   {pattern}")
+            w("   ```")
+            if ":" in condition:
+                w("   unless one of these order verbs appears (then the next rules decide):")
+                w("   ```text")
+                w(f"   {condition.split(': ', 1)[1]}")
+                w("   ```")
+        else:
+            w(f"{i}. **{r}**: {condition}.")
+    w("")
+    w("**Tools per route** (enforced in code; the model is shown only these):\n")
+    reads = {n for n, t in tools.items() if t.read_only}
+    for r in router.ROUTES:
+        allowed = router.allowed_tools(r, reads)
+        drafting = [f"`{n}`" for n in tools if n in allowed and n not in reads]
+        read_part = "every tool that reads" if allowed >= reads else ", ".join(f"`{n}`" for n in tools if n in allowed and n in reads)
+        w(f"- **{r}**: {read_part}" + (" + " + ", ".join(drafting) if drafting else " (nothing that drafts)"))
+    w("")
     w("With `ORCHESTRATOR=classic` the same prompt, tools and guards run as a plain loop (`app/llm/copilot.py`),")
     w("without the router: every message is offered all the tools.\n")
 

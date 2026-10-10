@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVAL, NODES, SCENARIOS, nodeStates } from "./graph";
+import { APPROVAL, NODES, ROUTES, SCENARIOS, nodeStates } from "./graph";
 
 const order = SCENARIOS.find((s) => s.id === "order")!;
 const trick = SCENARIOS.find((s) => s.id === "trick")!;
@@ -15,6 +15,15 @@ describe("the how-it-works graph", () => {
       const nodes = s.steps.map((x) => x.node);
       if (s.id === "order") expect(nodes.indexOf("approve")).toBeLessThan(nodes.indexOf("broker"));
       else expect(nodes).not.toContain("broker");
+    }
+  });
+
+  it("names the route for every message that reaches the router, and none for one stopped before it", () => {
+    expect(ROUTES.map((r) => r.id)).toEqual(["read", "risk", "order", "rule", "plan"]);
+    for (const s of SCENARIOS) {
+      const routed = s.steps.some((x) => x.node === "router");
+      if (routed) expect(ROUTES.some((r) => r.id === s.route)).toBe(true);
+      else expect(s.route).toBeNull();
     }
   });
 

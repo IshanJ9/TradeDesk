@@ -3,7 +3,9 @@ as the classic loop in app/llm/copilot.py; what it adds is an explicit, inspecta
 
     START -> input_guard --refused--> END
                  |
-               router            (code: READ route = read-only tools, ACT route = all tools)
+               router            (code: picks one of five routes, app/agent/router.py)
+                 |
+     read | risk | order | rule | plan    (code: each route fixes the tools the model may use)
                  |
                model <------+    (the LLM: asks for tools or answers)
                  |          |
@@ -22,7 +24,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from app.api_models import ChatReply
-from app.agent.router import Route, route
+from app.agent.router import ROUTES, Route, allowed_tools, describe, route
 from app.events import EventHub
 from app.llm.copilot import GAVE_UP, MAX_STEPS, Copilot
 from app.llm.prompt import build_system_prompt
@@ -37,6 +39,7 @@ class TurnState(TypedDict, total=False):
     tracer: Tracer
     ctx: ToolContext
     route: Route
+    allowed: frozenset[str]
     messages: list[Message]
     calls: list[ToolCall]
     steps: int
@@ -54,12 +57,16 @@ class GraphCopilot(Copilot):
         g = StateGraph(TurnState)
         g.add_node("input_guard", self._input_guard)
         g.add_node("router", self._router)
+        for r in ROUTES:
+            g.add_node(r, self._scope(r))
         g.add_node("model", self._model)
         g.add_node("tools", self._tools_node)
         g.add_node("output_guard", self._output_guard)
         g.add_edge(START, "input_guard")
         g.add_conditional_edges("input_guard", lambda s: "done" if "reply" in s else "next", {"done": END, "next": "router"})
-        g.add_edge("router", "model")
+        g.add_conditional_edges("router", lambda s: s["route"], {r: r for r in ROUTES})
+        for r in ROUTES:
+            g.add_edge(r, "model")
         g.add_conditional_edges("model", lambda s: "tools" if s.get("calls") else "answer", {"tools": "tools", "answer": "output_guard"})
         g.add_conditional_edges("tools", lambda s: "again" if s["steps"] < MAX_STEPS else "stop", {"again": "model", "stop": "output_guard"})
         g.add_edge("output_guard", END)
@@ -84,15 +91,24 @@ class GraphCopilot(Copilot):
 
     async def _router(self, s: TurnState) -> dict:
         r = route(s["message"])
-        s["tracer"].emit("router", "node", "end", "question: read-only tools" if r == "read" else "may prepare a card for your approval")
+        s["tracer"].emit("router", "node", "end", f"{r} · {describe(r)}")
         return {
             "route": r,
             "ctx": self._context(s["message"]),
             "messages": [*self._history, Message("user", s["message"])],
         }
 
+    def _scope(self, r: Route):
+        """A route's node: fixes, in code, which tools the model is offered and may run for this message."""
+        allowed = allowed_tools(r, {name for name, t in self._tools.items() if t.read_only})
+
+        async def node(_s: TurnState) -> dict:
+            return {"allowed": allowed}
+
+        return node
+
     async def _model(self, s: TurnState) -> dict:
-        tools = [t for t in self._tools.values() if s["route"] == "act" or t.read_only]
+        tools = [t for name, t in self._tools.items() if name in s["allowed"]]
         with s["tracer"].step("model", "node", f"step {s['steps'] + 1}"):
             turn = await self._llm.complete(
                 system=build_system_prompt(self._clock()), messages=s["messages"], tools=[t.spec for t in tools]
@@ -104,9 +120,9 @@ class GraphCopilot(Copilot):
     async def _tools_node(self, s: TurnState) -> dict:
         t, ctx, results = s["tracer"], s["ctx"], []
         for call in s["calls"]:
-            if s["route"] == "read" and call.name in self._tools and not self._tools[call.name].read_only:
-                t.emit(f"tool:{call.name}", "guard", "blocked", "not available for a question")
-                results.append(self._not_offered(call))
+            if call.name in self._tools and call.name not in s["allowed"]:
+                t.emit(f"tool:{call.name}", "guard", "blocked", f"not available on the {s['route']} route")
+                results.append(self._not_offered(call, s["route"]))
                 continue
             with t.step(f"tool:{call.name}", "tool"):
                 result = await self._run_tool(ctx, call)
@@ -130,6 +146,9 @@ class GraphCopilot(Copilot):
         return {"reply": reply}
 
     @staticmethod
-    def _not_offered(call: ToolCall) -> ToolResult:
-        """The model asked for a drafting tool on a question. Refused in code; the model answers from data."""
-        return ToolResult(call.id, call.name, {"status": "error", "message": "That tool is not available for a question. Answer from the data instead."})
+    def _not_offered(call: ToolCall, r: Route) -> ToolResult:
+        """The model asked for a tool outside the message's route. Refused in code; the model answers from data."""
+        return ToolResult(call.id, call.name, {"status": "error", "message": (
+            f"That tool is not available for this request (route: {r}). Answer from the data, or ask the trader to say "
+            "exactly what they want done."
+        )})
