@@ -50,7 +50,7 @@ were made there after that correction, and this checklist is not written there.
 
 - [x] Bedrock provider, GPT-OSS configuration and built-in rules provider behind a factory; backend-only credentials. Evidence: `app/llm/bedrock.py`, `factory.py`, `rules.py`.
 - [x] In-process LangGraph behind `ORCHESTRATOR=classic|langgraph`, with input guard, router, model/tools loop and output guard. Classic remains selectable; this is not an automatic failover claim.
-- [x] Five-route graph (G1, 10 October): router -> read/risk/order/rule/plan nodes, each fixing its tool allowlist in code; out-of-route calls refused; trace, how-it-works diagram and PROMPT.md updated. Keyword routing only: no model classification fallback was added. Real-model eval with five routes still TODO (T1).
+- [x] Five-route graph (G1, 10 October): router -> read/risk/order/rule/plan nodes, each fixing its tool allowlist in code; out-of-route calls refused; trace, how-it-works diagram and PROMPT.md updated. Keyword routing only: no model classification fallback was added. Real-model eval with five routes on LangGraph, 10 October: 32 prompts, 23 pass, 9 reviewed correct, 0 fail (classic orchestrator not re-run).
 - [x] Rule-override refusal, untrusted-text screening, grounded numbers, rupee/quantity ambiguity checks, no unsupported execution claims, no advice, and a bounded tool loop. Evidence: `app/llm/copilot.py`, `grounding.py`, `injection.py`, `app/agent/graph.py`.
 - [x] Websocket trace events, Assistant activity view and visible live pipeline with node/tool/guard timing and failures.
 - [x] Generated `PROMPT.md` containing the system prompt, tools, settings, fixed code replies and graph description, with a test for code/document consistency.

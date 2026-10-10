@@ -69,11 +69,11 @@ export default function App() {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 lg:grid-cols-[minmax(340px,5fr)_minmax(460px,6fr)]">
-        <div className={`min-h-0 border-line bg-surface lg:border-r ${view === "ask" ? "block" : "max-lg:hidden"}`}>
+      <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(340px,5fr)_minmax(460px,6fr)]">
+        <div className={`min-h-0 min-w-0 border-line bg-surface lg:border-r ${view === "ask" ? "block" : "max-lg:hidden"}`}>
           <ChatPanel messages={messages} busy={busy} offline={state.conn !== "live"} send={send} onReveal={reveal} trace={state.trace} />
         </div>
-        <div className={`min-h-0 overflow-y-auto scroll-quiet ${view === "desk" ? "block" : "max-lg:hidden"}`}>
+        <div className={`min-h-0 min-w-0 overflow-y-auto scroll-quiet ${view === "desk" ? "block" : "max-lg:hidden"}`}>
           <ApprovalDock state={state} dispatch={dispatch} />
           <div className="pb-2" />
           <AccountPanel account={state.account} live={state.conn === "live"} />

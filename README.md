@@ -83,9 +83,10 @@ backend process; `classic` (the default) keeps the plain loop. The graph:
 
 Nothing in the graph can send an order: the tools only read or draft, and only the Approve click sends. Checked
 by running the whole test suite with the graph as the default (identical except the extra trace messages) and
-`scripts/model_eval.py --orchestrator langgraph` with the real Bedrock model: 31 prompts, 0 failures. That
-real-model run used the earlier two-route router (read or act); it has not yet been repeated with five routes.
-The tests check that the built-in keyword reader's tool choices fall inside each route for every eval prompt.
+`scripts/model_eval.py --orchestrator langgraph` with the real Bedrock model (`openai.gpt-oss-120b-1:0`). Re-run
+on 10 October 2026 with the five routes: 32 prompts, 23 passed by code, 9 read by hand and correct, 0 failed,
+65 model calls, no order reached the broker. Every order, rule, plan, alert and trim case reached its tool inside
+its route. The tests also check that the built-in keyword reader's tool choices fall inside each route.
 
 ### Whole-portfolio requests (level 4)
 
