@@ -59,7 +59,7 @@ async def adapter(fake, conn):
 
 def feed_prices(conn, prices: dict[int, int], socket=0):
     for token, ltp in prices.items():
-        conn.sockets[socket].push(ltp_packet(1, token, ltp))
+        conn.market[socket].push(ltp_packet(1, token, ltp))
 
 
 async def settle():
@@ -369,7 +369,7 @@ async def test_a_cancel_still_in_flight_is_reported_as_still_open_not_cancelled(
 
 async def test_a_price_is_read_from_the_feed_and_missing_prices_time_out_honestly(adapter, conn):
     await adapter._feed.wait_connected(1)
-    conn.sockets[0].push(full_nse_cash(1594, 145000, 144000, 144500, 146000, 143500, bid=144995, ask=145005))
+    conn.market[0].push(full_nse_cash(1594, 145000, 144000, 144500, 146000, 143500, bid=144995, ask=145005))
     q = await adapter.get_quote("NSE:INFY")
     assert (q.ltp, q.prev_close, q.bid, q.ask, q.day_high, q.day_low) == (145000, 144000, 144995, 145005, 146000, 143500)
     with pytest.raises(BrokerTimeout):
@@ -383,7 +383,7 @@ async def test_holdings_use_live_prices_and_fall_back_to_the_previous_close_when
         {"isin": "INE002A01018", "symbol": "RELIANCE", "freeQty": 0, "btstQty": 0, "sellQty": 7, "price": 290000, "prevClose": 290000},
     ]
     await adapter._feed.wait_connected(1)
-    conn.sockets[0].push(ltp_packet(1, 1594, 145000))
+    conn.market[0].push(ltp_packet(1, 1594, 145000))
     await settle()
     by = {h.instrument.symbol: h for h in await adapter.get_holdings()}
     assert set(by) == {"INFY", "TCS"}  # nothing held in RELIANCE any more
@@ -399,11 +399,13 @@ async def test_positions_skip_closed_and_carry_forward_rows(adapter, fake, conn)
         {"exchange": "NSEFO", "token": 70001, "product": "NRML", "netQuantity": 75, "netPrice": 100, "prevClose": 90},
     ]
     await adapter._feed.wait_connected(1)
-    conn.sockets[0].push(ltp_packet(1, 2885, 141000))
+    conn.market[0].push(ltp_packet(1, 2885, 141000))
     await settle()
-    [pos] = await adapter.get_positions()
+    pos, opt = sorted(await adapter.get_positions(), key=lambda p: p.instrument.is_option)  # the closed row is skipped
     assert (pos.instrument.symbol, pos.quantity, pos.avg_price, pos.ltp, pos.product) == ("RELIANCE", 10, 140000, 141000, Product.MIS)
     assert pos.pnl == 10 * 1000
+    # an option carried overnight is read too (it used to be dropped); no live premium yet, so the previous close
+    assert (opt.instrument.symbol, opt.quantity, opt.product, opt.ltp) == ("NIFTY26101324400CE", 75, Product.NRML, 90)
 
 
 async def test_funds_are_an_estimate_from_the_starting_balance_trades_and_open_buys(adapter, fake):
@@ -429,7 +431,7 @@ async def test_ticks_carry_a_rising_sequence_number_per_instrument(adapter, conn
 
     task = asyncio.create_task(listen())
     await settle()
-    assert any('"Instruments":[[1,1594]]' in m for m in conn.sockets[0].sent)  # watching INFY was asked for
+    assert any('"Instruments":[[1,1594]]' in m for m in conn.market[0].sent)  # watching INFY was asked for
     feed_prices(conn, {1594: 145000})
     feed_prices(conn, {1594: 145010})
     await asyncio.wait_for(task, 1)
@@ -458,17 +460,17 @@ async def test_option_expiries_come_from_the_instrument_file(adapter):
 
 async def test_an_option_chain_is_built_around_the_money_from_a_separate_feed(adapter, conn):
     await adapter._feed.wait_connected(1)
-    conn.sockets[0].push(full_index(26000, 2452000, 2440000, 2445000, 2460000, 2430000))  # NIFTY 24520
+    conn.market[0].push(full_index(26000, 2452000, 2440000, 2445000, 2460000, 2430000))  # NIFTY 24520
     task = asyncio.create_task(adapter.get_option_chain("NIFTY", date(2026, 10, 13), window=1))
     for _ in range(100):  # wait until the chain feed has connected and subscribed
-        if len(conn.sockets) > 1 and conn.sockets[1].sent:
+        if len(conn.market) > 1 and conn.market[1].sent:
             break
         await asyncio.sleep(0.005)
-    sub = json.loads(conn.sockets[1].sent[0])
+    sub = json.loads(conn.market[1].sent[0])
     assert sub["Mode"] == "oc" and sub["Filters"] == "l"  # prices only; its own connection, so a bad filter can't stall prices
     tokens = [t for _, t in sub["Instruments"]]
     for i, token in enumerate(sorted(tokens)):
-        conn.sockets[1].push(chain_packet(token, 10000 + i))
+        conn.market[1].push(chain_packet(token, 10000 + i))
     chain = await asyncio.wait_for(task, 2)
     assert chain.spot == paise(24520) and chain.expiry == date(2026, 10, 13)
     assert [r.strike for r in chain.rows] == [paise(24450), paise(24500), paise(24550)]  # the money +/- one step
@@ -478,7 +480,7 @@ async def test_an_option_chain_is_built_around_the_money_from_a_separate_feed(ad
 
 async def test_an_option_chain_with_no_prices_is_a_timeout_not_an_empty_table(adapter, conn):
     await adapter._feed.wait_connected(1)
-    conn.sockets[0].push(full_index(26000, 2452000, 2440000, 2445000, 2460000, 2430000))
+    conn.market[0].push(full_index(26000, 2452000, 2440000, 2445000, 2460000, 2430000))
     with pytest.raises(BrokerTimeout):
         await adapter.get_option_chain("NIFTY", date(2026, 10, 13), window=1)
 

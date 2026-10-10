@@ -30,6 +30,8 @@ from app.broker.errors import classify_order_failure, reason_from_text
 from app.broker.matching import match_sent_order
 from app.broker.zerotwoone import codec
 from app.broker.zerotwoone.feed import MarketFeed
+from app.broker.zerotwoone.orders_feed import OrdersFeed
+from app.sync.order_events import OrderWake
 from app.broker.zerotwoone.instruments import WS_CODE, InstrumentMaster, Listing
 from app.schemas import (
     AccountLocks,
@@ -117,6 +119,10 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         self._login_lock = asyncio.Lock()
         self._feed = self._make_feed(mode="full", filters=None, publish=True, resolve=self._resolve_cash)
         self._chain_feed: MarketFeed | None = None
+        # live notice of our own order events; the app reads REST when woken (orders_feed.py)
+        self.order_wake = OrderWake()
+        self.orders_feed = OrdersFeed(url=f"{websocket_base(self._base_url)}/orders", connect=connect,
+                                      get_key=self._ephemeral_key, ucc=username, on_change=self.order_wake.notify)
         self._chain_keys: dict[tuple[int, int], str] = {}
         self._sent: dict[str, tuple[Side, int]] = {}  # order id -> what we sent (for rows that lose their size)
         self._fills: dict[str, tuple[int, list[dict]]] = {}  # order id -> (traded quantity, its trades)
@@ -146,12 +152,13 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         await self._login()
         await self._load_master()
         self._feed.start()
+        self.orders_feed.start()
         # Follow what the trader holds from the start, so the first account read already has prices.
         with contextlib.suppress(BrokerError):
             await self._watch_account()
 
     async def close(self) -> None:
-        for feed in (self._feed, self._chain_feed):
+        for feed in (self._feed, self._chain_feed, self.orders_feed):
             if feed is not None:
                 await feed.stop()
         if self._owns_http:
@@ -279,6 +286,11 @@ class ZeroTwoOneAdapter(BrokerAdapter):
 
     async def search_instruments(self, query: str, limit: int = 10) -> list[Instrument]:
         return self.master.search(query, limit)
+
+    async def find_option(self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None) -> Instrument | None:
+        """From 021's instrument file: the contract's real lot size, tick and token (NSE F&O preferred)."""
+        listing = self.master.find_option(underlying, strike, option_type, expiry, self._clock().date())
+        return listing.instrument if listing else None
 
     # ------------------------------------------------------------------------------------------ #
     # prices

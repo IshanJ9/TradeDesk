@@ -248,16 +248,72 @@ class OrderBuilder:
         now = self._clock()
         return now, now + timedelta(seconds=ttl_seconds or self._settings.approval_ttl_seconds)
 
+    async def _find_option(self, intent: OrderIntent) -> Instrument:
+        ref = intent.option
+        inst = await self._broker.find_option(ref.underlying, ref.strike, ref.option_type, ref.expiry)
+        if inst is None:
+            when = f"expiring {ref.expiry:%d %b %Y}" if ref.expiry else "for the nearest expiry"
+            raise OrderBlocked(
+                RejectionReason.OTHER,
+                f"I can't find a {ref.underlying} {fmt_rupees(ref.strike)} {ref.option_type.value} option {when}. "
+                "Check the strike and expiry in the option chain.",
+            )
+        return inst
+
+    async def _option_sizing(self, inst: Instrument, intent: OrderIntent, product: Product) -> tuple[int, str]:
+        """Whole lots, and a sentence showing the sum. A sale can never exceed the long position held."""
+        lot = inst.lot_size or 1
+        if intent.lots is not None:
+            quantity = intent.lots * lot
+        elif intent.fraction_of_holding is not None:
+            held = await self._option_held(inst, product)
+            if not held:
+                raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"You don't hold any {inst.label}, so there is nothing to sell.")
+            quantity = int(held * intent.fraction_of_holding) // lot * lot  # rounded down to whole lots
+            if quantity < lot:
+                raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"That is less than one lot ({lot}) of {inst.label}.")
+        else:
+            quantity = intent.quantity
+            if quantity % lot:
+                raise OrderBlocked(
+                    RejectionReason.INVALID_QUANTITY,
+                    f"{inst.underlying} options trade in lots of {lot}; {quantity} is not a whole number of lots. "
+                    f"Say how many lots, e.g. 1 lot = {lot}.",
+                )
+        lots = quantity // lot
+        return quantity, f"{lots} lot{'s' if lots != 1 else ''} of {lot} = {quantity} units of {inst.label}."
+
+    async def _option_held(self, inst: Instrument, product: Product) -> int:
+        return sum(
+            p.quantity for p in await self._broker.get_positions()
+            if p.instrument.key == inst.key and p.product is product and p.quantity > 0
+        )
+
+    @staticmethod
+    def _option_notice(inst: Instrument, est_total: int) -> list[str]:
+        """Facts, not advice (the trader asked for this contract; nothing here says whether to buy it)."""
+        side = "above" if inst.option_type.value == "CE" else "below"
+        kind = "call" if inst.option_type.value == "CE" else "put"
+        return [
+            f"An option can expire worthless: unless {inst.underlying} is {side} {fmt_rupees(inst.strike)} at expiry on "
+            f"{inst.expiry:%d %b %Y}, this {kind} is worth nothing and the {fmt_rupees(est_total)} you pay is lost.",
+            "SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a loss.",
+        ]
+
     async def _build_place(
         self, intent, locks, instrument, client_order_id, rule_id, plan_id, ttl_seconds=None, funded_by_plan=False
     ) -> PendingOrder:
         inst = instrument
+        if inst is None and intent.option is not None:
+            inst = await self._find_option(intent)
         if inst is None:
             resolution = await self.resolve(intent.instrument_ref or "")
             if resolution.status != "resolved":
                 raise NeedsClarification(resolution)
             inst = resolution.instrument
         check_instrument(inst, self.limits)
+        if inst.is_option:
+            return await self._build_option(intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds)
 
         quote = await self._broker.get_quote(inst.key)
         ltp, side = quote.ltp, intent.side
@@ -307,7 +363,7 @@ class OrderBuilder:
                 raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"{have}, so you can't sell {quantity}.")
 
         charges = compute_charges(
-            exchange=inst.exchange, side=side, product=intent.product, quantity=quantity, price=price
+            exchange=inst.exchange, side=side, product=intent.product, quantity=quantity, price=price, option=inst.is_option
         )
         est_total = estimated_total(side, quantity, price, charges)
 
@@ -352,6 +408,70 @@ class OrderBuilder:
             expires_at=expires,
             rule_id=rule_id,
             plan_id=plan_id,
+            warnings=warnings,
+        )
+
+    async def _build_option(self, intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds=None) -> PendingOrder:
+        """Buy an option, or sell one held. Never a sale beyond the long position (no option writing)."""
+        if rule_id or plan_id:
+            raise OrderBlocked(RejectionReason.SEGMENT_NOT_ALLOWED, "Options can be ordered one at a time, not from a rule or a plan.")
+        product = Product.NRML if intent.product is Product.CNC else intent.product  # CNC is equity-only at 021
+        side = intent.side
+        quote = await self._broker.get_quote(inst.key)
+        ltp = quote.ltp
+        warnings: list[str] = []
+
+        trigger: int | None = None
+        if intent.order_type is OrderType.STOP_LIMIT:
+            trigger, limit_price = self._stop_prices(inst, side, ltp, intent.trigger_price, intent.limit_price)
+            price, protection = limit_price, None
+            warnings.append(self._stop_warning(inst, side, trigger, limit_price))
+        elif intent.order_type is OrderType.LIMIT:
+            price, limit_price, protection = intent.limit_price, intent.limit_price, None
+            check_price(inst, price)
+        else:
+            protection = self._protection_price(inst, side, ltp)
+            price, limit_price = protection, None
+
+        quantity, sizing = await self._option_sizing(inst, intent, product)
+        warnings.append(sizing)
+        check_size(quantity, price, self.limits)
+        check_locks(locks, OrderAction.PLACE, quantity * price)
+
+        if side is Side.SELL:
+            held = await self._option_held(inst, product)
+            if quantity > held:
+                have = f"You hold {held} of {inst.label}" if held else f"You don't hold any {inst.label}"
+                raise OrderBlocked(
+                    RejectionReason.INVALID_QUANTITY,
+                    f"{have}{' as ' + product.value if held else ''}, so you can't sell {quantity}. "
+                    "Selling options you don't hold (writing) isn't supported: its losses aren't limited to a premium.",
+                )
+
+        charges = compute_charges(exchange=inst.exchange, side=side, product=product, quantity=quantity, price=price, option=True)
+        est_total = estimated_total(side, quantity, price, charges)
+        if limit_price is not None and trigger is None:
+            gap = (limit_price - ltp) * 100 / ltp
+            if abs(gap) > FAR_FROM_LTP_PCT:
+                warnings.append(
+                    f"Your limit price {fmt_rupees(limit_price)} is {abs(gap):.1f}% "
+                    f"{'above' if gap > 0 else 'below'} the current premium {fmt_rupees(ltp)}."
+                )
+        if side is Side.BUY:
+            funds = await self._broker.get_funds()
+            if est_total > funds.available_cash:
+                warnings.append(
+                    f"This needs about {fmt_rupees(est_total)} but your available cash is "
+                    f"{fmt_rupees(funds.available_cash)}; the broker is likely to reject it."
+                )
+            warnings += self._option_notice(inst, est_total)
+
+        created, expires = self._expiry(ttl_seconds)
+        return PendingOrder(
+            id=self._new_id("pend"), action=OrderAction.PLACE, instrument=inst, side=side, quantity=quantity,
+            order_type=intent.order_type, limit_price=limit_price, protection_price=protection, trigger_price=trigger,
+            product=product, validity=intent.validity, client_order_id=client_order_id or self._new_id("td"),
+            charges=charges, est_total=est_total, ref_ltp=ltp, created_at=created, expires_at=expires,
             warnings=warnings,
         )
 
@@ -420,7 +540,8 @@ class OrderBuilder:
         else:
             order_type = OrderType.LIMIT if limit_price is not None else target.order_type
         charges = compute_charges(
-            exchange=inst.exchange, side=target.side, product=target.product, quantity=quantity, price=price
+            exchange=inst.exchange, side=target.side, product=target.product, quantity=quantity, price=price,
+            option=inst.is_option,
         )
         warnings = [self._stop_warning(inst, target.side, trigger, limit_price)] if trigger is not None else []
         return PendingOrder(

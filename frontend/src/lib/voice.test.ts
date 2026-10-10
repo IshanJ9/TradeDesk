@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transcribe, voiceError } from "./api";
-import { recordingType, transcriptParts, VoiceRecording, type VoiceState } from "./voice";
+import { recordingType, transcriptParts, voiceWhere, VoiceRecording, type VoiceState, type VoiceStatus } from "./voice";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -23,15 +23,34 @@ describe("editable voice text", () => {
   });
 });
 
+describe("where the audio goes", () => {
+  const status = (s: Partial<VoiceStatus>): VoiceStatus => ({ provider: "groq", fallback: false, local_ready: false, groq_ready: true, ...s });
+  it("says so plainly for every setting", () => {
+    expect(voiceWhere(null)).toBe("Voice uses Groq transcription.");
+    expect(voiceWhere(status({}))).toBe("Voice uses Groq transcription.");
+    expect(voiceWhere(status({ groq_ready: false }))).toBe("Voice isn't set up on this server.");
+    expect(voiceWhere(status({ provider: "local", local_ready: true }))).toBe("Voice runs on this laptop; audio never leaves it.");
+    expect(voiceWhere(status({ provider: "local", local_ready: true, fallback: true }))).toBe("Voice runs on this laptop (Groq only if it fails).");
+    expect(voiceWhere(status({ provider: "local", fallback: true }))).toBe("Local voice isn't set up, so Groq transcribes.");
+    expect(voiceWhere(status({ provider: "local", groq_ready: false }))).toBe("Local voice isn't set up on this server.");
+  });
+});
+
 describe("transcription API", () => {
   it("posts raw audio only to transcription, never chat or approval", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ text: " buy 10 INFY ", seconds: 4 })));
     vi.stubGlobal("fetch", fetch);
     const blob = new Blob(["audio"], { type: "audio/webm;codecs=opus" });
-    expect(await transcribe(blob)).toEqual({ ok: true, data: { text: "buy 10 INFY", seconds: 4 } });
+    expect(await transcribe(blob)).toEqual({ ok: true, data: { text: "buy 10 INFY", seconds: 4, provider: "groq", fell_back: false } });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0]![0]).toBe("/api/voice/transcribe");
     expect(fetch.mock.calls[0]![1]).toMatchObject({ method: "POST", body: blob, headers: { "Content-Type": blob.type } });
+  });
+  it("passes on which provider transcribed it, and whether local voice fell back to Groq", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ text: "x", seconds: 1, provider: "groq", fell_back: true }))));
+    expect(await transcribe(new Blob())).toMatchObject({ ok: true, data: { provider: "groq", fell_back: true } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ text: "x", provider: "local", fell_back: "yes" }))));
+    expect(await transcribe(new Blob())).toMatchObject({ ok: true, data: { provider: "local", fell_back: false } });
   });
   it.each([400, 413, 415, 429, 502, 503])( "maps %i to safe voice-specific wording", async (status) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("secret raw error", { status })));
@@ -83,7 +102,7 @@ describe("recording lifecycle", () => {
   let getUserMedia = vi.fn<() => Promise<MediaStream>>();
   let stream: MediaStream;
   let states: VoiceState[];
-  let transcript = vi.fn<(text: string) => void>();
+  let transcript = vi.fn<(text: string, fellBack: boolean) => void>();
   let upload = vi.fn<Upload>();
   let recorder: VoiceRecording;
   beforeEach(() => {
@@ -107,8 +126,15 @@ describe("recording lifecycle", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(stop).toHaveBeenCalled();
     expect(upload).toHaveBeenCalledTimes(1);
-    expect(transcript).toHaveBeenCalledWith("buy 10");
+    expect(transcript).toHaveBeenCalledWith("buy 10", false);
     expect(states.map((s) => s.phase)).toEqual(["requesting", "recording", "transcribing", "idle"]);
+  });
+  it("tells the chat when local voice fell back to Groq", async () => {
+    upload.mockResolvedValue({ ok: true, data: { text: "buy 10", fell_back: true } });
+    await recorder.start("audio/webm");
+    recorder.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(transcript).toHaveBeenCalledWith("buy 10", true);
   });
   it("auto-stops at exactly 30 seconds", async () => {
     await recorder.start("audio/webm");

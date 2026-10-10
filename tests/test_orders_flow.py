@@ -214,9 +214,9 @@ def test_limits_block_the_card_and_say_why(client, over, needle):
     assert "LIMIT_BLOCKED" in audit_kinds(client)
 
 
-def test_f_and_o_and_indices_are_not_orderable(client):
+def test_an_index_is_not_orderable(client):
     reply = preview(client, place("NIFTY", quantity=1))
-    assert reply["cards"][0]["level"] == "blocked" and "only equity" in reply["text"]
+    assert reply["cards"][0]["level"] == "blocked" and "can't be traded here" in reply["text"]
 
 
 def test_suspended_stock_is_blocked(client, broker):

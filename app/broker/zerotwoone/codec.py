@@ -21,8 +21,8 @@ from app.schemas import (
     Validity,
 )
 
-PRODUCT_TO_WIRE = {Product.CNC: "CNC", Product.MIS: "INTRADAY"}
-PRODUCT_FROM_WIRE = {"CNC": Product.CNC, "INTRADAY": Product.MIS}  # NRML (F&O carry) has no equivalent here
+PRODUCT_TO_WIRE = {Product.CNC: "CNC", Product.MIS: "INTRADAY", Product.NRML: "NRML"}
+PRODUCT_FROM_WIRE = {"CNC": Product.CNC, "INTRADAY": Product.MIS, "NRML": Product.NRML}  # NRML: F&O carried overnight
 VALIDITY_TO_WIRE = {Validity.DAY: "Day", Validity.IOC: "IOC"}
 VALIDITY_FROM_WIRE = {"Day": Validity.DAY, "IOC": Validity.IOC}
 

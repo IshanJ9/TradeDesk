@@ -160,6 +160,22 @@ class RuleBasedLLM:
         if re.search(r"\bplan\b", t) and re.search(r"happen|status|report|how did|how'?s|went|result|filled", t):
             return [_call("get_plan_report")]
 
+        # options: "buy 1 lot nifty 24500 ce", "buy 2 lots nifty 24500 pe 2026-10-20 intraday", "sell my nifty 24500 ce"
+        if m := re.match(
+            r"(?:please\s+)?(?P<side>buy|sell)\s+(?:(?P<lots>\d+)\s+lots?\s+(?:of\s+)?|(?P<all>all\s+(?:of\s+)?)?(?:my\s+)?)"
+            r"(?P<und>[a-z]+)\s+(?P<strike>\d{3,6}(?:\.\d+)?)\s*(?P<kind>ce|pe|call|put)\b(?P<rest>.*)$",
+            t,
+        ):
+            kind = "CE" if m["kind"] in ("ce", "call") else "PE"
+            expiry = re.search(r"\d{4}-\d{2}-\d{2}", m["rest"])
+            sizing = ({"lots": int(m["lots"])} if m["lots"] else
+                      {"fraction_of_holding": 1.0} if m["side"] == "sell" else {})
+            if sizing:  # a buy must say how many lots; otherwise fall through to the help text
+                return [_call("propose_order", action="PLACE", side=m["side"].upper(), order_type="MARKET",
+                              option_underlying=m["und"].upper(), strike_rupees=_num(m["strike"]), option_type=kind,
+                              expiry=expiry.group() if expiry else None, product="MIS" if "intraday" in t else "NRML",
+                              **sizing)]
+
         if m := re.match(r"(?:please\s+)?cancel\s+(?:my\s+)?(?:order\s+)?(?P<id>[a-z]*\d[a-z0-9]*)$", t):
             return [_call("propose_order", action="CANCEL", target_order_id=m["id"].upper())]
 

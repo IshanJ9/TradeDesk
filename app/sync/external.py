@@ -11,6 +11,7 @@ from app.db import Database
 from app.events import EventHub
 from app.history.store import ActivityStore, trading_day
 from app.schemas import Order, OrderStatus
+from app.sync.order_events import wait_or_wake
 
 log = logging.getLogger("tradedesk.sync")
 FINAL_ORDERS = {OrderStatus.FILLED, OrderStatus.REJECTED, OrderStatus.CANCELLED}
@@ -67,7 +68,7 @@ class ExternalOrderSync:
                     self._hub.publish(ExternalOrderEvent, order=order)
                 self._seen[oid] = signature
 
-    async def run(self, interval: float) -> None:
+    async def run(self, interval: float, wake: asyncio.Event | None = None) -> None:
         if interval <= 0:
             raise ValueError("external sync interval must be positive")
         while True:
@@ -78,11 +79,11 @@ class ExternalOrderSync:
             except Exception:
                 # Do not log raw broker exception text (it may contain outside text or credentials).
                 log.warning("External order sync pass failed; retrying on the next poll")
-            await asyncio.sleep(interval)
+            await wait_or_wake(interval, wake)  # an orders-socket event (e.g. from 021's own app) wakes it early
 
 
-async def run_external_sync(app, interval: float) -> None:
+async def run_external_sync(app, interval: float, wake: asyncio.Event | None = None) -> None:
     state = app.state
     sync = ExternalOrderSync(state.broker, state.db, state.history, state.hub, state.clock,
                              state.settings.reconcile_grace_seconds)
-    await sync.run(interval)
+    await sync.run(interval, wake)

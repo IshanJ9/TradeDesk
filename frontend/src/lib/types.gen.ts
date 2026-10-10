@@ -334,6 +334,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Which provider transcribes, so the microphone can say where the audio goes. Loads nothing.
+         */
+        get: operations["status_api_voice_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/transcribe": {
         parameters: {
             query?: never;
@@ -1444,6 +1464,32 @@ export interface components {
             requires_review: true;
         };
         /**
+         * OptionRef
+         * @description Which option contract the trader named. Code finds the exact contract; nothing here is trusted as a price.
+         */
+        "OptionRef-Input": {
+            /** Underlying */
+            underlying: string;
+            /** Strike */
+            strike: number;
+            option_type: components["schemas"]["OptionType"];
+            /** Expiry */
+            expiry?: string | null;
+        };
+        /**
+         * OptionRef
+         * @description Which option contract the trader named. Code finds the exact contract; nothing here is trusted as a price.
+         */
+        "OptionRef-Output": {
+            /** Underlying */
+            underlying: string;
+            /** Strike */
+            strike: number;
+            option_type: components["schemas"]["OptionType"];
+            /** Expiry */
+            expiry: string | null;
+        };
+        /**
          * OptionType
          * @enum {string}
          */
@@ -1505,9 +1551,12 @@ export interface components {
             action: components["schemas"]["OrderAction"];
             /** Instrument Ref */
             instrument_ref?: string | null;
+            option?: components["schemas"]["OptionRef-Input"] | null;
             side?: components["schemas"]["Side"] | null;
             /** Quantity */
             quantity?: number | null;
+            /** Lots */
+            lots?: number | null;
             /** Amount Paise */
             amount_paise?: number | null;
             /** Fraction Of Holding */
@@ -1532,9 +1581,12 @@ export interface components {
             action: components["schemas"]["OrderAction"];
             /** Instrument Ref */
             instrument_ref: string | null;
+            option: components["schemas"]["OptionRef-Output"] | null;
             side: components["schemas"]["Side"] | null;
             /** Quantity */
             quantity: number | null;
+            /** Lots */
+            lots: number | null;
             /** Amount Paise */
             amount_paise: number | null;
             /** Fraction Of Holding */
@@ -1957,7 +2009,7 @@ export interface components {
          * Product
          * @enum {string}
          */
-        Product: "CNC" | "MIS";
+        Product: "CNC" | "MIS" | "NRML";
         /**
          * ProposePlanRequest
          * @description Several orders approved together as one plan, e.g. 'sell half my Infosys and buy ITC with the money'.
@@ -2386,6 +2438,17 @@ export interface components {
             text: string;
             /** Seconds */
             seconds: number | null;
+            /**
+             * Provider
+             * @default groq
+             * @enum {string}
+             */
+            provider: "groq" | "local";
+            /**
+             * Fell Back
+             * @default false
+             */
+            fell_back: boolean;
         };
         /** TrendPoint */
         TrendPoint: {
@@ -2419,6 +2482,20 @@ export interface components {
          * @enum {string}
          */
         Validity: "DAY" | "IOC";
+        /** VoiceStatus */
+        VoiceStatus: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "groq" | "local";
+            /** Fallback */
+            fallback: boolean;
+            /** Local Ready */
+            local_ready: boolean;
+            /** Groq Ready */
+            groq_ready: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -3025,6 +3102,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"])[];
+                };
+            };
+        };
+    };
+    status_api_voice_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceStatus"];
                 };
             };
         };

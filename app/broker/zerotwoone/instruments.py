@@ -96,6 +96,10 @@ class InstrumentMaster:
         self._option_rows = option_rows
         self._index_tokens = index_tokens
         self._options_cache: dict[str, list[Listing]] = {}
+        # option contracts are built on demand; once built (or traded) they are found by key and by token too
+        self._option_by_key: dict[str, Listing] = {}
+        self._option_by_token: dict[tuple[str, int], Listing] = {}
+        self._option_row_by_token: dict[tuple[str, int], dict] | None = None
 
     # ---- building ---------------------------------------------------------------------------- #
 
@@ -159,10 +163,16 @@ class InstrumentMaster:
         return len(self._by_key)
 
     def get(self, instrument_key: str) -> Listing | None:
-        return self._by_key.get(instrument_key)
+        return self._by_key.get(instrument_key) or self._option_by_key.get(instrument_key)
 
     def by_token(self, exchange: str, token: int) -> Listing | None:
-        return self._by_token.get((exchange, token))
+        found = self._by_token.get((exchange, token)) or self._option_by_token.get((exchange, token))
+        if found is None and exchange in ("NSEFO", "BSEEQD"):  # an option order or position: build that contract
+            if self._option_row_by_token is None:
+                self._option_row_by_token = {(r["exchange"].strip(), _int(r["token"], -1)): r for r in self._option_rows}
+            row = self._option_row_by_token.get((exchange, token))
+            found = self._option_listing(row) if row is not None else None
+        return found
 
     def by_symbol(self, symbol: str, exchange: str = "NSECM") -> Listing | None:
         key_exchange = EXCHANGE_BY_FILE_NAME.get(exchange, Exchange.NSE)
@@ -206,35 +216,49 @@ class InstrumentMaster:
 
     # ---- options (built on demand: there are about a lakh of them) ------------------------------ #
 
+    def _option_listing(self, row: dict) -> Listing | None:
+        """One option row -> a Listing (registered so it is found again by key and by token)."""
+        token = _int(row["token"], -1)
+        underlying = (row.get("symbol") or "").strip().upper().replace(" ", "")
+        expiry, kind = expiry_to_date(_int(row["expiry"]), self._today), OPTION_TYPES.get((row["option_type"] or "").strip())
+        strike, lot = _int(row["strike_price"]), max(_int(row["board_lot_quantity"], 1), 1)
+        if expiry is None or kind is None or strike <= 0 or token < 0 or not underlying:
+            return None
+        try:
+            inst = Instrument(
+                symbol=option_symbol(underlying, expiry, strike, kind),
+                exchange=Exchange.BSE if row["exchange"].strip() == "BSEEQD" else Exchange.NSE,
+                series="OPT",
+                tick_size=_int(row["ticksize"]) or 5,
+                underlying=underlying,
+                lot_size=lot,
+                expiry=expiry,
+                strike=strike,
+                option_type=kind,
+            )
+        except ValidationError:
+            return None
+        listing = Listing(token, row["exchange"].strip(), inst, lot, _int(row["freeze_quantity"]))
+        self._option_by_key.setdefault(inst.key, listing)
+        self._option_by_token[(listing.exchange, token)] = listing
+        return listing
+
     def _options(self, underlying: str) -> list[Listing]:
         underlying = underlying.upper()
         if underlying not in self._options_cache:
-            built: list[Listing] = []
-            for row in self._option_rows:
-                token = _int(row["token"], -1)
-                if (row.get("symbol") or "").strip().upper().replace(" ", "") != underlying:
-                    continue
-                expiry, kind = expiry_to_date(_int(row["expiry"]), self._today), OPTION_TYPES.get((row["option_type"] or "").strip())
-                strike, lot = _int(row["strike_price"]), max(_int(row["board_lot_quantity"], 1), 1)
-                if expiry is None or kind is None or strike <= 0 or token < 0:
-                    continue
-                try:
-                    inst = Instrument(
-                        symbol=option_symbol(underlying, expiry, strike, kind),
-                        exchange=Exchange.BSE if row["exchange"].strip() == "BSEEQD" else Exchange.NSE,
-                        series="OPT",
-                        tick_size=_int(row["ticksize"]) or 5,
-                        underlying=underlying,
-                        lot_size=lot,
-                        expiry=expiry,
-                        strike=strike,
-                        option_type=kind,
-                    )
-                except ValidationError:
-                    continue
-                built.append(Listing(token, row["exchange"].strip(), inst, lot, _int(row["freeze_quantity"])))
-            self._options_cache[underlying] = built
+            rows = [r for r in self._option_rows if (r.get("symbol") or "").strip().upper().replace(" ", "") == underlying]
+            self._options_cache[underlying] = [x for r in rows if (x := self._option_listing(r)) is not None]
         return self._options_cache[underlying]
+
+    def find_option(self, underlying: str, strike: int, kind: OptionType, expiry: date | None, today: date) -> Listing | None:
+        """The exact contract; `expiry` None = the nearest one from today. NSE is preferred over BSE."""
+        chosen = expiry or next(iter(self.option_expiries(underlying, today)), None)
+        if chosen is None or chosen < today:
+            return None
+        hits = [o for o in self._options(underlying)
+                if o.instrument.expiry == chosen and o.instrument.strike == strike and o.instrument.option_type is kind]
+        hits.sort(key=lambda o: o.exchange != "NSEFO")
+        return hits[0] if hits else None
 
     def option_expiries(self, underlying: str, today: date | None = None) -> list[date]:
         found = {o.instrument.expiry for o in self._options(underlying)}

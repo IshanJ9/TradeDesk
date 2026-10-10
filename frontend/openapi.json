@@ -782,6 +782,28 @@
         }
       }
     },
+    "/api/voice/status": {
+      "get": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Status",
+        "description": "Which provider transcribes, so the microphone can say where the audio goes. Loads nothing.",
+        "operationId": "status_api_voice_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/voice/transcribe": {
       "post": {
         "tags": [
@@ -3602,6 +3624,85 @@
         ],
         "title": "OnboardingSuggestion"
       },
+      "OptionRef-Input": {
+        "properties": {
+          "underlying": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Underlying"
+          },
+          "strike": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Strike"
+          },
+          "option_type": {
+            "$ref": "#/components/schemas/OptionType"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "underlying",
+          "strike",
+          "option_type"
+        ],
+        "title": "OptionRef",
+        "description": "Which option contract the trader named. Code finds the exact contract; nothing here is trusted as a price."
+      },
+      "OptionRef-Output": {
+        "properties": {
+          "underlying": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Underlying"
+          },
+          "strike": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Strike"
+          },
+          "option_type": {
+            "$ref": "#/components/schemas/OptionType"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "underlying",
+          "strike",
+          "option_type",
+          "expiry"
+        ],
+        "title": "OptionRef",
+        "description": "Which option contract the trader named. Code finds the exact contract; nothing here is trusted as a price."
+      },
       "OptionType": {
         "type": "string",
         "enum": [
@@ -3770,6 +3871,16 @@
             ],
             "title": "Instrument Ref"
           },
+          "option": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptionRef-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "side": {
             "anyOf": [
               {
@@ -3791,6 +3902,18 @@
               }
             ],
             "title": "Quantity"
+          },
+          "lots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lots"
           },
           "amount_paise": {
             "anyOf": [
@@ -3896,6 +4019,16 @@
             ],
             "title": "Instrument Ref"
           },
+          "option": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptionRef-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "side": {
             "anyOf": [
               {
@@ -3917,6 +4050,18 @@
               }
             ],
             "title": "Quantity"
+          },
+          "lots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lots"
           },
           "amount_paise": {
             "anyOf": [
@@ -4002,8 +4147,10 @@
         "required": [
           "action",
           "instrument_ref",
+          "option",
           "side",
           "quantity",
+          "lots",
           "amount_paise",
           "fraction_of_holding",
           "order_type",
@@ -5044,7 +5191,8 @@
         "type": "string",
         "enum": [
           "CNC",
-          "MIS"
+          "MIS",
+          "NRML"
         ],
         "title": "Product"
       },
@@ -6131,13 +6279,29 @@
               }
             ],
             "title": "Seconds"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "groq",
+              "local"
+            ],
+            "title": "Provider",
+            "default": "groq"
+          },
+          "fell_back": {
+            "type": "boolean",
+            "title": "Fell Back",
+            "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "text",
-          "seconds"
+          "seconds",
+          "provider",
+          "fell_back"
         ],
         "title": "Transcript"
       },
@@ -6225,6 +6389,39 @@
           "IOC"
         ],
         "title": "Validity"
+      },
+      "VoiceStatus": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "groq",
+              "local"
+            ],
+            "title": "Provider"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback"
+          },
+          "local_ready": {
+            "type": "boolean",
+            "title": "Local Ready"
+          },
+          "groq_ready": {
+            "type": "boolean",
+            "title": "Groq Ready"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "fallback",
+          "local_ready",
+          "groq_ready"
+        ],
+        "title": "VoiceStatus"
       }
     }
   }

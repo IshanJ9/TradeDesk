@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.schemas import AuditKind
-from app.voice.service import CONTENT_TYPES, MAX_AUDIO_BYTES, Transcriber, Transcript, VoiceError
+from app.voice.service import CONTENT_TYPES, MAX_AUDIO_BYTES, Transcriber, Transcript, VoiceError, VoiceStatus
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -15,6 +15,12 @@ async def get_transcriber(request: Request) -> Transcriber:
     if not hasattr(request.app.state, "voice_transcriber"):
         request.app.state.voice_transcriber = Transcriber(request.app.state.settings)
     return request.app.state.voice_transcriber
+
+
+@router.get("/status", response_model=VoiceStatus)
+async def status(service: Annotated[Transcriber, Depends(get_transcriber)]) -> VoiceStatus:
+    """Which provider transcribes, so the microphone can say where the audio goes. Loads nothing."""
+    return service.status()
 
 
 @router.post(
@@ -54,10 +60,11 @@ async def transcribe(request: Request, service: Annotated[Transcriber, Depends(g
         raise HTTPException(exc.status, exc.message) from None
     # This records metadata only. Even a transcript asking to approve an order
     # remains text returned to the editor; it is never submitted to chat here.
+    where = "on this machine" if result.provider == "local" else "by Groq after the local model failed" if result.fell_back else ""
     request.app.state.audit.record(
         AuditKind.VOICE_TRANSCRIBED,
         "system",
-        "voice transcribed" if result.seconds is None else f"voice transcribed, {result.seconds:.1f} s",
-        data={"seconds": result.seconds},
+        " ".join(filter(None, ["voice transcribed", where])) + ("" if result.seconds is None else f", {result.seconds:.1f} s"),
+        data={"seconds": result.seconds, "provider": result.provider, "fell_back": result.fell_back},
     )
     return result

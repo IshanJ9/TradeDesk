@@ -3,10 +3,10 @@ import { actionTitle } from "../lib/describe";
 import { rupees } from "../lib/format";
 import { resolveAmbiguity, type Msg } from "../lib/useChat";
 import type { Card } from "../lib/types";
-import { api } from "../lib/api";
+import { api, voiceStatus } from "../lib/api";
 import { Banner, Button, Chip } from "./ui";
 import { MicButton } from "./MicButton";
-import { transcriptParts } from "../lib/voice";
+import { FELL_BACK, transcriptParts, voiceWhere, type VoiceStatus } from "../lib/voice";
 import { pipelineOf } from "../lib/pipeline";
 import { traceRuns } from "../lib/trace";
 import type { TraceEvent } from "../lib/types";
@@ -83,6 +83,13 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
   const latestRun = messages.length ? traceRuns(trace)[0] : undefined;
   const [text, setText] = useState("");
   const [fromVoice, setFromVoice] = useState(false);
+  const [voiceFellBack, setVoiceFellBack] = useState(false);
+  const [voice, setVoice] = useState<VoiceStatus | null>(null);
+  useEffect(() => {
+    let live = true;
+    void voiceStatus().then((r) => { if (live && r.ok) setVoice(r.data); });
+    return () => { live = false; };
+  }, []);
   const [voiceActive, setVoiceActive] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
@@ -95,6 +102,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
     if (!value.trim() || busy || voiceActive) return;
     setText("");
     setFromVoice(false);
+    setVoiceFellBack(false);
     await send(value);
     fieldRef.current?.focus();
   };
@@ -186,9 +194,10 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
             aria-describedby={fromVoice ? "voice-review" : undefined}
             className="max-h-32 min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-strong bg-paper px-3.5 py-2.5 text-[14px] text-ink placeholder:text-muted"
           />
-          <MicButton disabled={busy || offline} onActive={setVoiceActive} onTranscript={(transcript) => {
+          <MicButton disabled={busy || offline} onActive={setVoiceActive} where={voiceWhere(voice)} onTranscript={(transcript, fellBack) => {
             setText((draft) => draft.trim() ? `${draft}\n${transcript}` : transcript);
             setFromVoice(true);
+            setVoiceFellBack(fellBack);
             fieldRef.current?.focus();
           }} />
           <Button variant="primary" type="submit" disabled={busy || voiceActive || !text.trim()} className="h-[44px] shrink-0">
@@ -197,6 +206,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
         </div>
         {fromVoice && <div className="mx-auto mt-2 max-w-[40rem]">
           <p id="voice-review" className="text-xs text-[var(--warn-ink)]">From voice: check the numbers before sending</p>
+          {voiceFellBack && <p className="mt-0.5 text-xs text-muted">{FELL_BACK}</p>}
           <p aria-label="Draft with numbers highlighted" className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">
             {transcriptParts(text).map((part, i) => part.number
               ? <mark key={i} className="rounded bg-[var(--warn-bg)] px-0.5 font-semibold text-[var(--warn-ink)]">{part.text}</mark>
@@ -205,7 +215,7 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
         </div>}
         <p className="mx-auto mt-1.5 max-w-[40rem] text-[11px] text-muted">
           Enter to send &middot; Shift+Enter for a new line &middot; Facts from your account, not advice.
-          {" "}Voice uses Groq transcription.
+          {" "}{voiceWhere(voice)}
         </p>
       </form>
     </div>

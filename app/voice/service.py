@@ -1,10 +1,20 @@
-"""Bounded, injectable Groq transcription with no audio or text persistence."""
+"""Bounded, injectable transcription with no audio or text persistence.
 
+Two providers: Groq (default) and, with VOICE_PROVIDER=local, faster-whisper running on this machine. The local
+model is loaded only from LOCAL_VOICE_DIR (filled once by scripts/download_voice_model.py); nothing is ever
+downloaded while the app runs. If the local model fails and VOICE_FALLBACK=groq, Groq transcribes instead and
+the transcript says so, because the audio then left the machine.
+"""
+
+import asyncio
+import io
 import math
 import time
 from collections import deque
 from collections.abc import Callable
+from pathlib import Path
 from threading import Lock
+from typing import Literal, Protocol
 
 import httpx
 from pydantic import Field
@@ -27,11 +37,25 @@ PROMPT = (
 UNAVAILABLE = "Voice is not set up on this server"
 RATE_LIMITED = "Too many voice requests, wait a moment or type instead"
 FAILED = "Couldn't transcribe that, please type it"
+LOCAL_UNAVAILABLE = "Local voice isn't set up on this server"
+LOCAL_BUSY = "Local voice is busy with another recording"
+LOCAL_TIMEOUT_SECONDS = 20.0
+
+Provider = Literal["groq", "local"]
 
 
 class Transcript(Model):
     text: str = Field(min_length=1, max_length=500)
     seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    provider: Provider = "groq"
+    fell_back: bool = False  # local was chosen but failed, so Groq transcribed it (the audio was uploaded)
+
+
+class VoiceStatus(Model):
+    provider: Provider
+    fallback: bool  # local failures go to Groq
+    local_ready: bool  # the local model files and the optional package are present
+    groq_ready: bool
 
 
 class VoiceError(Exception):
@@ -65,6 +89,69 @@ class VoiceLimiter:
             self._attempts.append(now)
 
 
+class LocalEngine(Protocol):
+    def ready(self) -> bool: ...
+    def transcribe(self, audio: bytes, language: str | None) -> tuple[str, float | None]: ...
+
+
+class WhisperEngine:
+    """faster-whisper on the CPU, loaded once from a local folder. Never downloads a model."""
+
+    def __init__(self, model_dir: str):
+        self._dir = Path(model_dir)
+        self._model = None
+        self._load_lock = Lock()
+
+    def ready(self) -> bool:
+        try:
+            import faster_whisper  # noqa: F401  (optional dependency: requirements-voice-local.txt)
+        except ImportError:
+            return False
+        return (self._dir / "model.bin").is_file()
+
+    def transcribe(self, audio: bytes, language: str | None) -> tuple[str, float | None]:
+        if not self.ready():
+            raise VoiceError(503, LOCAL_UNAVAILABLE)
+        with self._load_lock:
+            if self._model is None:
+                from faster_whisper import WhisperModel
+
+                self._model = WhisperModel(str(self._dir), device="cpu", compute_type="int8", local_files_only=True)
+        segments, info = self._model.transcribe(
+            _decode(audio), language=language, initial_prompt=PROMPT, temperature=0.0, beam_size=5,
+            condition_on_previous_text=False,
+        )
+        text = " ".join(s.text.strip() for s in segments).strip()
+        return text, getattr(info, "duration", None)
+
+
+SAMPLE_RATE = 16_000
+MAX_SECONDS = 35  # the browser stops at 30 s; anything longer is refused rather than processed
+
+
+def _decode(audio: bytes):
+    """Any of the accepted containers -> 16 kHz mono float32 samples. Decoded here (not by faster-whisper) so a
+    PyAV upgrade can't break it, and so the work is bounded by length."""
+    import av
+    import numpy as np
+
+    chunks, total = [], 0
+    with av.open(io.BytesIO(audio), mode="r") as container:
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+        for frame in container.decode(audio=0):
+            for out in resampler.resample(frame):
+                chunk = out.to_ndarray().reshape(-1)
+                total += chunk.size
+                if total > SAMPLE_RATE * MAX_SECONDS:
+                    raise VoiceError(413, "The recording is too long")
+                chunks.append(chunk)
+        for out in resampler.resample(None):
+            chunks.append(out.to_ndarray().reshape(-1))
+    if not chunks:
+        raise VoiceError(400, "The recording is empty")
+    return np.concatenate(chunks).astype(np.float32) / 32768.0
+
+
 class Transcriber:
     def __init__(
         self,
@@ -72,11 +159,22 @@ class Transcriber:
         *,
         client: httpx.AsyncClient | None = None,
         limiter: VoiceLimiter | None = None,
+        engine: LocalEngine | None = None,
     ):
         self._key = settings.groq_api_key
         self._model = settings.voice_model
         self._client = client  # injected clients are owned/closed by their caller
         self._limiter = limiter or VoiceLimiter()
+        self._provider: Provider = "local" if settings.voice_provider == "local" else "groq"
+        self._fallback = settings.voice_fallback == "groq"
+        self._engine: LocalEngine | None = engine or (WhisperEngine(settings.local_voice_dir) if self._provider == "local" else None)
+        self._local_busy = asyncio.Lock()
+
+    def status(self) -> VoiceStatus:
+        return VoiceStatus(
+            provider=self._provider, fallback=self._provider == "local" and self._fallback and bool(self._key),
+            local_ready=bool(self._engine and self._engine.ready()), groq_ready=bool(self._key),
+        )
 
     async def transcribe(self, audio: bytes, content_type: str, *, language: str | None = None) -> Transcript:
         if language not in (None, 'en', 'hi'):
@@ -87,10 +185,43 @@ class Transcriber:
             raise VoiceError(400, "The recording is empty")
         if len(audio) > MAX_AUDIO_BYTES:
             raise VoiceError(413, "The recording must be 5 MB or smaller")
-        if not self._key:
+        if self._provider == "groq" and not self._key:
             raise VoiceError(503, UNAVAILABLE)
         self._limiter.reserve()
 
+        if self._provider == "local":
+            try:
+                return await self._local(audio, language)
+            except VoiceError:
+                if not (self._fallback and self._key):
+                    raise
+            # the local model failed: Groq transcribes it instead, and the transcript says so
+            return (await self._groq(audio, content_type, language)).model_copy(update={"fell_back": True})
+        return await self._groq(audio, content_type, language)
+
+    async def _local(self, audio: bytes, language: str | None) -> Transcript:
+        engine = self._engine
+        if engine is None or not engine.ready():
+            raise VoiceError(503, LOCAL_UNAVAILABLE)
+        if self._local_busy.locked():  # one recording at a time on the CPU
+            raise VoiceError(429, LOCAL_BUSY)
+        await self._local_busy.acquire()
+        work = asyncio.ensure_future(asyncio.to_thread(engine.transcribe, audio, language))
+        # the lock is held until the thread really finishes, even if we stop waiting for it
+        work.add_done_callback(lambda _f: self._local_busy.release())
+        try:
+            text, duration = await asyncio.wait_for(asyncio.shield(work), LOCAL_TIMEOUT_SECONDS)
+        except VoiceError:
+            raise
+        except Exception:  # timeout, decode error, model error: never the details
+            raise VoiceError(502, FAILED) from None
+        text = text.strip()
+        if not text:
+            raise VoiceError(502, FAILED)
+        seconds = float(duration) if type(duration) in (int, float) and math.isfinite(duration) and duration >= 0 else None
+        return Transcript(text=text[:500].strip(), seconds=seconds, provider="local")
+
+    async def _groq(self, audio: bytes, content_type: str, language: str | None) -> Transcript:
         try:
             if self._client is not None:
                 response = await self._post(self._client, audio, content_type, language)

@@ -148,8 +148,45 @@ Clips are capped at 5 MB, at most 15 a minute (inside Groq's free tier); audio a
 the audit log records only that a clip was transcribed. Without a key the mic says "Voice is not set up on this
 server". Checked: the route's tests (missing key, rate limits, timeouts, size and type limits, the key never
 appearing in any response or log), and one real recording ("buy five ITC at market") sent through the running app
-to Groq: it returned "Buy 5 ITC at market." and the broker received nothing. Groq is an outside service; a local
-Whisper model would keep audio in-house (future scope).
+to Groq: it returned "Buy 5 ITC at market." and the broker received nothing.
+
+**Local voice (optional).** With `VOICE_PROVIDER=local`, recordings are transcribed on this machine by
+faster-whisper (`small`, CPU, int8), so the audio never leaves it. One-time setup:
+
+    .venv\Scripts\python -m pip install -r requirements-voice-local.txt
+    .venv\Scripts\python scripts\download_voice_model.py     # ~480 MB into .cache/whisper-small (git-ignored)
+
+The app never downloads a model itself: if the files are missing, local voice reports "not set up". One recording
+is transcribed at a time, for at most 20 seconds, and recordings over 35 seconds are refused. If the local model
+fails and `VOICE_FALLBACK=groq` (the default), Groq transcribes it instead and the chat says so ("the audio was
+uploaded"); with `VOICE_FALLBACK=none` the audio stays local and the trader types instead. The chat footer always
+says where audio goes. Checked: tests with a fake engine (no upload, fallback and no-fallback, busy, timeout,
+the real engine refusing to run without its files), and a real recording through the running app: "Buy 5 ITC at
+market.", 3 s with the English hint (about 7 s for the first clip while the model loads).
+
+## Options
+
+"Buy 1 lot NIFTY 24500 CE" drafts an option card. The model only names the contract (underlying, strike, call or
+put, optional expiry) and the number of lots; code finds the exact contract (from 021's instrument file on the live
+broker, with its real lot size and token), multiplies lots by the lot size, and picks the nearest expiry when none
+was named, which the card states. The strike and lot count must be numbers the trader typed, like every other
+figure. Options are carried as NRML (021's F&O product) or held intraday as MIS.
+
+- **Buy, or sell what you hold, nothing else.** A sale can never exceed the long option position in that product;
+  selling an option not held (writing) is refused with the reason. Futures are not offered.
+- **A factual notice on every option buy, never advice:** the whole premium can be lost if the contract expires
+  worthless on its date, and "SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a
+  loss". The card asks for the typed `I UNDERSTAND` before Approve.
+- **021's Options charges:** flat ₹20 brokerage, STT 0.15% on the sell side, exchange charges 0.03503% (NSE),
+  stamp duty 0.003% on buys, IPFT 0.0005%, all on the premium (`app/orders/charges.py`).
+- Approval re-checks, the send log, your own limits and the hard stops apply as for shares. Options are ordered
+  one at a time: rules and plans stay shares only.
+
+Checked: tests on the mock (lots, nearest and named expiry, puts, wrong strike or size, charges worked by hand,
+writing refused, buy then sell only what is held) and on the fake 021 (the contract and lot size from 021's file,
+the order sent as `NSEFO` / `NRML` with the right token, F&O rows read back from the order book and positions),
+and in the browser (the card, the typed acknowledgment, approval, the position, the writing refusal). Not yet sent
+to the live sandbox.
 
 ## Orders placed in 021's own app
 
@@ -159,8 +196,18 @@ book (same login, no second session) and labels each order: ours if it is in our
 an order of ours whose reply was lost is never mislabelled. Outside orders appear in the desk's **021 app** tab,
 are saved to SQLite (`app/history/`), and count toward the Discipline numbers. Checked: sync tests against the mock
 and the fake 021, and on the demo build (an order placed straight at the broker appeared in the tab within 5
-seconds). Not yet seen with a real order placed in 021's app. 021 offers no push for this, so it is polling, not
-instant.
+seconds). Not yet seen with a real order placed in 021's app.
+
+**Live order updates (orders socket).** On the live broker the backend also keeps 021's orders websocket open
+(`app/broker/zerotwoone/orders_feed.py`), decoded exactly as the API guide lays out its two packets (NSE, 46 bytes;
+BSE, 32 bytes; nine event types). A frame never sets an order's status by itself: as the guide advises, REST is the
+source of truth, so each event, and every reconnect (events missed while disconnected are not replayed), wakes the
+loops that read `GET /orders`. A fill, rejection or order from 021's app then shows up about a quarter of a second
+later instead of at the next poll, even when the market is closed and no price ticks arrive. Events for another
+account, unknown codes and short frames are ignored; rejection text is outside text and is never logged or shown.
+The 5-second poll stays as the safety net. Checked: decoder tests built from the guide's byte tables, reconnect
+with a fresh key and catch-up, and the whole app on the fake 021 (a fill reaches the screen with no price tick);
+breaking the watcher or the account check on purpose fails the tests. Not yet run against the live sandbox.
 
 ## Running on 021's sandbox
 
@@ -251,10 +298,9 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 
 ## Not built yet (future scope)
 
-- The orders websocket (live fills). Order state is read over REST, which the guide calls the source of truth,
-  and orders from 021's own app are found by polling every 5 seconds.
-- A local speech-to-text model (voice uses Groq today), spoken replies, and regional languages.
-- F&O orders. Orders are equity only; the option chain is read-only.
+- Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
+- Option writing (selling options not held) and futures, deliberately: their losses are not limited to a premium,
+  and 021's API gives no margin figures to check them against. Options can be bought and sold to close (see Options).
 - Authentication (single demo user) and Co-Captain co-approval.
 
 ## Demo controls
@@ -305,7 +351,7 @@ means actual recorded history is still needed.
 | `app/agent/` | LangGraph orchestrator and the tool router |
 | `app/trace.py` | live trace events for the Assistant tab |
 | `app/risk/` | Discipline: profile, goals, the limits guard, daily facts and reports |
-| `app/voice/` | voice transcription (Groq) |
+| `app/voice/` | voice transcription (Groq, or faster-whisper on this machine) |
 | `app/sync/`, `app/history/` | orders from 021's own app; saved daily activity |
 | `app/demo.py` | demo controls (demo mode + mock broker only) |
 | `app/broker/zerotwoone/` | the 021 adapter: REST, binary market socket, instrument list |

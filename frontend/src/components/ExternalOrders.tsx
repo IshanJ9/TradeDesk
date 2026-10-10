@@ -1,5 +1,6 @@
 // Owner: voice-live. Read-only view of activity detected by polling.
 import { clock, rupees } from "../lib/format";
+import { instrumentLabel, sizeText } from "../lib/instrument";
 import type { State } from "../lib/store";
 import { useExternalActivity } from "../lib/externalActivity";
 import { Chip, Empty } from "./ui";
@@ -18,7 +19,7 @@ export function ExternalOrders({ state }: { state: State }) {
       {orders.map((o) => (
         <li key={o.order_id} className="border-b border-line py-2 text-[13px] last:border-b-0">
           <div className="flex flex-wrap items-center gap-2"><span className="num min-w-0 break-all text-ink">
-            {o.side === "BUY" ? "Buy" : "Sell"} {o.quantity} &times; {o.instrument.symbol}
+            {o.side === "BUY" ? "Buy" : "Sell"} {sizeText(o.quantity, o.instrument)} &times; {instrumentLabel(o.instrument)}
           </span><Chip tone={o.status === "UNKNOWN" || o.status === "REJECTED" ? "warn" : "plain"}>
             {o.status === "UNKNOWN" ? "Unknown — not confirmed" : o.status === "PARTIAL" ? "Partially filled" : o.status.charAt(0) + o.status.slice(1).toLowerCase()}
           </Chip></div>

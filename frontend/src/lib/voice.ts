@@ -10,6 +10,20 @@ export function transcriptParts(text: string): { text: string; number: boolean }
     .filter(Boolean).map((part) => ({ text: part, number: /\p{Nd}/u.test(part) }));
 }
 
+export type VoiceStatus = import("./types.gen").components["schemas"]["VoiceStatus"];
+
+/** One line saying where a recording goes, from the server's voice settings. */
+export function voiceWhere(status: VoiceStatus | null): string {
+  if (!status) return "Voice uses Groq transcription.";
+  if (status.provider === "local") {
+    if (status.local_ready) return status.fallback ? "Voice runs on this laptop (Groq only if it fails)." : "Voice runs on this laptop; audio never leaves it.";
+    return status.fallback ? "Local voice isn't set up, so Groq transcribes." : "Local voice isn't set up on this server.";
+  }
+  return status.groq_ready ? "Voice uses Groq transcription." : "Voice isn't set up on this server.";
+}
+
+export const FELL_BACK = "Local voice failed, so Groq transcribed this: the audio was uploaded.";
+
 export type VoiceState = {
   phase: "idle" | "requesting" | "recording" | "transcribing" | "error";
   seconds: number;
@@ -29,8 +43,8 @@ export class VoiceRecording {
 
   constructor(
     private update: (state: VoiceState) => void,
-    private transcript: (text: string) => void,
-    private upload: (audio: Blob, signal: AbortSignal) => Promise<{ ok: true; data: { text: string } } | { ok: false; message: string }>,
+    private transcript: (text: string, fellBack: boolean) => void,
+    private upload: (audio: Blob, signal: AbortSignal) => Promise<{ ok: true; data: { text: string; fell_back?: boolean } } | { ok: false; message: string }>,
   ) {}
 
   async start(mime: string) {
@@ -76,7 +90,7 @@ export class VoiceRecording {
           if (generation !== this.generation) return;
           if (!result.ok) { this.fail(result.message); return; }
           this.active = false;
-          this.transcript(result.data.text);
+          this.transcript(result.data.text, result.data.fell_back === true);
           this.update({ phase: "idle", seconds: 0 });
         } catch {
           if (generation === this.generation) this.fail("Couldn't transcribe that, please type it");

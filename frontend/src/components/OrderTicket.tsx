@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { actionTitle, chargeLines, outcomeOf, priceLine, productWord, STATE_NOTE, validityWord } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
-import { crossesOwnLimit, riskAcknowledged } from "../lib/limits";
+import { buysAnOption, crossesOwnLimit, riskAcknowledged } from "../lib/limits";
+import { isOption } from "../lib/instrument";
 import type { Note } from "../lib/store";
 import type { ExecutionResult, PendingOrder } from "../lib/types";
 import { Fingerprint } from "./Fingerprint";
@@ -44,9 +45,12 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
   const costs = chargeLines(o.charges);
   const outcome = result ? outcomeOf(result) : null;
   const ownLimit = crossesOwnLimit(o.warnings); // needs a deliberate tick before Approve (lib/limits.ts)
+  const optionBuy = buysAnOption(o); // the whole premium can be lost: always acknowledged in words
+  const needsAck = ownLimit || optionBuy;
   const ackKey = JSON.stringify([o.id, o.order_hash, o.warnings]);
   const [ack, setAck] = useState({ key: "", text: "" });
   const acknowledged = ack.key === ackKey && riskAcknowledged(ack.text);
+  const ackWhy = [optionBuy && "You can lose the whole premium.", ownLimit && "This crosses a limit you set."].filter(Boolean).join(" ");
 
   return (
     <article
@@ -65,7 +69,9 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
           </div>
           <h3 className="mt-1.5 font-serif text-[21px] leading-tight text-ink [font-variant-numeric:tabular-nums]">{actionTitle(o)}</h3>
           <p className="text-[13px] text-muted">
-            {o.instrument.name || o.instrument.symbol} &middot; {o.instrument.exchange}
+            {isOption(o.instrument)
+              ? <>Option &middot; {o.instrument.exchange} &middot; 1 lot = {o.instrument.lot_size} units</>
+              : <>{o.instrument.name || o.instrument.symbol} &middot; {o.instrument.exchange}</>}
             {!isCancel && <> &middot; {productWord(o.product)}</>}
           </p>
         </div>
@@ -116,10 +122,10 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
           ))}
         </ul>
       )}
-      {ownLimit && waiting && (
+      {needsAck && waiting && (
         <label className="mx-4 mt-2 flex flex-col items-start gap-2 text-[13px] text-ink">
           <input aria-label="Type I UNDERSTAND to acknowledge your risk warnings" autoComplete="off" className="min-w-0 rounded border border-strong bg-surface px-2 py-1" value={ack.key === ackKey ? ack.text : ""} onChange={e => setAck({ key: ackKey, text: e.target.value })} />
-          Type I UNDERSTAND. This crosses a limit you set.
+          Type I UNDERSTAND. {ackWhy}
         </label>
       )}
 
@@ -130,7 +136,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             <Fingerprint hash={o.order_hash} />
             <div className="flex gap-2">
               <Button onClick={onDecline} disabled={sending}>Decline</Button>
-              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (ownLimit && !acknowledged)}>
+              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (needsAck && !acknowledged)}>
                 {sending ? "Sending…" : isCancel ? "Approve this cancellation" : "Approve this order"}
               </Button>
             </div>

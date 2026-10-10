@@ -5,6 +5,11 @@ export function crossesOwnLimit(warnings: readonly string[]): boolean {
   return warnings.some((w) => w.startsWith("You set") || w.startsWith("You switched"));
 }
 
+// Buying an option can lose the whole premium: that card always asks for the typed acknowledgment too.
+export function buysAnOption(o: { side?: string | null; instrument: { option_type?: string | null } }): boolean {
+  return o.side === "BUY" && o.instrument.option_type != null;
+}
+
 export function riskAcknowledged(value: string): boolean {
   return value.trim() === "I UNDERSTAND";
 }

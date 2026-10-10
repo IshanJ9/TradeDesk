@@ -24,6 +24,9 @@ class Settings:
     orchestrator: str = "classic"  # classic = the current copilot loop; langgraph = the graph in app/agent/
     groq_api_key: str = field(default="", repr=False)  # voice transcription (backend only)
     voice_model: str = "whisper-large-v3-turbo"
+    voice_provider: str = "groq"  # groq | local (faster-whisper on this machine, optional dependency)
+    voice_fallback: str = "groq"  # when local fails: groq (uploads the audio, and the UI says so) | none
+    local_voice_dir: str = ".cache/whisper-small"  # filled once by scripts/download_voice_model.py, never at runtime
     external_sync_interval: float | None = 5.0  # how often to look for orders placed outside this app
     approval_ttl_seconds: int = 60
     rule_card_ttl_seconds: int = 900  # a card made by a fired rule waits longer: the trader may be away
@@ -62,6 +65,9 @@ class Settings:
             orchestrator=env.get("ORCHESTRATOR", "").strip().lower() or "classic",
             groq_api_key=env.get("GROQ_API_KEY", "").strip(),
             voice_model=env.get("VOICE_MODEL", "").strip() or cls.voice_model,
+            voice_provider=env.get("VOICE_PROVIDER", "").strip().lower() or cls.voice_provider,
+            voice_fallback=env.get("VOICE_FALLBACK", "").strip().lower() or cls.voice_fallback,
+            local_voice_dir=env.get("LOCAL_VOICE_DIR", "").strip() or cls.local_voice_dir,
             approval_ttl_seconds=int(env.get("APPROVAL_TTL_SECONDS", "60")),
             drift_limit_pct=float(env.get("DRIFT_LIMIT_PCT", "1.0")),
             market_protection_pct=float(env.get("MARKET_PROTECTION_PCT", "1.0")),

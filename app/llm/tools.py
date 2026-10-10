@@ -27,6 +27,8 @@ from app.plans.service import PlanAssistant
 from app.rules.service import RuleNotActive, RuleNotFound, RuleService
 from app.schemas import (
     Model,
+    OptionRef,
+    OptionType,
     OrderAction,
     OrderIntent,
     OrderStatus,
@@ -102,7 +104,8 @@ def _misread(ctx: ToolContext, **named: float | int | None) -> dict | None:
     if not bad:
         return None
     label = {"quantity": "the quantity", "amount_rupees": "the amount", "limit_price_rupees": "the price",
-             "trigger_price_rupees": "the trigger price", "price_rupees": "the price", "percent": "the percentage"}
+             "trigger_price_rupees": "the trigger price", "price_rupees": "the price", "percent": "the percentage",
+             "strike_rupees": "the strike", "lots": "the number of lots"}
     parts = ", ".join(f"{label.get(k, k)} as {v.normalize():f}" for k, v in bad)
     message = f"I read {parts}, but that number isn't in what you wrote. Nothing was prepared. Please tell me again."
     ctx.reply_cards.append(NoticeCard(level="warning", message=message))
@@ -452,18 +455,44 @@ class ProposeOrderInput(Model):
     trigger_price_rupees: float | None = Field(
         default=None, gt=0, description="Stop-loss trigger. To move an existing stop-loss, use action MODIFY with the new trigger"
     )
-    product: Product = Product.CNC
+    product: Product = Field(
+        default=Product.CNC,
+        description="CNC = delivery shares, MIS = intraday. For an option, NRML (carry overnight) or MIS (intraday)",
+    )
     validity: Validity = Validity.DAY
     target_order_id: str | None = Field(
         default=None,
         description="order_id from get_orders, for MODIFY or CANCEL. For 'move my stop-loss on X' you may give the "
         "instrument and trigger_price_rupees instead; the open stop-loss on X is found for you",
     )
+    # ---- option contracts: BUY an option, or SELL one already held (never sell an option not held) ----
+    option_underlying: str | None = Field(
+        default=None, max_length=20, description="For an option instead of a stock: the index or stock, e.g. 'NIFTY'. "
+        "Leave instrument empty when you use this",
+    )
+    strike_rupees: float | None = Field(default=None, gt=0, description="Option strike as the trader said it, e.g. 24500")
+    option_type: OptionType | None = Field(default=None, description="CE for a call, PE for a put")
+    expiry: date | None = Field(
+        default=None, description="Option expiry date (YYYY-MM-DD) ONLY if the trader named one; leave empty for the "
+        "nearest expiry, which the card states",
+    )
+    lots: int | None = Field(
+        default=None, gt=0, description="Options only: number of lots ('1 lot'). Use this instead of quantity; the code "
+        "multiplies by the contract's lot size",
+    )
 
     def to_intent(self) -> OrderIntent:
+        option = None
+        if self.option_underlying or self.option_type or self.strike_rupees is not None:
+            if not (self.option_underlying and self.option_type and self.strike_rupees is not None):
+                raise ValueError("an option needs option_underlying, strike_rupees and option_type together")
+            option = OptionRef(underlying=self.option_underlying, strike=paise(self.strike_rupees),
+                               option_type=self.option_type, expiry=self.expiry)
         return OrderIntent(
             action=self.action,
-            instrument_ref=self.instrument,
+            instrument_ref=None if option else self.instrument,
+            option=option,
+            lots=self.lots,
             side=self.side,
             quantity=self.quantity,
             amount_paise=paise(self.amount_rupees) if self.amount_rupees is not None else None,
@@ -517,6 +546,7 @@ async def _propose(ctx: ToolContext, args: dict) -> dict:
         wrong = _amount_without_rupees(ctx, parsed.amount_rupees) or _misread(
             ctx, quantity=parsed.quantity, amount_rupees=parsed.amount_rupees,
             limit_price_rupees=parsed.limit_price_rupees, trigger_price_rupees=parsed.trigger_price_rupees,
+            strike_rupees=parsed.strike_rupees, lots=parsed.lots,
         )
         if wrong:
             return wrong
@@ -801,7 +831,9 @@ def build_tools(*, profile_reader=None, discipline_reader=None) -> dict[str, Too
                 "propose_order",
                 "Prepare an order card for the trader to approve. This does NOT place anything: the trader must "
                 "click Approve on the card. Use it for every buy, sell, modify or cancel request. If the stock "
-                "name is ambiguous it returns candidates: ask the trader which one; never guess.",
+                "name is ambiguous it returns candidates: ask the trader which one; never guess. For an option "
+                "('buy 1 lot NIFTY 24500 CE') give option_underlying, strike_rupees, option_type and lots. Options "
+                "can only be bought, or sold if already held; selling an option not held is refused.",
                 ProposeOrderInput.model_json_schema(),
             ),
             _propose,

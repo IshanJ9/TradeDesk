@@ -3,8 +3,8 @@ import { transcribe } from "../lib/api";
 import { recordingType, VoiceRecording, type VoiceState } from "../lib/voice";
 import { Button } from "./ui";
 
-export function MicButton({ disabled, onTranscript, onActive }: {
-  disabled: boolean; onTranscript: (text: string) => void; onActive: (active: boolean) => void;
+export function MicButton({ disabled, onTranscript, onActive, where }: {
+  disabled: boolean; onTranscript: (text: string, fellBack: boolean) => void; onActive: (active: boolean) => void; where: string;
 }) {
   const [state, setState] = useState<VoiceState>({ phase: "idle", seconds: 0 });
   const [mime, setMime] = useState<string>();
@@ -23,7 +23,7 @@ export function MicButton({ disabled, onTranscript, onActive }: {
         setState(next);
         callbacks.current.onActive(["requesting", "recording", "transcribing"].includes(next.phase));
       },
-      (text) => callbacks.current.onTranscript(text), (audio, signal) => transcribe(audio, signal, languageRef.current === "auto" ? undefined : languageRef.current),
+      (text, fellBack) => callbacks.current.onTranscript(text, fellBack), (audio, signal) => transcribe(audio, signal, languageRef.current === "auto" ? undefined : languageRef.current),
     );
     recording.current = controller;
     return () => { controller.cancel(); };
@@ -55,7 +55,7 @@ export function MicButton({ disabled, onTranscript, onActive }: {
       </span>
       </div>
       <p id="voice-status" role="status" aria-live="polite" className="sr-only">
-        {state.error || (recordingNow ? "Recording. Stops automatically after 30 seconds." : waiting ? label : "Voice ready. Recording uses Groq transcription.")}
+        {state.error || (recordingNow ? "Recording. Stops automatically after 30 seconds." : waiting ? label : `Voice ready. ${where}`)}
       </p>
       {(waiting || state.error || recordingNow) && <p className="order-last col-span-3 text-xs text-muted [overflow-wrap:anywhere]">
         {state.error || (recordingNow ? "Recording — press stop when done (30s max)." : label)}

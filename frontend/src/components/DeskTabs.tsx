@@ -2,6 +2,7 @@ import { useState, type Dispatch } from "react";
 import { api } from "../lib/api";
 import { REASONS, productWord } from "../lib/describe";
 import { clock, rupees } from "../lib/format";
+import { instrumentLabel, sizeText } from "../lib/instrument";
 import type { Action, State } from "../lib/store";
 import type { AuditEvent, Order, Rule } from "../lib/types";
 import { AssistantTrace } from "./AssistantTrace";
@@ -19,7 +20,7 @@ function OrderRow({ o, ask }: { o: Order; ask: (text: string) => void }) {
     <li className="flex items-start justify-between gap-3 border-b border-line py-2.5 text-[13px] last:border-b-0">
       <div className="min-w-0">
         <div className="num font-medium text-ink">
-          {o.side === "BUY" ? "Buy" : "Sell"} {o.quantity} &times; {o.instrument.symbol} <span className="text-muted">@ {price}</span>
+          {o.side === "BUY" ? "Buy" : "Sell"} {sizeText(o.quantity, o.instrument)} &times; {instrumentLabel(o.instrument)} <span className="text-muted">@ {price}</span>
         </div>
         <div className="text-xs text-muted">
           <span className="num">{o.order_id}</span> &middot; {productWord(o.product)} &middot; {clock(o.created_at)}

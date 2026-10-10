@@ -28,7 +28,8 @@ class OrderBlocked(Exception):
 class HardLimits:
     max_quantity: int = 100_000  # 021's published limit
     max_order_value: int = paise(10_000_000)  # Rs 1 crore, in paise (021's published limit)
-    allowed_series: frozenset[str] = frozenset({"EQ", "BE"})  # equity only; no F&O, no indices
+    allowed_series: frozenset[str] = frozenset({"EQ", "BE"})  # equity; no futures, no indices
+    allow_options: bool = True  # buying options and selling ones held (no writing: the builder enforces it)
 
     @classmethod
     def from_settings(cls, s: Settings) -> "HardLimits":
@@ -36,10 +37,11 @@ class HardLimits:
 
 
 def check_instrument(inst: Instrument, limits: HardLimits) -> None:
-    if inst.is_option or inst.series not in limits.allowed_series:
+    allowed = (inst.is_option and limits.allow_options) or (not inst.is_option and inst.series in limits.allowed_series)
+    if not allowed:
         raise OrderBlocked(
             RejectionReason.SEGMENT_NOT_ALLOWED,
-            f"{inst.symbol} can't be traded here: only equity orders are supported.",
+            f"{inst.symbol} can't be traded here: only shares and buying options are supported.",
         )
     if inst.suspended:
         raise OrderBlocked(RejectionReason.SUSPENDED, f"{inst.symbol} is suspended and can't be traded right now.")

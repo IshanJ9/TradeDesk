@@ -29,6 +29,7 @@ from app.schemas import (
     Instrument,
     MatchResult,
     OptionChain,
+    OptionType,
     Order,
     PendingOrder,
     PendingState,
@@ -94,6 +95,8 @@ class ReadOnlyBroker(Protocol):
 
     async def get_option_chain(self, underlying: str, expiry: date, window: int = 5) -> OptionChain: ...
 
+    async def find_option(self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None) -> Instrument | None: ...
+
     async def get_account_locks(self) -> AccountLocks: ...
 
     def subscribe_ticks(self, instrument_keys: Sequence[str]) -> AsyncIterator[Tick]: ...
@@ -136,6 +139,9 @@ class ReadOnlyView:
 
     async def get_option_chain(self, underlying: str, expiry: date, window: int = 5) -> OptionChain:
         return await self._broker.get_option_chain(underlying, expiry, window)
+
+    async def find_option(self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None) -> Instrument | None:
+        return await self._broker.find_option(underlying, strike, option_type, expiry)
 
     async def get_account_locks(self) -> AccountLocks:
         return await self._broker.get_account_locks()
@@ -194,6 +200,13 @@ class BrokerAdapter(ABC):
     @abstractmethod
     async def get_option_chain(self, underlying: str, expiry: date, window: int = 5) -> OptionChain:
         """Strikes within `window` steps either side of the at-the-money strike."""
+
+    async def find_option(
+        self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None
+    ) -> Instrument | None:
+        """The exact option contract (None: no such contract). `expiry` None means the nearest one.
+        A broker without options keeps this default."""
+        return None
 
     @abstractmethod
     async def get_account_locks(self) -> AccountLocks: ...

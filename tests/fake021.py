@@ -207,6 +207,20 @@ class Fake021:
 # ---- websocket frames -------------------------------------------------------------------------- #
 
 
+def nse_order_event(status: int, oid: int, quantity: int, price: int, *, ucc: str = "HACK1234", symbol: str = "INFY",
+                    text: bytes = b"") -> bytes:
+    """Orders socket, TC 4 (NSE), laid out exactly as the 021 API guide's table: 46 bytes + optional text."""
+    return (struct.pack(">HH", 4, status) + ucc.encode().ljust(10, b" ") + symbol.encode()[:10].ljust(20, b"\x00")
+            + struct.pack(">Iii", oid, quantity, price) + text)
+
+
+def bse_order_event(status: int, oid: int, quantity: int, price: int, *, ucc: str = "HACK1234", exchange: int = 4,
+                    token: int = 500325, text: bytes = b"") -> bytes:
+    """Orders socket, TC 8 (BSE): 32 bytes + optional text."""
+    return (struct.pack(">HH", 8, status) + ucc.encode().ljust(10, b" ")
+            + struct.pack(">HIIii", exchange, token, oid, quantity, price) + text)
+
+
 def ltp_packet(exchange: int, token: int, ltp: int) -> bytes:
     return struct.pack(">HHII", 1, exchange, token, ltp)
 
@@ -277,6 +291,15 @@ class FakeConnector:
     def __init__(self):
         self.urls: list[str] = []
         self.sockets: list[FakeSocket] = []
+
+    # the adapter opens market and orders sockets at the same time, in no fixed order: pick them by url
+    @property
+    def market(self) -> list[FakeSocket]:
+        return [s for u, s in zip(self.urls, self.sockets) if "/market?" in u]
+
+    @property
+    def orders(self) -> list[FakeSocket]:
+        return [s for u, s in zip(self.urls, self.sockets) if "/orders?" in u]
 
     def __call__(self, url: str):
         connector = self

@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.account import build_account
 from app.api import rest, ws_router
-from app.api_models import AccountUpdateEvent, OrderUpdateEvent, TickEvent
+from app.api_models import AccountUpdateEvent, TickEvent
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
 from app.broker.mock import MockBroker
@@ -44,6 +44,7 @@ from app.rules.store import RuleStore
 from app.schemas import RuleStatus
 from app.voice.api import router as voice_router  # voice-live: transcription only
 from app.sync.external import run_external_sync  # voice-live: uses the existing broker session
+from app.sync.order_events import OrderPublisher, run_order_watcher, wait_or_wake
 from app.sync.dev import router as sync_dev_router  # voice-live: demo-only trace sample
 from app.sync.api import router as activity_router  # voice-live: restore saved activity on refresh
 
@@ -76,7 +77,6 @@ async def _tick_bridge(app: FastAPI) -> None:
     state = app.state
     loop = asyncio.get_running_loop()
     last_push = loop.time()  # clients start from a snapshot, so the first push waits one interval
-    seen: dict[str, tuple] | None = None  # order signatures already pushed
     async for tick in state.broker.subscribe_ticks([]):
         try:
             state.hub.publish(TickEvent, tick=tick)
@@ -90,22 +90,16 @@ async def _tick_bridge(app: FastAPI) -> None:
                 continue
             last_push = loop.time()
             state.hub.publish(AccountUpdateEvent, account=await build_account(state.broker))
-            orders = await state.broker.get_orders()
-            sigs = {o.order_id: (o.status, o.filled_quantity, o.quantity, o.limit_price) for o in orders}
-            if seen is not None:  # first pass only records the baseline
-                for order in orders:
-                    if seen.get(order.order_id) != sigs[order.order_id]:
-                        state.hub.publish(OrderUpdateEvent, order=order)
-            seen = sigs
+            await state.order_publisher.publish_changes()  # shared with the orders-socket watcher
         except BrokerTimeout:
             continue
         except Exception:  # keep the feed alive; one bad push must not stop live prices
             log.exception("tick bridge error")
 
 
-async def _reconcile_loop(app: FastAPI, interval: float) -> None:
+async def _reconcile_loop(app: FastAPI, interval: float, wake: asyncio.Event | None = None) -> None:
     while True:
-        await asyncio.sleep(interval)
+        await wait_or_wake(interval, wake)  # sooner when the orders socket reports something
         try:
             await app.state.executor.reconcile()
             await app.state.rule_engine.recover()
@@ -136,12 +130,18 @@ def create_app(
         except BrokerTimeout:
             log.warning("broker unreachable at startup; unresolved executions and rules stay as they are")
         tasks = [asyncio.create_task(_tick_bridge(app))]
+        # A broker with an orders socket (021) wakes these loops on every order event and after every reconnect;
+        # they then read REST. Without one (the mock) they simply poll on their timers.
+        order_wake = getattr(app.state.broker, "order_wake", None)
+        wake = order_wake.subscribe if order_wake is not None else (lambda: None)
+        if order_wake is not None:
+            tasks.append(asyncio.create_task(run_order_watcher(app, order_wake.subscribe())))
         # voice-live: participates in the same cancellation/shutdown as the other tasks.
         if settings.external_sync_interval is not None:
-            tasks.append(asyncio.create_task(run_external_sync(app, settings.external_sync_interval)))
+            tasks.append(asyncio.create_task(run_external_sync(app, settings.external_sync_interval, wake())))
         tasks.append(asyncio.create_task(app.state.discipline.run()))  # risk-goals: 20-second reports
         if settings.reconcile_interval:
-            tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval)))
+            tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval, wake())))
         if isinstance(app.state.broker, MockBroker) and settings.ticker_interval:
             tasks.append(asyncio.create_task(app.state.broker.run_ticker(settings.ticker_interval)))
         try:
@@ -175,6 +175,7 @@ def create_app(
     app.state.clock = clock
     app.state.broker = the_broker
     app.state.hub = hub
+    app.state.order_publisher = OrderPublisher(the_broker, hub)  # one "order changed" stream for the screen
     app.state.pending = store
     app.state.db = db
     app.state.audit = audit

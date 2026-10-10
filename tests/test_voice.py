@@ -59,7 +59,7 @@ async def test_success_multipart_and_metadata_only_audit(make_voice):
     client, app, requests = make_voice()
     response = await upload(client)
     assert response.status_code == 200
-    assert response.json() == {"text": "buy 10 Infosys at 1450", "seconds": 4.2}
+    assert response.json() == {"text": "buy 10 Infosys at 1450", "seconds": 4.2, "provider": "groq", "fell_back": False}
     request, = requests
     assert str(request.url) == GROQ_URL
     assert request.method == "POST"
@@ -76,7 +76,7 @@ async def test_success_multipart_and_metadata_only_audit(make_voice):
     event, = app.state.audit.list()
     assert event.kind == AuditKind.VOICE_TRANSCRIBED
     assert event.summary == "voice transcribed, 4.2 s"
-    assert event.data == {"seconds": 4.2}
+    assert event.data == {"seconds": 4.2, "provider": "groq", "fell_back": False}
     exported = app.state.audit.export_jsonl()
     assert FAKE_KEY not in exported
     assert AUDIO.decode() not in exported
@@ -188,7 +188,7 @@ async def test_non_json_response(make_voice):
 async def test_unknown_duration_is_null(make_voice, duration):
     client, app, _ = make_voice(lambda _: httpx.Response(200, json={"text": "hello", "duration": duration}))
     response = await upload(client)
-    assert response.json() == {"text": "hello", "seconds": None}
+    assert response.json() == {"text": "hello", "seconds": None, "provider": "groq", "fell_back": False}
     assert app.state.audit.list()[0].summary == "voice transcribed"
 
 

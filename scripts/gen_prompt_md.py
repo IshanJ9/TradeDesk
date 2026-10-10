@@ -140,8 +140,9 @@ def render() -> str:
     w("\nOrder cards and plan descriptions are also written by code from the card itself, never by the model.\n")
 
     w("## 6. Speech-to-text hint (voice input)\n")
-    w("Voice uses Groq `whisper-large-v3-turbo` (temperature 0). It receives this spelling hint, not instructions; the")
-    w("transcript is shown to the trader to edit and is then handled exactly like typed text.\n")
+    w("Voice uses Groq `whisper-large-v3-turbo` (temperature 0), or with `VOICE_PROVIDER=local` faster-whisper `small`")
+    w("on this machine (temperature 0). Both receive this spelling hint, not instructions; the transcript is shown to")
+    w("the trader to edit and is then handled exactly like typed text.\n")
     w("```text")
     w(VOICE_PROMPT)
     w("```")

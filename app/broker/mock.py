@@ -62,6 +62,7 @@ _UNIVERSE: list[tuple[str, str, str, str]] = [
 ]
 _NIFTY_PREV, _NIFTY_SPOT = "24420", "24500"
 _STRIKE_STEP = paise(50)
+_NIFTY_LOT = 75  # NIFTY lot size used by the mock; the live adapter reads each contract's lot from 021's file
 # Mock expiry dates. A real adapter reads these from the instrument master.
 _EXPIRIES = [date(2026, 10, 13), date(2026, 10, 20), date(2026, 10, 27)]
 
@@ -142,7 +143,7 @@ class MockBroker(BrokerAdapter):
             self._positions[f"NSE:{symbol}"] = (qty, paise(avg))
 
     def _add_instrument(self, inst: Instrument, prev_close: int, ltp: int) -> None:
-        if inst.series != "INDEX":
+        if inst.series not in ("INDEX", "OPT"):  # option premiums can move far in a day: no stock-style band
             band_low = (prev_close * 80 // 100) // inst.tick_size * inst.tick_size
             band_high = (prev_close * 120 // 100) // inst.tick_size * inst.tick_size
             inst = inst.model_copy(update={"price_band_low": band_low, "price_band_high": band_high})
@@ -279,26 +280,39 @@ class MockBroker(BrokerAdapter):
         rows = []
         for i in range(-window, window + 1):
             strike = atm + i * _STRIKE_STEP
-            time_value = max(500, 12000 - abs(strike - spot) // 10)
             oi = max(10_000, 200_000 - 15_000 * abs(i))
-            call_ltp = max(spot - strike, 0) + time_value
-            put_ltp = max(strike - spot, 0) + time_value
-            rows.append(
-                OptionChainRow(
-                    strike=strike,
-                    call=OptionQuote(
-                        instrument_key=self._option_key(underlying, expiry, strike, OptionType.CE),
-                        ltp=call_ltp,
-                        oi=oi,
-                    ),
-                    put=OptionQuote(
-                        instrument_key=self._option_key(underlying, expiry, strike, OptionType.PE),
-                        ltp=put_ltp,
-                        oi=oi,
-                    ),
-                )
-            )
+            legs = {}
+            for kind in (OptionType.CE, OptionType.PE):
+                key = self._option_key(underlying, expiry, strike, kind)
+                # a contract already traded keeps its own moving price; the rest follow the formula
+                ltp = self._prices.get(key) or self._option_premium(spot, strike, kind)
+                legs[kind] = OptionQuote(instrument_key=key, ltp=ltp, oi=oi)
+            rows.append(OptionChainRow(strike=strike, call=legs[OptionType.CE], put=legs[OptionType.PE]))
         return OptionChain(underlying=underlying, spot=spot, expiry=expiry, rows=rows)
+
+    @staticmethod
+    def _option_premium(spot: int, strike: int, kind: OptionType) -> int:
+        time_value = max(500, 12000 - abs(strike - spot) // 10)
+        intrinsic = max(spot - strike, 0) if kind is OptionType.CE else max(strike - spot, 0)
+        return (intrinsic + time_value) // 5 * 5  # option ticks are 5 paise
+
+    async def find_option(self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None) -> Instrument | None:
+        """NIFTY contracts on the 50-point grid for the seeded expiries, lot size 75. Built on first use."""
+        self._check_network()
+        upcoming = [e for e in _EXPIRIES if e >= self._clock().date()]
+        chosen = expiry or (upcoming[0] if upcoming else None)
+        if underlying != "NIFTY" or chosen not in upcoming or strike <= 0 or strike % _STRIKE_STEP:
+            return None
+        key = self._option_key(underlying, chosen, strike, option_type)
+        if key not in self._instruments:
+            premium = self._option_premium(self._prices["NSE:NIFTY"], strike, option_type)
+            inst = Instrument(
+                symbol=key.split(":", 1)[1], exchange=Exchange.NSE, series="OPT",
+                name=f"NIFTY {strike // 100} {option_type.value} {chosen:%d %b %Y}", tick_size=5,
+                underlying=underlying, lot_size=_NIFTY_LOT, expiry=chosen, strike=strike, option_type=option_type,
+            )
+            self._add_instrument(inst, premium, premium)
+        return self._instruments[key]
 
     @staticmethod
     def _option_key(underlying: str, expiry: date, strike: int, kind: OptionType) -> str:
@@ -423,6 +437,8 @@ class MockBroker(BrokerAdapter):
         ref = p.limit_price or p.protection_price or self._prices[inst.key]
         if p.side is Side.BUY and ref * p.quantity > self._cash:
             self._reject(p, RejectionReason.INSUFFICIENT_FUNDS, "not enough funds")
+        if inst.is_option and p.quantity % (inst.lot_size or 1):
+            self._reject(p, RejectionReason.INVALID_QUANTITY, "quantity must be a multiple of the lot size")
         if p.side is Side.SELL and p.product is Product.CNC:
             held = self._holdings.get(inst.key, (0, 0))[0]
             if self._position_product.get(inst.key) is Product.CNC:  # today's delivery buys can be sold too

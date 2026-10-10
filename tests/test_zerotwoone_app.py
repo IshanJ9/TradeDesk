@@ -54,7 +54,7 @@ def client(fake, conn, clock):
     settings = Settings(ticker_interval=None, reconcile_interval=None, timeout_reconcile_delay=0, account_push_interval=3600)
     with TestClient(create_app(settings, broker=adapter, clock=clock)) as c:
         deadline = time.time() + 2
-        while not conn.sockets and time.time() < deadline:
+        while not conn.market and time.time() < deadline:
             time.sleep(0.01)
         on_loop(c, push, conn, ltp_packet(1, 1594, 145000))  # INFY at 1450.00
         on_loop(c, push, conn, full_nse_cash(1594, 145000, 144000, 144500, 146000, 143500))
@@ -62,7 +62,7 @@ def client(fake, conn, clock):
 
 
 async def push(conn, frame):
-    conn.sockets[0].push(frame)
+    conn.market[0].push(frame)
     await asyncio.sleep(0.02)
 
 
@@ -207,7 +207,7 @@ def chaos_client(fake, conn, clock):
     settings = Settings(ticker_interval=None, reconcile_interval=None, timeout_reconcile_delay=0, account_push_interval=3600)
     with TestClient(create_app(settings, broker=adapter, clock=clock)) as c:
         deadline = time.time() + 2
-        while not conn.sockets and time.time() < deadline:
+        while not conn.market and time.time() < deadline:
             time.sleep(0.01)
         on_loop(c, push, conn, full_nse_cash(1594, 145000, 144000, 144500, 146000, 143500))
         yield c, chaos

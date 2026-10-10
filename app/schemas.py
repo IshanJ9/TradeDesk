@@ -111,6 +111,7 @@ class OrderType(str, Enum):
 class Product(str, Enum):
     CNC = "CNC"  # delivery
     MIS = "MIS"  # intraday
+    NRML = "NRML"  # options carried overnight (021: NRML is the F&O product; CNC is equity only)
 
 
 class Validity(str, Enum):
@@ -290,6 +291,14 @@ class Instrument(Model):
     def is_option(self) -> bool:
         return self.option_type is not None
 
+    @property
+    def label(self) -> str:
+        """What a trader calls it: 'Infosys Ltd', or 'NIFTY 24,500 CE (13 Oct 2026)' for an option."""
+        if not self.is_option:
+            return self.name or self.symbol
+        strike = f"{self.strike // 100:,}" if self.strike % 100 == 0 else f"{self.strike / 100:,.2f}"
+        return f"{self.underlying} {strike} {self.option_type.value} ({self.expiry:%d %b %Y})"
+
 
 class Quote(Model):
     instrument_key: str
@@ -461,13 +470,29 @@ class Charges(Model):
         )
 
 
+class OptionRef(Model):
+    """Which option contract the trader named. Code finds the exact contract; nothing here is trusted as a price."""
+
+    underlying: str = Field(min_length=1, max_length=20)  # "NIFTY", "BANKNIFTY", "RELIANCE"
+    strike: PricePaise
+    option_type: OptionType
+    expiry: date | None = None  # None: the nearest expiry, which the card then states
+
+    @field_validator("underlying", mode="before")
+    @classmethod
+    def _clean_underlying(cls, v: Any) -> Any:
+        return sanitize_text(v, 20).upper().replace(" ", "") if isinstance(v, str) else v
+
+
 class OrderIntent(Model):
     """The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."""
 
     action: OrderAction
     instrument_ref: str | None = Field(default=None, max_length=60)
+    option: OptionRef | None = None  # an option contract instead of a stock (buy to open, or sell what is held)
     side: Side | None = None
     quantity: Quantity | None = None
+    lots: Quantity | None = None  # options only: whole lots; code multiplies by the contract's lot size
     amount_paise: PricePaise | None = None  # "worth Rs 10k"; code converts to whole shares
     fraction_of_holding: Annotated[float, Field(gt=0, le=1)] | None = None  # SELL: "half my TCS"; code does the sum
     order_type: OrderType | None = None
@@ -485,14 +510,18 @@ class OrderIntent(Model):
     @model_validator(mode="after")
     def _check(self) -> "OrderIntent":
         if self.action is OrderAction.PLACE:
-            if not self.instrument_ref:
-                raise ValueError("PLACE needs instrument_ref")
+            if not self.instrument_ref and self.option is None:
+                raise ValueError("PLACE needs instrument_ref or option")
             if self.side is None:
                 raise ValueError("PLACE needs side")
             if self.order_type is None:
                 raise ValueError("PLACE needs order_type")
-            if sum(x is not None for x in (self.quantity, self.amount_paise, self.fraction_of_holding)) != 1:
-                raise ValueError("give exactly one of quantity, amount_paise or fraction_of_holding")
+            if sum(x is not None for x in (self.quantity, self.lots, self.amount_paise, self.fraction_of_holding)) != 1:
+                raise ValueError("give exactly one of quantity, lots, amount_paise or fraction_of_holding")
+            if self.lots is not None and self.option is None:
+                raise ValueError("lots only applies to an option")
+            if self.option is not None and self.amount_paise is not None:
+                raise ValueError("an option is sized in lots, not a rupee amount")
             if self.fraction_of_holding is not None and self.side is not Side.SELL:
                 raise ValueError("fraction_of_holding only applies to a SELL")
             if self.order_type is OrderType.LIMIT and self.limit_price is None:
@@ -510,8 +539,8 @@ class OrderIntent(Model):
                 raise ValueError("MODIFY needs target_order_id")
             if self.quantity is None and self.limit_price is None and self.trigger_price is None:
                 raise ValueError("MODIFY needs a new quantity, limit_price or trigger_price")
-            if self.amount_paise is not None or self.fraction_of_holding is not None:
-                raise ValueError("MODIFY cannot use amount_paise or fraction_of_holding")
+            if self.amount_paise is not None or self.fraction_of_holding is not None or self.lots is not None:
+                raise ValueError("MODIFY cannot use amount_paise, lots or fraction_of_holding")
         else:  # CANCEL
             if not self.target_order_id:
                 raise ValueError("CANCEL needs target_order_id")

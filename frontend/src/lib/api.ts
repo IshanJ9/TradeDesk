@@ -90,7 +90,9 @@ export async function transcribe(
     }
     const seconds = "seconds" in data && typeof data.seconds === "number" &&
       Number.isFinite(data.seconds) && data.seconds >= 0 ? data.seconds : null;
-    return { ok: true, data: { text: data.text.trim(), seconds } };
+    const provider = "provider" in data && data.provider === "local" ? "local" : "groq";
+    const fell_back = "fell_back" in data && data.fell_back === true;
+    return { ok: true, data: { text: data.text.trim(), seconds, provider, fell_back } };
   } catch {
     return { ok: false, status: 0, message: voiceError(0) };
   } finally {
@@ -98,6 +100,9 @@ export async function transcribe(
     signal?.removeEventListener("abort", cancel);
   }
 }
+
+/** Where recordings are transcribed (Groq or this machine). Read-only. */
+export const voiceStatus = () => request<import("./types.gen").components["schemas"]["VoiceStatus"]>("GET", "/api/voice/status");
 
 // risk-goals: independent settings/report calls; no order actions.
 type RiskSchemas = import("./types.gen").components["schemas"];

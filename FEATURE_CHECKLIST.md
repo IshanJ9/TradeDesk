@@ -128,9 +128,9 @@ and Hindi speech. Remaining core implementation: **G1, G3, V1, S1**.
 | G1 | Distinct read/order/rule/plan/risk graph routes/nodes | **Done 10 October** (`app/agent/router.py`, `graph.py`, `tests/test_agent_graph.py`). Keyword rules with a fixed precedence; the optional model classification for unclear messages was not added (a misrouted drafting call is refused and the model asks the trader to rephrase). |
 | G2 | Read-only profile/discipline chat tools | REST/UI exist; tools do not expose these reports. Add tools and grounded rendering, mindful-mode behavior and risk-question routing. Profile mutations must stay explicitly reviewed. |
 | G3 | Durable conversation state with a SQLite graph checkpointer | Current chat history is in memory and `compile()` has no checkpointer. Add conversation/thread identity, restart recovery, isolation and retention handling. Existing durable cards/plans remain separate; never replay sends. |
-| V1 | Local faster-whisper provider and VOICE_PROVIDER selection/fallback | Current voice provider is Groq only. Add optional local dependencies/model setup, explicit provider/fallback policy, bounded processing and tests. |
+| V1 | Local faster-whisper provider and VOICE_PROVIDER selection/fallback | **Done 10 October.** `VOICE_PROVIDER=local` (faster-whisper small, CPU int8), optional `requirements-voice-local.txt`, explicit `scripts/download_voice_model.py` (no runtime download), one clip at a time, 20 s cap, 35 s max audio, `VOICE_FALLBACK=groq|none` with the fallback disclosed in the chat, `/api/voice/status`. Verified with a real recording (WAV and WebM/Opus). Hindi speech not yet tested with a real recording. |
 | V2 | English/Hindi language hints | Add language selection/hint through microphone UI, transcription route and providers; verify editable transcript flow with English/Hindi recordings. Auto-detection alone is not completion of this requirement. |
-| S1 | Dedicated 021 orders websocket for live fills/external sync | Current REST polling works. First confirm the actual available protocol from current 021 documentation/sample frames; then implement parsing/reconnection/source attribution and fake-socket tests if supported. Do not confuse the existing binary market-price socket with an orders stream. Retain REST reconciliation. |
+| S1 | Dedicated 021 orders websocket for live fills/external sync | **Done 10 October** against the official 021 API Guide (Orders socket: TC 4 NSE 46 B, TC 8 BSE 32 B, statuses 1-9, no replay). `orders_feed.py` decodes; events and reconnects only wake REST reads (watcher, external sync, reconcile); UCC filter; text never logged; polling kept. Fake-socket and whole-app tests, 2/2 mutations caught. **Live sandbox acceptance still TODO** (needs the coordinated 021 session). |
 
 ## TODO — final verification and handoff
 
@@ -162,7 +162,7 @@ historical operational results, not evidence that all workflows are verified.
 - [ ] Read/propose-only MCP server; internal model tools are not an MCP server.
 - [ ] LangGraph-native observability integration; current in-app trace alone does not provide it.
 - [ ] Optional AgentCore hosting, only if explicitly prioritized; in-process graph is implemented.
-- [ ] F&O order execution (README backlog); the option chain is currently read-only.
+- [x] Option orders (10 October): buy calls/puts in whole lots and sell only what is held; no writing, no futures. Contract from 021's file, NSEFO/NRML on the wire, F&O rows read back, 021 Options charges, factual premium-loss and SEBI notice with typed acknowledgment. Mock, fake-021 and browser tests. **Live sandbox order still TODO.** Futures and option writing remain excluded by design.
 - [ ] Per-trade risk-to-reward ratio with explicit trader-defined downside/upside inputs; never infer these from a generic market order.
 
 Compliance audit export was originally future scope but is already completed

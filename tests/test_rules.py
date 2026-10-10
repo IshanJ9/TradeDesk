@@ -164,7 +164,7 @@ async def test_ambiguous_unknown_and_unsupported_instruments(env):
     assert amb.status == "needs_clarification" and amb.reply.cards[0].type == "ambiguity"
     assert (await env.s.rules.create(spec(instrument="zzzz"))).status == "not_found"
     blocked = await env.s.rules.create(alert(instrument="nifty", percent=None, price_rupees=25000, comparator="ABOVE", basis=None))
-    assert blocked.status == "blocked" and "only equity" in blocked.message
+    assert blocked.status == "blocked" and "can't be traded here" in blocked.message
     assert env.s.rule_store.list() == []
 
 

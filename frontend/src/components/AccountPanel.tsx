@@ -1,4 +1,5 @@
 import { pct, rupees } from "../lib/format";
+import { instrumentLabel, isOption, sizeText } from "../lib/instrument";
 import type { Account, Holding, Position } from "../lib/types";
 import { Banner, Empty, Section, Signed } from "./ui";
 
@@ -22,8 +23,8 @@ function ValuedTable({ title, rows, hideDaily }: { title: string; rows: Row[]; h
             className="grid grid-cols-[minmax(0,1.5fr)_3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-x-2 border-b border-line px-3 py-2 text-[13px] last:border-b-0"
           >
             <div className="min-w-0">
-              <div className="num truncate font-medium text-ink">{r.instrument.symbol}</div>
-              <div className="truncate text-xs text-muted">{r.instrument.name}</div>
+              <div className="num truncate font-medium text-ink">{instrumentLabel(r.instrument)}</div>
+              <div className="truncate text-xs text-muted">{isOption(r.instrument) ? `Option · ${sizeText(r.quantity, r.instrument)}` : r.instrument.name}</div>
             </div>
             <span className="num text-right">{r.quantity}</span>
             <span className="num text-right text-muted">{rupees(r.avg_price)}</span>
