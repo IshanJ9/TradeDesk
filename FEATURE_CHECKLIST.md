@@ -79,7 +79,7 @@ were made there after that correction, and this checklist is not written there.
 - [x] SQLite order activity/daily history, profile/goals, pending cards, plans/reports, rules, audit and execution state. Historical coverage starts when the app records it; prior broker history is not reconstructed automatically.
 - [x] Audit view and downloadable NDJSON compliance export.
 - [x] Mock/demo controls for price drift, ambiguous sends, broker outages, hostile names, losing positions, external orders and simulated locks. They require mock broker plus demo mode.
-- [x] Responsive desk, landing page, how-it-works page with playable graph diagram, login/signup presentation, bundled fonts and system/light/dark themes. Login/signup is UI only; real authentication is TODO.
+- [x] Responsive desk, landing page, how-it-works page with playable graph diagram, login/signup presentation, bundled fonts and system/light/dark themes. Log-in and sign-up are real (see Accounts and security in the README).
 - [x] Simulated Anchor/Co-Captain lock behavior. Actual second-person approval is TODO; the placeholders do not constitute it.
 
 ## Completed yesterday — preserved locally in both implementation repos
@@ -150,7 +150,8 @@ historical operational results, not evidence that all workflows are verified.
 
 ## TODO — expanded scope (now included by user request)
 
-- [ ] Real authentication, account/user isolation and permissions; current login/signup is presentation only.
+- [x] Real authentication and per-user isolation: argon2id log-in, cookie sessions, CSRF, throttling, a desk per user, every table keyed by user, per-user events. Tests: `test_auth.py`, `test_multi_user.py`, `test_user_scoped_stores.py`, `test_migration.py`, `test_route_coverage.py`. Roles/admin are out of scope.
+- [ ] Per-user 021 credentials (link/unlink in Settings, encrypted at rest, a visible Reconnect state): design sent for approval, not built. Until then the `.env` 021 account belongs to the owner and every other user trades on a mock account.
 - [ ] Co-Captain second-user review with **both approvals required only in the overtrading zone**. Use configured daily order, turnover and 20-minute activity limits; evaluate again at approval, bind both approvals to exact content/expiry, and never override hard stops. Requires authenticated distinct users first. Outside that zone, normal trader approval is enough.
 - [ ] Calendar/time-scheduled orders and generalized GTT workflow through the same approval boundary; existing price-trigger rules are only a foundation.
 - [ ] Comprehensive before/after cash and stock-concentration impact preview on cards.

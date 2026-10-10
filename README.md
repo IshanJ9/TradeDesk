@@ -21,9 +21,9 @@ API docs at http://127.0.0.1:8000/docs. WebSocket at `ws://127.0.0.1:8000/ws`.
 Start the backend first. `npm run build` makes the production bundle (`npm run preview` serves it).
 
 Pages: `/` is the landing page, `/how-it-works` explains the assistant with a playable diagram of the LangGraph
-orchestrator, `/login` is the log-in and sign-up screen, and `/app` is the desk. The log-in screen is a UI only for
-now: no account is checked, nothing typed there is stored or sent, and it says so on the page. Every page has a
-theme switch (System, Light, Dark).
+orchestrator, `/login` is the log-in and sign-up screen, and `/app` is the desk, which needs a signed-in account (an
+anonymous visit is sent to `/login`). The first account to register inherits anything saved before accounts existed
+(or set `TRADEDESK_OWNER_EMAIL`). Every page has a theme switch (System, Light, Dark).
 The UI follows the system light/dark setting, bundles its fonts (no network needed), and works down to
 phone width (an Ask / Desk switch appears below 1024px).
 
@@ -134,7 +134,7 @@ setting; nothing is advice or a forecast.
 Limits: 021's API returns today's orders only, so history starts when the app first records it. With demo mode on,
 an empty history gets 20 synthetic days, labelled DEMO DATA everywhere they appear. P&L is an estimate from fills
 (approximate FIFO; missing prices or cost bases are disclosed, not invented). Orders placed in 021's own app count
-toward today's numbers but cannot be blocked by this app. One trader per database.
+toward today's numbers but cannot be blocked by this app. Each account has its own history, limits and goal.
 
 Checked: about 215 risk tests, including deliberate breaks of every guard rule (18 of 18 caught), plus the plan-step
 tests. On the live 021 sandbox with our account: onboarding, saving a profile, card warnings at live prices (a
@@ -344,7 +344,7 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Authentication (single demo user) and Co-Captain co-approval.
+- Linking each user's own 021 account (today the server's `.env` account belongs to the owner and everyone else trades on their own mock account), email sign-in recovery, and Co-Captain co-approval.
 
 ## Demo controls
 
@@ -382,10 +382,52 @@ observed-risk/returns/patterns calculations and manual 021 acceptance steps.
 These analytics exclude mock/demo and unverified legacy records; an empty view
 means actual recorded history is still needed.
 
+## Accounts and security
+
+Sign-up and log-in are real (`app/auth/`). Each account is a separate desk: its own broker session, cards, plans,
+rules, send log, Discipline settings, history, assistant memory, audit log and live events.
+
+- **Passwords** are hashed with argon2id (`argon2-cffi` defaults) and are never stored, logged, echoed or returned.
+  Minimum 10 characters, not equal to the email, no composition rules. Hashing runs off the event loop.
+- **Sessions** are a random 256-bit token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` unless the app is served
+  from this machine, or `COOKIE_SECURE`). The server keeps only the token's SHA-256, with an idle timeout (12 h) and
+  an absolute one (7 days). Logging out deletes the row; changing the password or disabling a user deletes all of that
+  user's sessions (the device that changed it gets a fresh one).
+- **CSRF**: synchronizer token. Each session has a random token, returned in the body of log-in/register/`/api/auth/me`
+  and sent back by the page in `X-CSRF-Token` on every request that changes something; the server also refuses a
+  request whose `Origin` is not ours. The token lives in page memory, never in storage. Without it, even a valid
+  cookie cannot approve an order.
+- **Log-in throttling**: 5 failures per email and 20 per IP in 15 minutes lock that key for 5 minutes (even the right
+  password is refused while locked). The same words ("Incorrect email or password.") are used for an unknown email and
+  a wrong password, and an unknown email still costs a password hash, so neither the message nor the timing says which
+  accounts exist.
+- **Every route** needs a session unless it is listed in `app/auth/public.py` (health, register, log-in, the generated
+  API docs). `tests/test_route_coverage.py` walks the real route table and calls each route anonymously. `/ws` is
+  refused before it is accepted without a session or from a foreign Origin.
+- **Isolation**: every table that holds trader data has a `user_id` and every store filters by it
+  (`app/schema.py`); `executions.client_order_id` is still the global primary key, so an order cannot be sent twice by
+  anyone. Approving, rejecting, cancelling or reading another user's card, plan or rule answers 404 (it does not say
+  the thing exists). Events are published per user. `tests/test_multi_user.py` and `tests/test_user_scoped_stores.py`
+  cover it, and each `user_id` filter was removed on purpose to confirm a test fails (see "Checked" below).
+
+Not protected, so you know: there is no password reset, no email verification and no multi-factor sign-in; anyone who
+can reach the server can register; the throttle's counters are in memory and reset on restart; the client IP is the
+socket's address (behind a reverse proxy every user looks like one IP); the SQLite file is not encrypted at rest; and
+a user with no linked 021 account trades on a mock account, not a real one.
+
+Checked: the isolation suites, a database written before accounts existed upgraded to the new shape (rows kept,
+primary keys rebuilt, owned by the first account, upgrade twice = no change), and 47 deliberate breaks (43 in the
+backend: CSRF, origin, expiry, hashing, lock-out, and a `user_id` filter in every store, the hub, the route guards and
+the socket; 4 in the page's session handling): every one made a test fail. In a browser at 375 px and desktop width: sign-up, wrong password, reload, an order card and its Approve click,
+change password, log out, and a second account that sees an empty desk of its own.
+
 ## Where things are
 
 | Path | What |
 |---|---|
+| `app/auth/`, `app/identity.py` | accounts, sessions, CSRF, log-in throttling; `current_user` is the one answer to "who is the caller?" |
+| `app/workspace.py`, `app/desk.py` | one desk per user (broker, stores, assistant, loops) and the route dependency that picks it from the session |
+| `app/schema.py` | every per-user table and the upgrade of older databases |
 | `app/schemas.py` | Shared data contract (money in integer paise) |
 | `app/api_models.py` | REST and WebSocket message types |
 | `app/broker/` | `BrokerAdapter` interface, `ReadOnlyView`, `MockBroker` |
