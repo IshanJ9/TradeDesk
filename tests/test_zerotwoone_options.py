@@ -32,7 +32,7 @@ def conn():
 def setup(fake, conn):
     adapter = ZeroTwoOneAdapter(username="HACK1234", password="pw", http=fake.client(), connect=conn, clock=lambda: T0,
                                 cache_dir=None, retry_delay=0.001, price_wait=0.3)
-    settings = Settings(ticker_interval=None, reconcile_interval=None, external_sync_interval=None,
+    settings = Settings(allow_unlimited_risk_fo=True, ticker_interval=None, reconcile_interval=None, external_sync_interval=None,
                         timeout_reconcile_delay=0, account_push_interval=3600)
     with TestClient(create_app(settings, broker=adapter, clock=lambda: T0)) as client:
         deadline = time.time() + 2

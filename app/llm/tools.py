@@ -846,7 +846,7 @@ def build_tools(*, profile_reader=None, discipline_reader=None) -> dict[str, Too
                 "click Approve on the card. Use it for every buy, sell, modify or cancel request. If the stock "
                 "name is ambiguous it returns candidates: ask the trader which one; never guess. For an option "
                 "('buy 1 lot NIFTY 24500 CE') give option_underlying, strike_rupees, option_type and lots. Options "
-                "can be bought or sold; selling more than the trader holds is writing, which the code caps and warns about on the card. For a futures contract "
+                "can be bought or sold; selling more than the trader holds is writing, which the code refuses unless the operator has switched it on. For a futures contract "
                 "('buy 1 lot NIFTY futures', 'sell 2 lots BANKNIFTY futures') give future_underlying and lots.",
                 ProposeOrderInput.model_json_schema(),
             ),
