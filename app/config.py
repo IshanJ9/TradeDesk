@@ -17,6 +17,10 @@ class Settings:
     zerotwoone_base_url: str = "https://devapi.021.trade/api/developer-api/v1"
     zerotwoone_cache_dir: str = ".cache"  # the instrument list is downloaded once a day and kept here
     demo_mode: bool = False  # enables /api/chaos/* and /api/locks/* toggles
+    cocaptain_enabled: bool = False
+    cocaptain_dev_actors: bool = False
+    cocaptain_account_owner_id: str = ""
+    cocaptain_dev_users: str = field(default="[]", repr=False)
     database_url: str = "sqlite:///:memory:"
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
     aws_region: str = "ap-south-1"
@@ -59,6 +63,10 @@ class Settings:
             zerotwoone_base_url=env.get("ZEROTWOONE_BASE_URL", "").strip() or cls.zerotwoone_base_url,
             zerotwoone_cache_dir=env.get("ZEROTWOONE_CACHE_DIR", "").strip() or cls.zerotwoone_cache_dir,
             demo_mode=_flag("DEMO_MODE", False),
+            cocaptain_enabled=_flag("COCAPTAIN_ENABLED", False),
+            cocaptain_dev_actors=_flag("COCAPTAIN_DEV_ACTORS", False),
+            cocaptain_account_owner_id=env.get("COCAPTAIN_ACCOUNT_OWNER_ID", "").strip(),
+            cocaptain_dev_users=env.get("COCAPTAIN_DEV_USERS", "[]"),
             database_url=env.get("DATABASE_URL", "sqlite:///./tradedesk.db"),
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",
             aws_region=env.get("AWS_REGION", "ap-south-1").strip() or "ap-south-1",

@@ -27,3 +27,22 @@ Validation and mutation results will be recorded after each implemented portion.
   Node 22 (the supplied `.venv`/system Node were 3.10/20 respectively).
 - Mutation: changed daily comparison from `>` to `>=`; two boundary tests failed
   as expected. Original source restored byte-for-byte before committing.
+
+## Requirement 2: pairing and identity foundation checkpoint
+
+- Implemented persistent invite/accept/revoke with a distinct reviewer, generation
+  IDs, actor-scoped notifications, actor dependency and owner-only legacy routes.
+- Dev actors default off and require DEMO_MODE. This remains a single-account
+  development harness pending Akash's real sessions and per-user stores.
+- Audit retains its existing role enum; actual IDs are in `data.actor_id`.
+  An initial full-suite failure caught the attempted enum widening; fixed before
+  committing, with the original audit schema test unchanged.
+- Full backend: **1,201 passed** (92.77 seconds). Frontend: **95 passed**.
+  Production build and generated API types passed. No live broker calls.
+- Pairing guard mutations, each independently applied and restored:
+  self-invitation check removed -> 1 failed; accepting-reviewer identity check
+  removed -> 1 failed; revoked-link acceptance check removed -> 1 failed;
+  revoke-authority check removed -> 1 failed. Original file restored byte-for-byte.
+  These do not replace the required future order-approval gate mutations.
+- No two-person order gate or UI exists yet. Feature remains disabled by default.
+  Read `COCAPTAIN_HANDOVER.md` for detailed continuation steps and limitations.

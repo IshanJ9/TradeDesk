@@ -1196,6 +1196,154 @@
         }
       }
     },
+    "/api/cocaptain/config": {
+      "get": {
+        "summary": "Config",
+        "operationId": "config_api_cocaptain_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/settings": {
+      "get": {
+        "summary": "Settings",
+        "operationId": "settings_api_cocaptain_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/invite": {
+      "post": {
+        "summary": "Invite",
+        "operationId": "invite_api_cocaptain_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Invite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/accept": {
+      "post": {
+        "summary": "Accept",
+        "operationId": "accept_api_cocaptain_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/revoke": {
+      "post": {
+        "summary": "Revoke",
+        "operationId": "revoke_api_cocaptain_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/demo/status": {
       "get": {
         "tags": [
@@ -1583,6 +1731,30 @@
           "account"
         ],
         "title": "AccountUpdateEvent"
+      },
+      "Actor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_.-]+$",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "Actor"
       },
       "AmbiguityCard": {
         "properties": {
@@ -1973,6 +2145,7 @@
       "AuditKind": {
         "type": "string",
         "enum": [
+          "COCAPTAIN",
           "VOICE_TRANSCRIBED",
           "USER_MESSAGE",
           "LLM_INTENT",
@@ -3527,6 +3700,23 @@
         ],
         "title": "Instrument"
       },
+      "Invite": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^\\s@]+@[^\\s@]+$",
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "Invite"
+      },
       "LegFailurePolicy": {
         "type": "string",
         "enum": [
@@ -3548,6 +3738,91 @@
           "UNKNOWN"
         ],
         "title": "LegStatus"
+      },
+      "Link": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "reviewer_id": {
+            "type": "string",
+            "title": "Reviewer Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "INVITED",
+              "ACTIVE",
+              "REVOKED"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "owner_id",
+          "reviewer_id",
+          "status",
+          "created_at",
+          "accepted_at",
+          "revoked_at"
+        ],
+        "title": "Link"
+      },
+      "LinkAction": {
+        "properties": {
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "link_id": {
+            "type": "string",
+            "title": "Link Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "owner_id",
+          "link_id"
+        ],
+        "title": "LinkAction"
       },
       "LockUpdateEvent": {
         "properties": {
@@ -4396,6 +4671,50 @@
           "note"
         ],
         "title": "PaceReport"
+      },
+      "PairingStatus": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "account_owner_id": {
+            "type": "string",
+            "title": "Account Owner Id"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/Actor"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "limits_configured": {
+            "type": "boolean",
+            "title": "Limits Configured"
+          },
+          "dev_actors": {
+            "type": "boolean",
+            "title": "Dev Actors"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "actor",
+          "account_owner_id",
+          "links",
+          "people",
+          "limits_configured",
+          "dev_actors"
+        ],
+        "title": "PairingStatus"
       },
       "PendingCreatedEvent": {
         "properties": {
