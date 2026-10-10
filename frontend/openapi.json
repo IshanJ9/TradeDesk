@@ -959,6 +959,108 @@
         }
       }
     },
+    "/api/broker": {
+      "get": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Broker Status",
+        "operationId": "broker_status_api_broker_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/link": {
+      "post": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Link",
+        "operationId": "link_api_broker_link_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Unlink",
+        "operationId": "unlink_api_broker_link_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/reconnect": {
+      "post": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Reconnect",
+        "operationId": "reconnect_api_broker_reconnect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/voice/status": {
       "get": {
         "tags": [
@@ -1724,6 +1826,14 @@
           },
           "locks": {
             "$ref": "#/components/schemas/AccountLocks"
+          },
+          "account_kind": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "021"
+            ],
+            "title": "Account Kind"
           }
         },
         "additionalProperties": false,
@@ -1732,7 +1842,8 @@
           "funds",
           "holdings",
           "positions",
-          "locks"
+          "locks",
+          "account_kind"
         ],
         "title": "AccountSnapshot"
       },
@@ -2169,9 +2280,72 @@
           "INJECTION_BLOCKED",
           "LIMIT_BLOCKED",
           "LOCK_BLOCKED",
-          "CHAOS"
+          "CHAOS",
+          "BROKER_LINK"
         ],
         "title": "AuditKind"
+      },
+      "BrokerStatus": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "021"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "connected",
+              "needs_reconnect"
+            ],
+            "title": "Status"
+          },
+          "ucc_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ucc Hint"
+          },
+          "server_account": {
+            "type": "boolean",
+            "title": "Server Account"
+          },
+          "can_link": {
+            "type": "boolean",
+            "title": "Can Link"
+          },
+          "link_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Unavailable Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "status",
+          "ucc_hint",
+          "server_account",
+          "can_link",
+          "link_unavailable_reason"
+        ],
+        "title": "BrokerStatus"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -3746,6 +3920,30 @@
           "UNKNOWN"
         ],
         "title": "LegStatus"
+      },
+      "LinkRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Username",
+            "description": "Your 021 client id (UCC)"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LinkRequest"
       },
       "LockUpdateEvent": {
         "properties": {

@@ -344,7 +344,7 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Linking each user's own 021 account (today the server's `.env` account belongs to the owner and everyone else trades on their own mock account), email sign-in recovery, and Co-Captain co-approval.
+- Email sign-in recovery (password reset) and Co-Captain co-approval.
 
 ## Demo controls
 
@@ -413,13 +413,53 @@ rules, send log, Discipline settings, history, assistant memory, audit log and l
 Not protected, so you know: there is no password reset, no email verification and no multi-factor sign-in; anyone who
 can reach the server can register; the throttle's counters are in memory and reset on restart; the client IP is the
 socket's address (behind a reverse proxy every user looks like one IP); the SQLite file is not encrypted at rest; and
-a user with no linked 021 account trades on a mock account, not a real one.
+a user with no linked 021 account trades on a simulated account, not a real one (the screen says so everywhere).
 
 Checked: the isolation suites, a database written before accounts existed upgraded to the new shape (rows kept,
-primary keys rebuilt, owned by the first account, upgrade twice = no change), and 47 deliberate breaks (43 in the
-backend: CSRF, origin, expiry, hashing, lock-out, and a `user_id` filter in every store, the hub, the route guards and
-the socket; 4 in the page's session handling): every one made a test fail. In a browser at 375 px and desktop width: sign-up, wrong password, reload, an order card and its Approve click,
+primary keys rebuilt, owned by the first account, upgrade twice = no change), and 69 deliberate breaks (63 in the
+backend: CSRF, origin, expiry, hashing, lock-out, a `user_id` filter in every store, the hub, the route guards, the
+socket, and the 021 linking guards below; 6 in the page's session and broker handling): every one made a test fail. In a browser at 375 px and desktop width: sign-up, wrong password, reload, an order card and its Approve click,
 change password, log out, and a second account that sees an empty desk of its own.
+
+## Linking your own 021 account
+
+By default every account trades on a **simulated account** (a mock market with no real money) and the desk says so: a
+"Simulated account (not real money)" badge in the header and on every approval ticket. To trade on a real 021 account,
+a user opens **Account** (top right of the desk) and links their 021 client id and password.
+
+- **Checked for real, once.** The server logs in to 021 with those details. 021 allows one session per account, so the
+  session that checked the login is the one the desk then uses. A refused or unreachable login saves nothing.
+- **Stored encrypted.** AES-256-GCM (`app/vault.py`) with a fresh nonce per record and the user's id bound in, so a saved
+  login copied onto another user's row will not decrypt. The key is `TRADEDESK_SECRET_KEY` in `.env` (generate one with
+  the command in `.env.example`); without it linking is switched off and everything else works as before. To change
+  the key, put the old one in `TRADEDESK_SECRET_KEY_PREVIOUS`: saved logins are re-sealed under the new key at startup.
+  The password never appears in an API response, a log, an audit event or the page; the API only says "client id ends
+  …1234".
+- **One 021 account, one TradeDesk user.** A keyed fingerprint of the client id refuses a second link (two logins would
+  revoke each other), including the server's own `.env` account.
+- **The server's account** (`BROKER=zerotwoone` in `.env`) belongs to the owner (the first account, or
+  `TRADEDESK_OWNER_EMAIL`) and is managed there; the owner cannot link or unlink in the app. Everyone else starts on the
+  simulated account. A server running the mock (the default) treats the owner like any other user.
+- **Switching accounts rejects what is waiting.** Linking or unlinking rejects every pending card and plan (they were
+  priced against the other account), closes the user's open pages so they reconnect to the new account's data, and is
+  refused while an order's send is unresolved or a plan is running. Rules are kept.
+- **Reconnect, not a crash.** If 021 revokes the session (another copy of the app logged in) or a saved login stops
+  working, the desk shows a banner with a Reconnect button, and approvals are refused with "Nothing was sent" until it is
+  connected (the card stays open). Reconnect logs in with the saved login and checks it with a real read; if 021 still
+  refuses it, it says so.
+- **Unlink** deletes the saved login and goes back to the simulated account.
+
+Limits: each linked user holds their own 021 session, market socket and instrument list read, so the load grows with the
+number of linked users; the log-in attempts to link are throttled (5 failures per user per 15 minutes); the sandbox's own
+rate limits (429) have not been exercised.
+
+Checked: tests against the fake 021 (`tests/test_broker_link.py`: encryption, no plaintext in the database file, any
+response or log, a wrong or unreachable login saving nothing, duplicates, two users on two separate 021 sessions, pending
+cards rejected on link and unlink, open pages told to reconnect, a revoked session refusing card and plan approvals with
+nothing sent, a login that fails at startup, the key lost, changed and rotated), and in a browser at 375 px against a
+fake 021: the badge and labelled tickets, a wrong then a right login, the badge disappearing, the old card no longer
+approvable, the Reconnect banner (and its plain message while 021 still refuses), and Unlink. **Not yet tried against
+the live 021 sandbox.**
 
 ## Where things are
 
@@ -428,6 +468,7 @@ change password, log out, and a second account that sees an empty desk of its ow
 | `app/auth/`, `app/identity.py` | accounts, sessions, CSRF, log-in throttling; `current_user` is the one answer to "who is the caller?" |
 | `app/workspace.py`, `app/desk.py` | one desk per user (broker, stores, assistant, loops) and the route dependency that picks it from the session |
 | `app/schema.py` | every per-user table and the upgrade of older databases |
+| `app/vault.py`, `app/broker_links.py`, `app/broker_api.py` | a user's linked 021 login (encrypted), opening their session, and the link / unlink / reconnect routes |
 | `app/schemas.py` | Shared data contract (money in integer paise) |
 | `app/api_models.py` | REST and WebSocket message types |
 | `app/broker/` | `BrokerAdapter` interface, `ReadOnlyView`, `MockBroker` |

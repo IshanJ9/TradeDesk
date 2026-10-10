@@ -247,6 +247,7 @@ class AuditKind(str, Enum):
     LIMIT_BLOCKED = "LIMIT_BLOCKED"
     LOCK_BLOCKED = "LOCK_BLOCKED"
     CHAOS = "CHAOS"
+    BROKER_LINK = "BROKER_LINK"  # a 021 account was linked, unlinked or reconnected: never any credentials
 
 
 # --------------------------------------------------------------------------- #

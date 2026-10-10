@@ -7,7 +7,7 @@ export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; conflict?: ApprovalConflict };
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<Result<T>> {
+async function request<T>(method: string, url: string, body?: unknown, keepDetail = false): Promise<Result<T>> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -37,6 +37,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     const conflict = obj as unknown as ApprovalConflict;
     return { ok: false, status: 409, message: conflict.message, conflict };
   }
+  if (keepDetail && typeof obj.detail === "string") return { ok: false, status: res.status, message: obj.detail };
   if (res.status === 503) {
     return { ok: false, status: 503, message: "The broker or assistant isn't reachable right now. Nothing was sent." };
   }
@@ -46,6 +47,16 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   const detail = typeof obj.detail === "string" ? obj.detail : `Request failed (${res.status}).`;
   return { ok: false, status: res.status, message: detail };
 }
+
+// Which account the desk is on, and linking your own 021 account. The server's own words are shown as they are.
+type BrokerSchemas = import("./types.gen").components["schemas"];
+export type BrokerStatus = BrokerSchemas["BrokerStatus"];
+export const brokerApi = {
+  status: () => request<BrokerStatus>("GET", "/api/broker", undefined, true),
+  link: (username: string, password: string) => request<BrokerStatus>("POST", "/api/broker/link", { username, password }, true),
+  unlink: () => request<BrokerStatus>("DELETE", "/api/broker/link", undefined, true),
+  reconnect: () => request<BrokerStatus>("POST", "/api/broker/reconnect", undefined, true),
+};
 
 export const api = {
   chat: (message: string, viaVoice = false) => request<ChatReply>("POST", "/api/chat", { message, via_voice: viaVoice }),

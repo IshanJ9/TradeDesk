@@ -56,6 +56,12 @@ class EventHub:
                 self._drop_slow(user_id, queue)
         return event
 
+    def disconnect_user(self, user_id: str) -> None:
+        """Close every socket this user has open; their pages reconnect and get a fresh snapshot (used when their
+        broker account changes, so nothing on screen belongs to the old one)."""
+        for queue in list(self._subs.get(user_id, ())):
+            self._drop_slow(user_id, queue)
+
     def _drop_slow(self, user_id: str, queue: asyncio.Queue[_Event | None]) -> None:
         self.unsubscribe(user_id, queue)
         while not queue.empty():

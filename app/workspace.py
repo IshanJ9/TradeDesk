@@ -12,13 +12,14 @@ The loops of different users are separate asyncio tasks: one that is slow, stuck
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from app.account import build_account
 from app.api_models import AccountUpdateEvent, TickEvent
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
+from app.broker.kind import AccountKind, broker_kind
 from app.broker.mock import MockBroker
 from app.config import Settings
 from app.db import Database
@@ -43,7 +44,7 @@ from app.risk.store import ProfileStore
 from app.rules.engine import RuleEngine
 from app.rules.service import RuleService
 from app.rules.store import RuleStore
-from app.schemas import RuleStatus
+from app.schemas import AuditKind, PendingState, PlanState, RuleStatus
 from app.sync.external import ExternalOrderSync
 from app.sync.order_events import OrderPublisher, run_order_watcher, wait_or_wake
 
@@ -107,6 +108,46 @@ class Workspace:
         self.approvals = ApprovalService(self.pending, self.builder, self.executor, broker, self.audit, hub, settings, clock, self.risk)
         self._tasks: list[asyncio.Task] = []
         self.started = False
+
+    @property
+    def account_kind(self) -> AccountKind:
+        return broker_kind(self.broker)
+
+    @property
+    def broker_status(self) -> str:
+        """mock | connected | needs_reconnect (a 021 session that is not usable right now)."""
+        if self.account_kind == "mock":
+            return "mock"
+        return "needs_reconnect" if getattr(self.broker, "needs_reconnect", False) else "connected"
+
+    def switch_blocker(self) -> str | None:
+        """Why this desk's broker account cannot be changed right now, or None. An order whose outcome is not known, or
+        a plan that is running, belongs to the account it was sent to."""
+        if self.executor.unresolved():
+            return "An order you sent is still waiting for 021's answer. Wait until it is confirmed, then try again."
+        if any(p.state in (PlanState.APPROVED, PlanState.RUNNING) for p in self.plan_store.all()):
+            return "A plan is running. Wait until it finishes, then try again."
+        return None
+
+    async def reject_pending_for_account_change(self) -> int:
+        """Cards and plans were priced and checked against the old account: none of them may be approved on the new one."""
+        n = 0
+        for card in self.pending.awaiting_approval():
+            try:
+                await self.approvals.reject(card.id)
+                n += 1
+            except Exception:  # already moved on (approved, expired): nothing to reject
+                pass
+        for plan in self.plan_store.awaiting_approval():
+            try:
+                await self.plans.reject(plan.id)
+                n += 1
+            except Exception:
+                pass
+        return n
+
+    def note_account_change(self, what: str) -> None:
+        self.audit.record(AuditKind.BROKER_LINK, "user", what)
 
     # ---- lifecycle ------------------------------------------------------------------------------ #
 
@@ -196,9 +237,11 @@ class WorkspaceRegistry:
     """Finds or builds the workspace for a user. Workspaces live until the app stops."""
 
     def __init__(self, *, settings: Settings, clock: Callable[[], datetime], db: Database, events: EventHub,
-                 broker_for: Callable[[Actor], tuple[BrokerAdapter, bool]]):
+                 broker_for: Callable[[Actor], tuple[BrokerAdapter, bool]],
+                 linked_broker_for: Callable[[Actor], Awaitable[tuple[BrokerAdapter, bool] | None]] | None = None):
         self._settings, self._clock, self._db, self._events = settings, clock, db, events
-        self._broker_for = broker_for  # (actor) -> (broker, already_started)
+        self._broker_for = broker_for  # (actor) -> (broker, already_started): the server's account, or a mock
+        self._linked_broker_for = linked_broker_for  # async (actor) -> the user's own linked 021 session, or None
         self._workspaces: dict[str, Workspace] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -208,9 +251,10 @@ class WorkspaceRegistry:
     def all(self) -> list[Workspace]:
         return list(self._workspaces.values())
 
-    def build(self, user: Actor) -> Workspace:
+    def build(self, user: Actor, broker: BrokerAdapter | None = None, started: bool = False) -> Workspace:
         """Make (but do not start) this user's workspace and remember it. Normally called by `get`."""
-        broker, started = self._broker_for(user)
+        if broker is None:
+            broker, started = self._broker_for(user)
         ws = Workspace(user=user, settings=self._settings, clock=self._clock, db=self._db, events=self._events,
                        broker=broker, broker_started=started)
         self._workspaces[user.id] = ws
@@ -227,7 +271,8 @@ class WorkspaceRegistry:
                 return ws
             fresh = ws is None
             if ws is None:
-                ws = self.build(user)
+                linked = await self._linked_broker_for(user) if self._linked_broker_for else None
+                ws = self.build(user, *linked) if linked else self.build(user)
             try:
                 await ws.start()
             except Exception as exc:
@@ -237,6 +282,32 @@ class WorkspaceRegistry:
                     self._workspaces.pop(user.id, None)
                 log.warning("could not start a desk for a user: %s", type(exc).__name__)
                 raise WorkspaceUnavailable() from exc
+            return ws
+
+    async def replace(self, user: Actor, broker: BrokerAdapter | None = None, started: bool = False) -> Workspace:
+        """Give this user a new desk on a different broker account (they linked, unlinked or reconnected). Their pending
+        cards and plans are rejected first, the old desk stops, and their open pages are told to reconnect so nothing on
+        screen still belongs to the old account. With no broker given, the user's saved link (if any) decides."""
+        lock = self._locks.setdefault(user.id, asyncio.Lock())
+        async with lock:
+            old = self._workspaces.get(user.id)
+            if old is not None:
+                await old.reject_pending_for_account_change()
+                await old.stop()
+                self._workspaces.pop(user.id, None)
+            if broker is None:
+                linked = await self._linked_broker_for(user) if self._linked_broker_for else None
+                ws = self.build(user, *linked) if linked else self.build(user)
+            else:
+                ws = self.build(user, broker, started)
+            try:
+                await ws.start()
+            except Exception as exc:
+                with contextlib.suppress(Exception):
+                    await ws.stop()
+                self._workspaces.pop(user.id, None)
+                raise WorkspaceUnavailable() from exc
+            self._events.disconnect_user(user.id)
             return ws
 
     async def stop_all(self) -> None:

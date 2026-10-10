@@ -43,6 +43,8 @@ class AccountSnapshot(Model):
     holdings: list[Holding]
     positions: list[Position]
     locks: AccountLocks
+    # Which account this is: the simulated one (no real money) or a real 021 account. Shown on the screen at all times.
+    account_kind: Literal["mock", "021"]
 
 
 class PendingList(Model):

@@ -20,6 +20,7 @@ from typing import NoReturn
 from app.api_models import ExecutionResult, PendingCreatedEvent, PendingUpdatedEvent
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
+from app.broker.disconnected import RECONNECT_MESSAGE
 from app.config import Settings
 from app.events import EventHub
 from app.orders.builder import OrderBuilder
@@ -86,6 +87,8 @@ class ApprovalService:
 
         if p.state is not PendingState.PENDING:
             self._refuse(p, "NOT_PENDING", f"This card is already {p.state.value.lower()}.")
+        if getattr(self._broker, "needs_reconnect", False):  # the card stays open; nothing is claimed or sent
+            self._refuse(p, "BLOCKED", RECONNECT_MESSAGE)
         if p.is_expired(self._clock()):
             self._refuse(p, "EXPIRED", "This card expired. Ask again for a fresh one.", PendingState.EXPIRED)
         if not hmac.compare_digest(order_hash, p.order_hash):

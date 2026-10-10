@@ -15,7 +15,10 @@ from app.auth.ratelimit import LoginLimiter
 from app.auth.service import AuthService
 from app.auth.store import AuthStore, UserRow
 from app.broker.base import BrokerAdapter, BrokerTimeout
+from app.broker.kind import broker_kind
 from app.broker.mock import MockBroker
+from app.broker_api import router as broker_router
+from app.broker_links import BrokerLinks, LinkedBrokers
 from app.config import Settings
 from app.db import Database
 from app.events import EventHub
@@ -23,6 +26,7 @@ from app.identity import Actor
 from app.llm.factory import make_llm
 from app.llm.types import LLMUnavailable
 from app.risk.api import router as risk_router
+from app.vault import Vault
 from app.schema import adopt_legacy_rows
 from app.auth.service import actor_of
 from app.voice.api import router as voice_router  # voice-live: transcription only
@@ -55,11 +59,19 @@ def make_broker(settings: Settings) -> BrokerAdapter:
 
 
 
+def _real_021(settings: Settings, username: str, password: str) -> BrokerAdapter:
+    from app.broker.zerotwoone import ZeroTwoOneAdapter
+
+    return ZeroTwoOneAdapter(username=username, password=password, base_url=settings.zerotwoone_base_url,
+                             cache_dir=settings.zerotwoone_cache_dir)
+
+
 def create_app(
     settings: Settings | None = None,
     broker: BrokerAdapter | None = None,
     clock: Callable[[], datetime] = _utcnow,
     broker_factory: Callable[[Actor], BrokerAdapter] | None = None,
+    zerotwoone_factory: Callable[[str, str], BrokerAdapter] | None = None,
 ) -> FastAPI:
     """`broker` is the account configured for this server (BROKER / .env): it belongs to the owner, the first person
     to register (or TRADEDESK_OWNER_EMAIL). Every other user gets `broker_factory(user)`, which by default is their
@@ -94,13 +106,32 @@ def create_app(
             return default_broker, True  # already started in the lifespan, so a wrong 021 password stops the app early
         return make_user_broker(actor), False
 
-    registry = WorkspaceRegistry(settings=settings, clock=clock, db=db, events=events, broker_for=broker_for)
+    # A user may link their own 021 account (Settings). Their login is stored encrypted under TRADEDESK_SECRET_KEY;
+    # with no key, linking is off and everything else works exactly as before.
+    vault = Vault(settings.secret_key, settings.secret_key_previous)
+    links = BrokerLinks(db, vault)
+    make_021 = zerotwoone_factory or (lambda username, password: _real_021(settings, username, password))
+    linked = LinkedBrokers(links, make_021, clock)
+    server_has_real_account = broker_kind(default_broker) == "021"
+
+    def uses_server_account(actor: Actor) -> bool:
+        """The owner of a server that is configured with a real 021 login trades on it; it is managed in .env."""
+        o = owner()
+        return server_has_real_account and o is not None and o.id == actor.id
+
+    def uses_server_account_ucc(ucc: str) -> bool:
+        return server_has_real_account and settings.zerotwoone_username.strip().upper() == ucc.strip().upper()
+
+    registry = WorkspaceRegistry(settings=settings, clock=clock, db=db, events=events, broker_for=broker_for,
+                                 linked_broker_for=linked.open)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         # A live broker logs in and opens its price feed first. If it cannot (wrong password, no network) the
         # app does not start, rather than running with a broker that is not there.
         await default_broker.start()
+        if vault.available:
+            links.rewrap(clock())  # records sealed under the previous key are re-sealed under the current one
         o = owner()
         if o is not None:
             adopt_legacy_rows(db, o.id)  # finishes the hand-over if a crash interrupted it; a no-op once done
@@ -130,6 +161,10 @@ def create_app(
     app.state.events = events
     app.state.workspaces = registry
     app.state.default_broker = default_broker
+    app.state.vault, app.state.links, app.state.linked = vault, links, linked
+    app.state.zerotwoone_factory = make_021
+    app.state.uses_server_account, app.state.uses_server_account_ucc = uses_server_account, uses_server_account_ucc
+    app.state.link_limiter = LoginLimiter(clock, max_per_email=5, max_per_ip=20)  # attempts to link, per user and per IP
     app.state.auth = AuthService(
         auth_store, clock, LoginLimiter(clock),
         idle_timeout=timedelta(hours=settings.session_idle_hours),
@@ -160,6 +195,7 @@ def create_app(
     app.include_router(auth_public)
     app.include_router(auth_private)
     app.include_router(rest)
+    app.include_router(broker_router)
     app.include_router(ws_router)
     app.include_router(voice_router)  # voice-live: editable text, never an order action
     app.include_router(sync_dev_router)  # voice-live: returns 404 outside demo mode

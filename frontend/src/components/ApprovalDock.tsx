@@ -12,6 +12,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
   const waiting = awaiting(state);
   const done = resolved(state);
   const count = waiting.orders.length + waiting.plans.length;
+  const accountKind = state.account?.account_kind;
 
   const busy = (id: string, on: boolean) => setSending((s) => ({ ...s, [id]: on }));
   const note = (id: string, tone: "warn" | "error" | "info", text: string) =>
@@ -67,6 +68,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
             onApprove={() => approvePlan(p.id, p.plan_hash)}
             onDecline={() => decline("plan", p.id)}
             onDismiss={() => dispatch({ type: "hide", id: p.id })}
+            accountKind={accountKind}
           />
         ))}
         {waiting.orders.map((o) => (
@@ -79,6 +81,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
             onApprove={(acknowledgment) => approveOrder(o.id, o.order_hash, acknowledgment)}
             onDecline={() => decline("order", o.id)}
             onDismiss={() => dispatch({ type: "hide", id: o.id })}
+            accountKind={accountKind}
           />
         ))}
 
@@ -92,6 +95,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
             onApprove={() => {}}
             onDecline={() => {}}
             onDismiss={() => dispatch({ type: "hide", id: p.id })}
+            accountKind={accountKind}
           />
         ))}
         {done.orders.map((o) => (
@@ -104,6 +108,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
             onApprove={() => {}}
             onDecline={() => {}}
             onDismiss={() => dispatch({ type: "hide", id: o.id })}
+            accountKind={accountKind}
           />
         ))}
       </div>

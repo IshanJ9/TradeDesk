@@ -53,6 +53,8 @@ class Settings:
     cookie_secure: bool | None = None  # None = Secure unless served from this machine; COOKIE_SECURE=true/false overrides
     session_idle_hours: float = 12.0
     session_absolute_days: float = 7.0
+    secret_key: str = field(default="", repr=False)  # encrypts users' linked 021 logins; empty = linking is off
+    secret_key_previous: str = field(default="", repr=False)  # the old key while changing it
     owner_email: str = ""  # the account that inherits data saved before accounts existed (default: the first to register)
 
     @classmethod
@@ -89,4 +91,6 @@ class Settings:
             session_idle_hours=float(env.get("SESSION_IDLE_HOURS", "12")),
             session_absolute_days=float(env.get("SESSION_ABSOLUTE_DAYS", "7")),
             owner_email=env.get("TRADEDESK_OWNER_EMAIL", "").strip().lower(),
+            secret_key=env.get("TRADEDESK_SECRET_KEY", "").strip(),
+            secret_key_previous=env.get("TRADEDESK_SECRET_KEY_PREVIOUS", "").strip(),
         )

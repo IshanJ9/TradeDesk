@@ -26,6 +26,7 @@ from app.api_models import (
 )
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerRejected, BrokerTimeout
+from app.broker.kind import broker_kind
 from app.db import Database
 from app.events import EventHub
 from app.pending import PendingStore
@@ -271,7 +272,7 @@ class Executor:
 
     def _begin(self, p: PendingOrder) -> None:
         now = self._clock()
-        detail: dict = {"order_hash": p.order_hash, "summary": self._describe(p)}
+        detail: dict = {"order_hash": p.order_hash, "summary": self._describe(p), "account_kind": broker_kind(self._broker)}
         if p.action is OrderAction.PLACE:  # what the order will look like on the wire, for reconcile
             detail["spec"] = SentOrderSpec.from_pending(p, now).model_dump(mode="json")
         now = now.isoformat()

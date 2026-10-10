@@ -1,3 +1,4 @@
+import { SIMULATED } from "../lib/broker";
 import { useState } from "react";
 import { actionTitle, chargeLines, outcomeOf, priceLine, productWord, STATE_NOTE, validityWord } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
@@ -33,11 +34,12 @@ interface Props {
   onApprove: (acknowledgment?: string) => void;
   onDecline: () => void;
   onDismiss: () => void;
+  accountKind?: "mock" | "021"; // the simulated account is labelled on every ticket
 }
 
 /** One order, on a ticket. While it is waiting the trader can approve or decline it; afterwards it
  *  keeps its place on screen with what happened. */
-export function OrderTicket({ order: o, note, result, sending, onApprove, onDecline, onDismiss }: Props) {
+export function OrderTicket({ order: o, note, result, sending, onApprove, onDecline, onDismiss, accountKind }: Props) {
   const waiting = o.state === "PENDING";
   const expired = waiting && secondsLeft(o.expires_at, Date.now()) === 0;
   const isCancel = o.action === "CANCEL";
@@ -71,6 +73,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             {o.side && <Chip tone={sideTone}>{o.side}</Chip>}
             {o.action !== "PLACE" && <Chip tone="info">{o.action === "MODIFY" ? "Change" : "Cancel"}</Chip>}
             {o.rule_id && <Chip tone="info">From your rule</Chip>}
+            {accountKind === "mock" && <Chip tone="info">{SIMULATED}</Chip>}
           </div>
           <h3 className="mt-1.5 font-serif text-[21px] leading-tight text-ink [font-variant-numeric:tabular-nums]">{actionTitle(o)}</h3>
           <p className="text-[13px] text-muted">

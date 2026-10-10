@@ -436,6 +436,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/broker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Broker Status */
+        get: operations["broker_status_api_broker_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link */
+        post: operations["link_api_broker_link_post"];
+        /** Unlink */
+        delete: operations["unlink_api_broker_link_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconnect */
+        post: operations["reconnect_api_broker_reconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/status": {
         parameters: {
             query?: never;
@@ -793,6 +845,11 @@ export interface components {
             /** Positions */
             positions: components["schemas"]["Position"][];
             locks: components["schemas"]["AccountLocks"];
+            /**
+             * Account Kind
+             * @enum {string}
+             */
+            account_kind: "mock" | "021";
         };
         /** AccountUpdateEvent */
         AccountUpdateEvent: {
@@ -941,7 +998,28 @@ export interface components {
          * AuditKind
          * @enum {string}
          */
-        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
+        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS" | "BROKER_LINK";
+        /** BrokerStatus */
+        BrokerStatus: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mock" | "021";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "mock" | "connected" | "needs_reconnect";
+            /** Ucc Hint */
+            ucc_hint: string | null;
+            /** Server Account */
+            server_account: boolean;
+            /** Can Link */
+            can_link: boolean;
+            /** Link Unavailable Reason */
+            link_unavailable_reason: string | null;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -1523,6 +1601,16 @@ export interface components {
          * @enum {string}
          */
         LegStatus: "NOT_SENT" | "SKIPPED" | "OPEN" | "PARTIAL" | "FILLED" | "REJECTED" | "CANCELLED" | "UNKNOWN";
+        /** LinkRequest */
+        LinkRequest: {
+            /**
+             * Username
+             * @description Your 021 client id (UCC)
+             */
+            username: string;
+            /** Password */
+            password: string;
+        };
         /** LockUpdateEvent */
         LockUpdateEvent: {
             /** Seq */
@@ -3457,6 +3545,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"])[];
+                };
+            };
+        };
+    };
+    broker_status_api_broker_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+        };
+    };
+    link_api_broker_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_api_broker_link_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+        };
+    };
+    reconnect_api_broker_reconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
                 };
             };
         };

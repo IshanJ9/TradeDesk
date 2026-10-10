@@ -1,3 +1,4 @@
+import { SIMULATED } from "../lib/broker";
 import { useState } from "react";
 import { legLine, legStatusWord, STATE_NOTE } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
@@ -52,9 +53,10 @@ interface Props {
   onApprove: () => void;
   onDecline: () => void;
   onDismiss: () => void;
+  accountKind?: "mock" | "021"; // the simulated account is labelled on every ticket
 }
 
-export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, onDismiss }: Props) {
+export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, onDismiss, accountKind }: Props) {
   const waiting = plan.state === "PENDING";
   const expired = waiting && secondsLeft(plan.expires_at, Date.now()) === 0;
   const running = plan.state === "APPROVED" || plan.state === "RUNNING";
@@ -68,7 +70,10 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
     <article id={`card-${plan.id}`} className="ticket" data-tone={note?.tone === "warn" ? "warn" : undefined} data-resolved={!waiting} aria-label={plan.title}>
       <header className="flex items-start justify-between gap-3 px-4 pt-3.5">
         <div>
-          <Chip tone="info">Plan &middot; {n} steps, approved together</Chip>
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip tone="info">Plan &middot; {n} steps, approved together</Chip>
+            {accountKind === "mock" && <Chip tone="info">{SIMULATED}</Chip>}
+          </div>
           <h3 className="mt-1.5 font-serif text-[19px] leading-tight text-ink">{plan.title}</h3>
         </div>
         {waiting && <div className="shrink-0 pt-1 text-right text-xs"><Countdown expiresAt={plan.expires_at} /></div>}
