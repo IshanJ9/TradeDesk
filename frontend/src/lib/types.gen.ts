@@ -511,15 +511,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cocaptain/status": {
+    "/api/cocaptain/config": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Status */
-        get: operations["status_api_cocaptain_status_get"];
+        /** Config */
+        get: operations["config_api_cocaptain_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Settings */
+        get: operations["settings_api_cocaptain_settings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -825,6 +842,13 @@ export interface components {
             type: "account_update";
             account: components["schemas"]["AccountSnapshot"];
         };
+        /** Actor */
+        Actor: {
+            /** Id */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
         /**
          * AmbiguityCard
          * @description 'Which Tata?': the trader must pick; the copilot never guesses.
@@ -961,7 +985,7 @@ export interface components {
          * AuditKind
          * @enum {string}
          */
-        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "COCAPTAIN" | "CHAOS";
+        AuditKind: "COCAPTAIN" | "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
         /** ChaosStatus */
         ChaosStatus: {
             /**
@@ -1092,24 +1116,6 @@ export interface components {
              * Format: date-time
              */
             closed_at: string;
-        };
-        /** CoCaptainStatus */
-        CoCaptainStatus: {
-            /** Me */
-            me: string;
-            as_trader: components["schemas"]["TraderLink"] | null;
-            /** Invitation From */
-            invitation_from: string | null;
-            /**
-             * Reviewing
-             * @default []
-             */
-            reviewing: string[];
-            /**
-             * Blocks Without Reviewer
-             * @default false
-             */
-            blocks_without_reviewer: boolean;
         };
         /**
          * Comparator
@@ -1544,10 +1550,10 @@ export interface components {
             strike: number | null;
             option_type: components["schemas"]["OptionType"] | null;
         };
-        /** InviteRequest */
-        InviteRequest: {
-            /** Reviewer */
-            reviewer: string;
+        /** Invite */
+        Invite: {
+            /** Email */
+            email: string;
         };
         /**
          * LegFailurePolicy
@@ -1559,6 +1565,36 @@ export interface components {
          * @enum {string}
          */
         LegStatus: "NOT_SENT" | "SKIPPED" | "OPEN" | "PARTIAL" | "FILLED" | "REJECTED" | "CANCELLED" | "UNKNOWN";
+        /** Link */
+        Link: {
+            /** Id */
+            id: string;
+            /** Owner Id */
+            owner_id: string;
+            /** Reviewer Id */
+            reviewer_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "INVITED" | "ACTIVE" | "REVOKED";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Accepted At */
+            accepted_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /** LinkAction */
+        LinkAction: {
+            /** Owner Id */
+            owner_id: string;
+            /** Link Id */
+            link_id: string;
+        };
         /** LockUpdateEvent */
         LockUpdateEvent: {
             /** Seq */
@@ -1834,6 +1870,20 @@ export interface components {
             baseline_days: number;
             /** Note */
             note: string;
+        };
+        /** PairingStatus */
+        PairingStatus: {
+            actor: components["schemas"]["Actor"];
+            /** Account Owner Id */
+            account_owner_id: string;
+            /** Links */
+            links: components["schemas"]["Link"][];
+            /** People */
+            people: components["schemas"]["Actor"][];
+            /** Limits Configured */
+            limits_configured: boolean;
+            /** Dev Actors */
+            dev_actors: boolean;
         };
         /** PendingCreatedEvent */
         PendingCreatedEvent: {
@@ -2629,16 +2679,6 @@ export interface components {
              * @default true
              */
             demo: boolean;
-        };
-        /** TraderLink */
-        TraderLink: {
-            /** Reviewer */
-            reviewer: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "INVITED" | "ACTIVE";
         };
         /** Transcript */
         Transcript: {
@@ -3647,7 +3687,7 @@ export interface operations {
             };
         };
     };
-    status_api_cocaptain_status_get: {
+    config_api_cocaptain_config_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3662,7 +3702,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CoCaptainStatus"];
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    settings_api_cocaptain_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingStatus"];
                 };
             };
         };
@@ -3676,7 +3736,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["InviteRequest"];
+                "application/json": components["schemas"]["Invite"];
             };
         };
         responses: {
@@ -3686,7 +3746,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CoCaptainStatus"];
+                    "application/json": components["schemas"]["Link"];
                 };
             };
             /** @description Validation Error */
@@ -3707,7 +3767,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkAction"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3715,7 +3779,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CoCaptainStatus"];
+                    "application/json": components["schemas"]["Link"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3727,7 +3800,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkAction"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3735,7 +3812,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CoCaptainStatus"];
+                    "application/json": components["schemas"]["Link"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

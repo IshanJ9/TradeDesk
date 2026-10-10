@@ -234,7 +234,10 @@ async def ws_events_doc():
 
 @ws_router.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
-    await websocket.accept()
+    # a dev actor travels as a subprotocol pair (browsers cannot set headers on a WebSocket); echo it back or the
+    # browser drops the connection
+    protocol = "tradedesk-cocaptain" if "tradedesk-cocaptain" in websocket.scope.get("subprotocols", []) else None
+    await websocket.accept(subprotocol=protocol)
     state = websocket.app.state
     hub, broker = state.hub, state.broker
     queue = hub.subscribe()  # subscribe first so nothing published during the snapshot is lost

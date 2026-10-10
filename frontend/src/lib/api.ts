@@ -7,7 +7,7 @@ export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; conflict?: ApprovalConflict };
 
-// Who is calling. Only a demo build with DEV_ACTORS honours it (open /app?as=ravi in a second tab to play the
+// Who is calling. Only a demo build with COCAPTAIN_DEV_ACTORS honours it (open /app?as=b in a second tab to play the
 // Co-Captain); a real deployment ignores the header, so this can never name anyone.
 const actor = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("as");
 
@@ -18,7 +18,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
       method,
       headers: {
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(actor ? { "X-Actor": actor } : {}),
+        ...(actor ? { "x-tradedesk-actor": actor } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -49,13 +49,15 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return { ok: false, status: res.status, message: detail };
 }
 
-export type CoCaptainStatus = components["schemas"]["CoCaptainStatus"];
+export type CoCaptainSettings = components["schemas"]["PairingStatus"];
+export type CoCaptainLink = components["schemas"]["Link"];
 
 export const cocaptainApi = {
-  status: () => request<CoCaptainStatus>("GET", "/api/cocaptain/status"),
-  invite: (reviewer: string) => request<CoCaptainStatus>("POST", "/api/cocaptain/invite", { reviewer }),
-  accept: () => request<CoCaptainStatus>("POST", "/api/cocaptain/accept", {}),
-  revoke: () => request<CoCaptainStatus>("POST", "/api/cocaptain/revoke", {}),
+  config: () => request<{ enabled: boolean; dev_actors: boolean }>("GET", "/api/cocaptain/config"),
+  settings: () => request<CoCaptainSettings>("GET", "/api/cocaptain/settings"),
+  invite: (email: string) => request<CoCaptainLink>("POST", "/api/cocaptain/invite", { email }),
+  accept: (link: CoCaptainLink) => request<CoCaptainLink>("POST", "/api/cocaptain/accept", { owner_id: link.owner_id, link_id: link.id }),
+  revoke: (link: CoCaptainLink) => request<CoCaptainLink>("POST", "/api/cocaptain/revoke", { owner_id: link.owner_id, link_id: link.id }),
   inbox: () => request<PendingOrder[]>("GET", "/api/cocaptain/inbox"),
   approve: (id: string, orderHash: string) =>
     request<ExecutionResult>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/approve`, { order_hash: orderHash }),

@@ -237,33 +237,44 @@ close-out card with no acknowledgment. Not yet sent to the live sandbox.
 
 A **Co-Captain** is someone you trust who must approve an order too, but only when you are past a limit **you set
 yourself**. Inside your limits nothing changes: one approval, as before. It is TradeDesk's own feature (021's API has
-no Co-Captain), and a person, never the assistant, approves by clicking in the app.
+no Co-Captain), and a person, never the assistant, approves by clicking in the app. **Off by default**
+(`COCAPTAIN_ENABLED`); off, nothing in the order path changes.
 
 - **The zone** (`app/cocaptain/zone.py`, plain arithmetic, no model): an order is "past your limit" when it would take
   you strictly over your orders-a-day, your 20-minute allowance or your daily turnover allowance (the Discipline
-  limits), counting the order itself. A limit you did not set is ignored. It uses the same comparisons as the
-  "You set ..." warnings, and a test checks the two agree. A plan counts as its steps and its total value.
-- **Two approvals on the same card.** You approve; the card waits ("Waiting for your Co-Captain, ravi"); they approve
-  the **same exact card** (bound to its order hash and the rule version); only then does it go, through the same send
-  path and the same "never twice" log as every order. A re-quote makes a new card that starts again. A repeat click
-  changes nothing; the trader and strangers are refused (404); the Co-Captain's decline ends it.
-- **It never overrides anything.** After both approvals the order is checked again (your hard stops, Anchor, price
-  band, funds, price drift, the broker); a hard stop still voids it. If you are back inside your limit by then, your
-  Co-Captain's click does not send it: you must click Approve yourself on that card.
-- **Revoking is immediate**, by either side, and an approval given under an earlier pairing never counts again.
-- **Opt-in.** With no Co-Captain set, past your own limits is a warning as before (`COCAPTAIN_BLOCK_WITHOUT_REVIEWER=true`
-  pauses such orders instead). Settings are in the desk's **Co-Captain** tab: invite, remove, accept, and the
-  reviewer's inbox with Approve and Decline.
-- **Checked:** zone arithmetic and boundaries, the two-person flow over HTTP, decline, expiry, re-quote, leaving the
-  zone while waiting, revoke (and a revoke racing an approval), simultaneous approvals sending once, hard stop and
-  Anchor after both approvals, restart with a card waiting, no model tool able to approve, GETs changing nothing, and
-  12 mutations (each guard removed on purpose, the two layers of the race guard together: all caught). In the browser: past a limit the card says it also needs
-  the Co-Captain, the trader's click moves it to "Waiting", and the reviewer's tab approves it and it fills.
+  limits), counting the order itself. A limit you did not set is ignored; no profile means never in the zone. A plan
+  counts as its steps and the sum of its step values. Cancelling or changing an existing order is never a new order.
+- **Past the limit with no Co-Captain, the order is paused** ("Add a Co-Captain in Settings, or wait"), when the card
+  is made and again at the click.
+- **Two approvals on the same card.** You approve; the card waits ("Waiting for your Co-Captain"); they approve the
+  **same exact card**, bound to its order hash, account, expiry, rule version and the pairing it was made under
+  (`app/cocaptain/store.py`); only then does it go, through the same send path and the same "never twice" log as every
+  order. A re-quote makes a new card that starts again. A repeat click changes nothing. The trader, a stranger, an
+  unaccepted invitee and a former Co-Captain are all refused with a 404; their decline ends it.
+- **It overrides nothing.** After both approvals the order is checked again: your hard stops, Anchor, price band,
+  funds, price drift and the broker. A hard stop still voids it. One more look runs right before the broker call, so a
+  pairing that ended in the meantime stops it. If you are back inside your limit by then, your Co-Captain's click does
+  not send it: you must click Approve yourself on that card.
+- **Ending the pairing is immediate**, by either side: it cancels every card still waiting on that Co-Captain, and an
+  approval given under an earlier pairing never counts again.
+- **The Co-Captain sees only their inbox** (the cards sent to them, with the reasons quoted from your own numbers),
+  never your account: your portfolio, chat, orders, risk and audit routes, and the live feed, refuse them (tested).
+- In the desk: the **Co-Captain** tab (invite by email, remove, and for the reviewer accept, inbox, Approve/Decline),
+  and a ticket that says up front "after you approve it also needs your Co-Captain", then "Waiting for ...".
+- **Checked:** zone boundaries and agreement with the existing "You set ..." warnings; the whole two-person flow over
+  HTTP; paused with no Co-Captain; decline; cancel; expiry; re-quote; wrong hash; leaving the zone while waiting;
+  ending the pairing (also racing an approval, and between the last checks and the broker call); a hard stop and
+  Anchor after both approvals; simultaneous approvals sending once; restart with a card waiting; no model tool able to
+  approve; GETs changing nothing; the live feed refusing a reviewer; and 12 mutations (each guard removed on purpose,
+  11 caught directly and the 12th is a duplicate check that the final look also covers). In the browser: a pairing
+  made through the tab, the trader's approval moving the card to waiting, and the reviewer's own page approving it and
+  the order filling.
 
-**What it is not yet:** there are no real accounts, so a second person is played with an `X-Actor` header that only
-works with `DEMO_MODE=true` and `DEV_ACTORS=true` (open `/app?as=ravi`); in a real deployment there is nobody who can
-be a Co-Captain until login exists. A **plan** past your limit with a Co-Captain is refused outright rather than
-approved by two people. You can remove your own Co-Captain at once. Closing orders are counted like any other.
+**What it is not yet:** there are no real accounts, so the people are a configured demo directory
+(`COCAPTAIN_DEV_USERS`, with `COCAPTAIN_DEV_ACTORS=true` and `DEMO_MODE=true`) and an actor is chosen with
+`/app?as=<id>`; a real deployment needs the login adapter (Akash's work) before anyone can be a Co-Captain. A **plan**
+past your limit is refused outright rather than approved by two people. You can remove your own Co-Captain at once.
+Closing orders are counted like any other. Real-session acceptance is untested.
 
 ## Orders placed in 021's own app
 

@@ -228,6 +228,7 @@ class RuleBasis(str, Enum):
 
 
 class AuditKind(str, Enum):
+    COCAPTAIN = "COCAPTAIN"
     VOICE_TRANSCRIBED = "VOICE_TRANSCRIBED"  # voice-live: metadata only, no transcript
     USER_MESSAGE = "USER_MESSAGE"
     LLM_INTENT = "LLM_INTENT"
@@ -247,7 +248,6 @@ class AuditKind(str, Enum):
     INJECTION_BLOCKED = "INJECTION_BLOCKED"
     LIMIT_BLOCKED = "LIMIT_BLOCKED"
     LOCK_BLOCKED = "LOCK_BLOCKED"
-    COCAPTAIN = "COCAPTAIN"  # invites, accepts, revokes and each second-person decision
     CHAOS = "CHAOS"
 
 

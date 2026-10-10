@@ -1,16 +1,16 @@
 // Co-Captain: a second person who must also approve an order, but only when the trader is past a limit they set.
-// This panel is for both roles: the trader invites and removes their Co-Captain; the Co-Captain accepts and reviews.
+// One panel for both roles: the trader invites and removes their Co-Captain; the Co-Captain accepts and reviews.
 import { useState, type Dispatch } from "react";
-import { cocaptainApi } from "../lib/api";
-import { priceLine, actionTitle } from "../lib/describe";
+import { cocaptainApi, type CoCaptainLink } from "../lib/api";
+import { invitationFor, type CoCaptainView } from "../lib/cocaptain";
+import { actionTitle, priceLine } from "../lib/describe";
 import { clock } from "../lib/format";
-import type { CoCaptainView } from "../lib/cocaptain";
 import type { Action } from "../lib/store";
 import { Banner, Button, Chip, Empty } from "./ui";
 
 export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispatch: Dispatch<Action> }) {
-  const { status, inbox, refresh } = view;
-  const [who, setWho] = useState("");
+  const { enabled, settings, inbox, refresh } = view;
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -21,6 +21,7 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
     setBusy(null);
     if (!r.ok && r.message) setProblem(r.message);
     await refresh();
+    return r.ok;
   }
 
   async function review(id: string, hash: string, approve: boolean) {
@@ -33,8 +34,17 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
     await refresh();
   }
 
-  if (!status) return <Empty title="Loading…">Checking your Co-Captain settings.</Empty>;
-  const mine = status.as_trader;
+  if (enabled === false) {
+    return <Empty title="Co-Captain is off on this server.">It is a second person who approves an order too, only when you are past a limit you set. The operator switches it on.</Empty>;
+  }
+  if (!settings) return <Empty title="Loading…">Checking your Co-Captain settings.</Empty>;
+
+  const me = settings.actor;
+  const isTrader = me.id === settings.account_owner_id;
+  const name = (id: string) => settings.people.find((p) => p.id === id)?.display_name ?? id;
+  const mine: CoCaptainLink | undefined = settings.links.find((l) => l.owner_id === me.id && l.status !== "REVOKED");
+  const invitation = invitationFor(settings);
+  const reviewing = settings.links.filter((l) => l.reviewer_id === me.id && l.status === "ACTIVE");
 
   return (
     <div className="space-y-4 text-[13px]">
@@ -46,37 +56,47 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
 
       {problem && <Banner tone="warn" role="alert">{problem}</Banner>}
 
-      <section aria-label="Your Co-Captain" className="rounded-xl border border-line bg-surface p-3">
-        <h3 className="font-medium text-ink">Your Co-Captain</h3>
-        {mine ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="num text-ink">{mine.reviewer}</span>
-            <Chip tone={mine.status === "ACTIVE" ? "info" : "plain"}>{mine.status === "ACTIVE" ? "Active" : "Invited, not accepted yet"}</Chip>
-            <Button onClick={() => run("revoke", cocaptainApi.revoke)} disabled={busy === "revoke"}>Remove</Button>
-          </div>
-        ) : (
-          <form className="mt-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (who.trim()) void run("invite", () => cocaptainApi.invite(who)).then(() => setWho("")); }}>
-            <input aria-label="Your Co-Captain's name or email" className="min-w-0 flex-1 rounded border border-strong bg-surface px-2 py-1.5" placeholder="Their name or email" value={who} onChange={(e) => setWho(e.target.value)} />
-            <Button variant="primary" type="submit" disabled={!who.trim() || busy === "invite"}>Invite</Button>
-          </form>
-        )}
-        {!mine && <p className="mt-2 text-xs text-muted">Until you add one, going past your own limits only shows a warning, as before.</p>}
-        {status.blocks_without_reviewer && !mine && <p className="mt-1 text-xs text-muted">This server pauses orders that are past your limits until you have a Co-Captain.</p>}
-      </section>
+      {isTrader && (
+        <section aria-label="Your Co-Captain" className="rounded-xl border border-line bg-surface p-3">
+          <h3 className="font-medium text-ink">Your Co-Captain</h3>
+          {mine ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="num text-ink">{name(mine.reviewer_id)}</span>
+              <Chip tone={mine.status === "ACTIVE" ? "info" : "plain"}>{mine.status === "ACTIVE" ? "Active" : "Invited, not accepted yet"}</Chip>
+              <Button onClick={() => run("revoke", () => cocaptainApi.revoke(mine))} disabled={busy === "revoke"}>Remove</Button>
+            </div>
+          ) : (
+            <form className="mt-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (email.trim()) void run("invite", () => cocaptainApi.invite(email.trim())).then((ok) => ok && setEmail("")); }}>
+              <input aria-label="Your Co-Captain's email" type="email" className="min-w-0 flex-1 rounded border border-strong bg-surface px-2 py-1.5" placeholder="Their email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Button variant="primary" type="submit" disabled={!email.trim() || busy === "invite"}>Invite</Button>
+            </form>
+          )}
+          {!mine && <p className="mt-2 text-xs text-muted">Without one, an order that is past your own limits is paused until you add one or are back inside them.</p>}
+          {!settings.limits_configured && <p className="mt-1 text-xs text-muted">You haven&rsquo;t saved any Discipline limits yet, so no order is ever past one and a Co-Captain has nothing to do.</p>}
+        </section>
+      )}
 
-      {status.invitation_from && (
+      {invitation && (
         <Banner tone="info" role="status">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span><strong className="font-semibold">{status.invitation_from}</strong> asked you to be their Co-Captain.</span>
-            <Button variant="primary" onClick={() => run("accept", cocaptainApi.accept)} disabled={busy === "accept"}>Accept</Button>
+            <span><strong className="font-semibold">{name(invitation.owner_id)}</strong> asked you to be their Co-Captain.</span>
+            <div className="flex gap-2">
+              <Button onClick={() => run("decline-invite", () => cocaptainApi.revoke(invitation))} disabled={busy === "decline-invite"}>Not now</Button>
+              <Button variant="primary" onClick={() => run("accept", () => cocaptainApi.accept(invitation))} disabled={busy === "accept"}>Accept</Button>
+            </div>
           </div>
         </Banner>
       )}
 
-      {status.reviewing.length > 0 && (
+      {reviewing.length > 0 && (
         <section aria-label="Waiting for your review" className="space-y-2">
-          <h3 className="font-medium text-ink">Waiting for your review{inbox.length ? ` (${inbox.length})` : ""}</h3>
-          {inbox.length === 0 && <Empty title="Nothing to review right now.">When {status.reviewing.join(", ")} goes past a limit, the order waits here for you.</Empty>}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-medium text-ink">Waiting for your review{inbox.length ? ` (${inbox.length})` : ""}</h3>
+            {!isTrader && reviewing.map((l) => (
+              <Button key={l.id} onClick={() => run("leave", () => cocaptainApi.revoke(l))} disabled={busy === "leave"}>Stop being {name(l.owner_id)}&rsquo;s Co-Captain</Button>
+            ))}
+          </div>
+          {inbox.length === 0 && <Empty title="Nothing to review right now.">When {reviewing.map((l) => name(l.owner_id)).join(", ")} goes past a limit, the order waits here for you.</Empty>}
           {inbox.map((o) => (
             <article key={o.id} aria-label={actionTitle(o)} className="rounded-xl border border-line bg-surface p-3">
               <h4 className="font-serif text-lg text-ink">{actionTitle(o)}</h4>

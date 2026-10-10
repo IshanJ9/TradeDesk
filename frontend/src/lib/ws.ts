@@ -23,7 +23,9 @@ export function useLiveFeed(dispatch: (a: Action) => void): void {
 
     const connect = () => {
       dispatch({ type: "conn", status: "connecting" });
-      socket = new WebSocket(wsUrl());
+      // a demo dev actor (?as=a) rides along as a subprotocol pair; a real session will not need this
+      const as = new URLSearchParams(location.search).get("as");
+      socket = as ? new WebSocket(wsUrl(), ["tradedesk-cocaptain", as]) : new WebSocket(wsUrl());
       let last: number | null = null;
 
       socket.onopen = () => {

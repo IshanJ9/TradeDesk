@@ -17,6 +17,10 @@ class Settings:
     zerotwoone_base_url: str = "https://devapi.021.trade/api/developer-api/v1"
     zerotwoone_cache_dir: str = ".cache"  # the instrument list is downloaded once a day and kept here
     demo_mode: bool = False  # enables /api/chaos/* and /api/locks/* toggles
+    cocaptain_enabled: bool = False
+    cocaptain_dev_actors: bool = False
+    cocaptain_account_owner_id: str = ""
+    cocaptain_dev_users: str = field(default="[]", repr=False)
     database_url: str = "sqlite:///:memory:"
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
     aws_region: str = "ap-south-1"
@@ -32,8 +36,6 @@ class Settings:
     rule_card_ttl_seconds: int = 900  # a card made by a fired rule waits longer: the trader may be away
     max_active_rules: int = 50
     max_fo_lots_per_order: int = 2  # new futures exposure per order, in lots (closing what you hold is never capped)
-    cocaptain_block_without_reviewer: bool = False  # past your own limit with no Co-Captain: pause the order (default: warn only)
-    dev_actors: bool = False  # demo only: an X-Actor header picks who is calling, so two people can be tried without accounts
     allow_unlimited_risk_fo: bool = False  # opening futures or writing options: refused unless the operator switches this on
     plan_fill_timeout_seconds: float = 15.0  # how long a plan waits for a step to fill before reporting it open
     plan_poll_interval: float = 0.5
@@ -62,6 +64,10 @@ class Settings:
             zerotwoone_base_url=env.get("ZEROTWOONE_BASE_URL", "").strip() or cls.zerotwoone_base_url,
             zerotwoone_cache_dir=env.get("ZEROTWOONE_CACHE_DIR", "").strip() or cls.zerotwoone_cache_dir,
             demo_mode=_flag("DEMO_MODE", False),
+            cocaptain_enabled=_flag("COCAPTAIN_ENABLED", False),
+            cocaptain_dev_actors=_flag("COCAPTAIN_DEV_ACTORS", False),
+            cocaptain_account_owner_id=env.get("COCAPTAIN_ACCOUNT_OWNER_ID", "").strip(),
+            cocaptain_dev_users=env.get("COCAPTAIN_DEV_USERS", "[]"),
             database_url=env.get("DATABASE_URL", "sqlite:///./tradedesk.db"),
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",
             aws_region=env.get("AWS_REGION", "ap-south-1").strip() or "ap-south-1",
@@ -78,7 +84,5 @@ class Settings:
             max_order_quantity=int(env.get("MAX_ORDER_QUANTITY", "100000")),
             max_order_value_rupees=int(env.get("MAX_ORDER_VALUE_RUPEES", "10000000")),
             max_fo_lots_per_order=max(1, int(env.get("MAX_FO_LOTS_PER_ORDER", "2"))),
-            cocaptain_block_without_reviewer=_flag("COCAPTAIN_BLOCK_WITHOUT_REVIEWER", False),
-            dev_actors=_flag("DEV_ACTORS", False),
             allow_unlimited_risk_fo=env.get("ALLOW_UNLIMITED_RISK_FO", "").strip().lower() in ("1", "true", "yes", "on"),
         )

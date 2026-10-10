@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -17,6 +17,10 @@ from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
 from app.broker.mock import MockBroker
 from app.config import Settings
+from app.cocaptain.actors import DevDirectory, require_account_owner
+from app.cocaptain.api import router as cocaptain_router
+from app.cocaptain.events import ReviewHub
+from app.cocaptain.pairing import Pairing
 from app.db import Database
 from app.events import EventHub
 from app.history.sqlite_store import SqliteActivityStore  # voice-live: durable activity
@@ -33,9 +37,9 @@ from app.plans.builder import PlanBuilder
 from app.plans.service import PlanAssistant, PlanService
 from app.plans.store import PlanStore
 # risk-goals: profile/goal persistence, routes and trader-selected limits.
-from app.cocaptain.api import router as cocaptain_router
-from app.cocaptain.service import CoCaptainService
-from app.cocaptain.store import CoCaptainStore
+from app.cocaptain.review_api import router as review_router
+from app.cocaptain.service import CoCaptainGate
+from app.cocaptain.store import ReviewStore
 from app.risk.engine import ProfileGuard
 from app.risk.api import router as risk_router
 from app.risk.store import ProfileStore
@@ -116,6 +120,10 @@ def create_app(
     clock: Callable[[], datetime] = _utcnow,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
+    if settings.cocaptain_dev_actors and not settings.demo_mode:
+        raise ValueError("COCAPTAIN_DEV_ACTORS requires DEMO_MODE")
+    if settings.cocaptain_enabled and not settings.cocaptain_account_owner_id:
+        raise ValueError("Co-Captain requires an explicit account owner ID")
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -182,6 +190,12 @@ def create_app(
     app.state.pending = store
     app.state.db = db
     app.state.audit = audit
+    app.state.cocaptain_directory = DevDirectory(settings.cocaptain_dev_users if settings.cocaptain_dev_actors else "[]")
+    app.state.cocaptain_hub = ReviewHub()
+    app.state.cocaptain_pairing = Pairing(db, app.state.cocaptain_directory, audit, app.state.cocaptain_hub, clock)
+    if settings.cocaptain_enabled and settings.cocaptain_dev_actors:
+        if app.state.cocaptain_directory.by_id(settings.cocaptain_account_owner_id) is None:
+            raise ValueError("The account owner must be in the configured dev actor directory")
     app.state.builder = builder
     app.state.executor = executor
     # Shared hooks for the parallel workstreams (each owner replaces only their own line):
@@ -236,8 +250,16 @@ def create_app(
     else:
         raise RuntimeError(f"ORCHESTRATOR={settings.orchestrator!r}: use classic or langgraph")
     app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock, risk)
-    cocaptain = CoCaptainService(CoCaptainStore(db), risk, audit, clock, settings.cocaptain_block_without_reviewer)
-    app.state.cocaptain = app.state.approvals.cocaptain = plans.cocaptain = cards.cocaptain = cocaptain
+    reviews = ReviewStore(db, app.state.cocaptain_pairing, audit, clock)
+    gate = CoCaptainGate(settings, app.state.cocaptain_pairing, reviews, risk, audit, clock)
+    app.state.cocaptain = app.state.approvals.cocaptain = plans.cocaptain = cards.cocaptain = gate
+
+    def on_revoke(link, actor):  # ending the pairing closes every open review and voids cards still waiting on it
+        reviews.revoke_link(link, actor)
+        app.state.approvals.void_waiting_on(link.reviewer_id, "Your Co-Captain link ended, so this card is cancelled. "
+                                            "Nothing was sent. Ask again for a fresh one.")
+
+    app.state.cocaptain_pairing.on_revoke = on_revoke
 
     app.add_middleware(
         CORSMiddleware,
@@ -254,14 +276,16 @@ def create_app(
     async def assistant_unavailable(_: Request, exc: LLMUnavailable):
         return JSONResponse(status_code=503, content={"detail": "assistant unavailable"})
 
-    app.include_router(rest)
-    app.include_router(ws_router)
-    app.include_router(voice_router)  # voice-live: editable text, never an order action
-    app.include_router(sync_dev_router)  # voice-live: returns 404 outside demo mode
-    app.include_router(activity_router)  # voice-live: read-only persisted history
-    app.include_router(risk_router)  # risk-goals
-    app.include_router(cocaptain_router)  # a second person's approval, only past the trader's own limits
+    owner_only = [Depends(require_account_owner)]
+    app.include_router(rest, dependencies=owner_only)
+    app.include_router(ws_router, dependencies=owner_only)
+    app.include_router(voice_router, dependencies=owner_only)
+    app.include_router(sync_dev_router, dependencies=owner_only)
+    app.include_router(activity_router, dependencies=owner_only)
+    app.include_router(risk_router, dependencies=owner_only)
+    app.include_router(cocaptain_router)
+    app.include_router(review_router)  # the Co-Captain's inbox and Approve / Decline: only ever their own reviews
     from app.demo import router as demo_router  # demo controls: 404 unless DEMO_MODE and the mock broker
 
-    app.include_router(demo_router)
+    app.include_router(demo_router, dependencies=owner_only)
     return app

@@ -28,14 +28,15 @@ class RiskVerdict:
 class RiskGuard(Protocol):
     async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict: ...
 
-    async def zone(self, *, orders: int, value: int): ...  # app.cocaptain.zone.ZoneDecision
+    async def zone(self, proposed): ...  # app.cocaptain.zone.ZoneDecision for an order or a plan
 
 
 class NoRiskGuard:
     async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict:
         return RiskVerdict()
 
-    async def zone(self, *, orders: int, value: int):
-        from app.cocaptain.zone import ZoneDecision  # no limits are set, so none can be crossed
+    async def zone(self, proposed):
+        from app.cocaptain.zone import ZoneDecision, proposal_totals  # no limits are set, so none can be crossed
 
-        return ZoneDecision(in_zone=False)
+        orders, value = proposal_totals(proposed)
+        return ZoneDecision(in_zone=False, configured=False, reasons=[], proposed_orders=orders, proposed_value_paise=value)

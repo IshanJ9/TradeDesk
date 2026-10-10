@@ -1196,20 +1196,33 @@
         }
       }
     },
-    "/api/cocaptain/status": {
+    "/api/cocaptain/config": {
       "get": {
-        "tags": [
-          "Co-Captain"
-        ],
-        "summary": "Status",
-        "operationId": "status_api_cocaptain_status_get",
+        "summary": "Config",
+        "operationId": "config_api_cocaptain_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/settings": {
+      "get": {
+        "summary": "Settings",
+        "operationId": "settings_api_cocaptain_settings_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoCaptainStatus"
+                  "$ref": "#/components/schemas/PairingStatus"
                 }
               }
             }
@@ -1219,16 +1232,13 @@
     },
     "/api/cocaptain/invite": {
       "post": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Invite",
         "operationId": "invite_api_cocaptain_invite_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InviteRequest"
+                "$ref": "#/components/schemas/Invite"
               }
             }
           },
@@ -1240,7 +1250,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoCaptainStatus"
+                  "$ref": "#/components/schemas/Link"
                 }
               }
             }
@@ -1260,18 +1270,35 @@
     },
     "/api/cocaptain/accept": {
       "post": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Accept",
         "operationId": "accept_api_cocaptain_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoCaptainStatus"
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1281,18 +1308,35 @@
     },
     "/api/cocaptain/revoke": {
       "post": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Revoke",
         "operationId": "revoke_api_cocaptain_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoCaptainStatus"
+                  "$ref": "#/components/schemas/Link"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1302,9 +1346,6 @@
     },
     "/api/cocaptain/inbox": {
       "get": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Inbox",
         "description": "Cards waiting for THIS person as a Co-Captain: nothing for anyone who isn't one.",
         "operationId": "inbox_api_cocaptain_inbox_get",
@@ -1328,9 +1369,6 @@
     },
     "/api/cocaptain/cards/{pending_id}/approve": {
       "post": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Approve",
         "operationId": "approve_api_cocaptain_cards__pending_id__approve_post",
         "parameters": [
@@ -1393,9 +1431,6 @@
     },
     "/api/cocaptain/cards/{pending_id}/decline": {
       "post": {
-        "tags": [
-          "Co-Captain"
-        ],
         "summary": "Decline",
         "operationId": "decline_api_cocaptain_cards__pending_id__decline_post",
         "parameters": [
@@ -1834,6 +1869,30 @@
         ],
         "title": "AccountUpdateEvent"
       },
+      "Actor": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_.-]+$",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "Actor"
+      },
       "AmbiguityCard": {
         "properties": {
           "type": {
@@ -2224,6 +2283,7 @@
       "AuditKind": {
         "type": "string",
         "enum": [
+          "COCAPTAIN",
           "VOICE_TRANSCRIBED",
           "USER_MESSAGE",
           "LLM_INTENT",
@@ -2243,7 +2303,6 @@
           "INJECTION_BLOCKED",
           "LIMIT_BLOCKED",
           "LOCK_BLOCKED",
-          "COCAPTAIN",
           "CHAOS"
         ],
         "title": "AuditKind"
@@ -2516,58 +2575,6 @@
           "closed_at"
         ],
         "title": "ClosedTrade"
-      },
-      "CoCaptainStatus": {
-        "properties": {
-          "me": {
-            "type": "string",
-            "title": "Me"
-          },
-          "as_trader": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TraderLink"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "invitation_from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invitation From"
-          },
-          "reviewing": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reviewing",
-            "default": []
-          },
-          "blocks_without_reviewer": {
-            "type": "boolean",
-            "title": "Blocks Without Reviewer",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "me",
-          "as_trader",
-          "invitation_from",
-          "reviewing",
-          "blocks_without_reviewer"
-        ],
-        "title": "CoCaptainStatus"
       },
       "Comparator": {
         "type": "string",
@@ -3831,21 +3838,22 @@
         ],
         "title": "Instrument"
       },
-      "InviteRequest": {
+      "Invite": {
         "properties": {
-          "reviewer": {
+          "email": {
             "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Reviewer"
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^\\s@]+@[^\\s@]+$",
+            "title": "Email"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "reviewer"
+          "email"
         ],
-        "title": "InviteRequest"
+        "title": "Invite"
       },
       "LegFailurePolicy": {
         "type": "string",
@@ -3868,6 +3876,91 @@
           "UNKNOWN"
         ],
         "title": "LegStatus"
+      },
+      "Link": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "reviewer_id": {
+            "type": "string",
+            "title": "Reviewer Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "INVITED",
+              "ACTIVE",
+              "REVOKED"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "owner_id",
+          "reviewer_id",
+          "status",
+          "created_at",
+          "accepted_at",
+          "revoked_at"
+        ],
+        "title": "Link"
+      },
+      "LinkAction": {
+        "properties": {
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "link_id": {
+            "type": "string",
+            "title": "Link Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "owner_id",
+          "link_id"
+        ],
+        "title": "LinkAction"
       },
       "LockUpdateEvent": {
         "properties": {
@@ -4716,6 +4809,50 @@
           "note"
         ],
         "title": "PaceReport"
+      },
+      "PairingStatus": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "account_owner_id": {
+            "type": "string",
+            "title": "Account Owner Id"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/Actor"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "limits_configured": {
+            "type": "boolean",
+            "title": "Limits Configured"
+          },
+          "dev_actors": {
+            "type": "boolean",
+            "title": "Dev Actors"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "actor",
+          "account_owner_id",
+          "links",
+          "people",
+          "limits_configured",
+          "dev_actors"
+        ],
+        "title": "PairingStatus"
       },
       "PendingCreatedEvent": {
         "properties": {
@@ -6731,29 +6868,6 @@
           "demo"
         ],
         "title": "TraceSampleReply"
-      },
-      "TraderLink": {
-        "properties": {
-          "reviewer": {
-            "type": "string",
-            "title": "Reviewer"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "INVITED",
-              "ACTIVE"
-            ],
-            "title": "Status"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "reviewer",
-          "status"
-        ],
-        "title": "TraderLink"
       },
       "Transcript": {
         "properties": {

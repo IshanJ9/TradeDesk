@@ -94,11 +94,18 @@ class CardService:
                 ChatReply(text=HIGH_RISK_PAUSED, cards=[NoticeCard(level="blocked", message=HIGH_RISK_PAUSED)]),
                 HIGH_RISK_PAUSED,
             )
-        if self.cocaptain is not None and pending.action is OrderAction.PLACE:
-            price = pending.limit_price or pending.protection_price or pending.ref_ltp
-            gate = await self.cocaptain.gate(orders=1, value=(pending.quantity or 0) * price)
-            if gate.required:  # shown on the card before the trader clicks; not part of the order hash
-                pending = pending.model_copy(update={"co_captain": gate.reviewer_id, "co_reasons": list(gate.reasons)})
+        if self.cocaptain is not None and self.cocaptain.enabled and pending.action is OrderAction.PLACE:
+            assessment = await self.cocaptain.assess(pending)
+            if assessment.blocked:  # past your own limit with no Co-Captain: no card, say why
+                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", assessment.blocked, data={"reason": "NO_COCAPTAIN"})
+                return Proposal(
+                    "blocked",
+                    ChatReply(text=assessment.blocked, cards=[NoticeCard(level="blocked", message=assessment.blocked)]),
+                    assessment.blocked,
+                )
+            if assessment.required:  # shown on the card before the trader clicks; not part of the order hash
+                pending = pending.model_copy(update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons})
+                self.cocaptain.open_review(pending)  # the review is bound to this exact card from the start
         extra = [*verdict.warnings, *extra_warnings]
         if extra:  # warnings are not part of the order hash
             pending = pending.model_copy(update={"warnings": [*extra, *pending.warnings]})

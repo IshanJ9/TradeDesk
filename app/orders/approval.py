@@ -20,6 +20,8 @@ from typing import NoReturn
 from app.api_models import ExecutionResult, PendingCreatedEvent, PendingUpdatedEvent
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
+from app.cocaptain.actors import Actor
+from app.cocaptain.store import ReviewError
 from app.config import Settings
 from app.events import EventHub
 from app.orders.builder import OrderBuilder
@@ -101,44 +103,56 @@ class ApprovalService:
             # the card stays open: nothing is claimed, nothing is sent, the trader can type it and try again
             self._refuse(p, "ACK_REQUIRED", f"This order needs you to type {RISK_ACK_TEXT} first. Nothing was sent.")
 
-        if self.cocaptain is not None and p.action is OrderAction.PLACE:
-            price = p.limit_price or p.protection_price or p.ref_ltp
+        gate = self.cocaptain
+        review_required = False
+        if gate is not None and gate.enabled and p.action is OrderAction.PLACE:
             try:
-                gate = await self.cocaptain.gate(orders=1, value=(p.quantity or 0) * price)
+                assessment = await gate.assess(p)
             except BrokerTimeout:
                 self._void(p, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
-            p = self._fresh(p)  # the gate awaited: look again before acting on what we read earlier
-            if gate.blocked:
-                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", gate.blocked, subject_id=p.id, data={"reason": "NO_COCAPTAIN"})
-                self._refuse(p, "BLOCKED", gate.blocked)
-            if gate.required:
-                if p.state is PendingState.PENDING:  # the trader's own approval is saved; the card now waits for the second
-                    self.cocaptain.store.record(p.id, "TRADER", "local", p.order_hash, gate.policy_version, "APPROVE", self._clock())
+            p = self._fresh(p)  # the check awaited: look again before acting on what we read earlier
+            if assessment.blocked:
+                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", assessment.blocked, subject_id=p.id,
+                                   data={"reason": "NO_COCAPTAIN"})
+                self._refuse(p, "BLOCKED", assessment.blocked)
+            if assessment.required:
+                try:
+                    gate.open_review(p)  # bound when the card was made; idempotent
+                    if p.state is PendingState.PENDING:  # the trader's own approval is saved
+                        gate.reviews.decide(p.id, gate.owner, "APPROVE", **gate.bindings(p))
+                except ReviewError as err:
+                    self._refuse(p, "BLOCKED", str(err))
+                if p.state is PendingState.PENDING:  # ...and the card now waits for the second person
                     waiting = self._store.put(
                         p.transition(PendingState.AWAITING_CO_APPROVAL).model_copy(
-                            update={"co_captain": gate.reviewer_id, "co_reasons": list(gate.reasons)}
+                            update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons}
                         )
                     )
                     self._hub.publish(PendingUpdatedEvent, pending=waiting)
+                    gate.pairing.hub.publish(assessment.reviewer_id, "review_requested", waiting.id)
                     self._audit.record(
-                        AuditKind.COCAPTAIN, "user", f"Trader approved {p.instrument.symbol}; waiting for {gate.reviewer_id}",
-                        subject_id=p.id, data={"reasons": list(gate.reasons), "policy": gate.policy_version},
+                        AuditKind.COCAPTAIN, "user", f"Trader approved {p.instrument.symbol}; waiting for {assessment.reviewer_id}",
+                        subject_id=p.id, data={"actor_id": gate.owner_id, "reasons": assessment.reasons},
                     )
-                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(gate.reviewer_id), waiting)
-                if not self.cocaptain.co_decision_counts(p.id, p.order_hash, gate.policy_version):
-                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(gate.reviewer_id), p)
-            # not required any more (the trader is back inside their limit): this click is the trader's fresh approval
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(assessment.reviewer_id), waiting)
+                if not gate.ready(p):  # the trader clicked again before the Co-Captain has
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(assessment.reviewer_id), p)
+                review_required = True
+            elif p.state is PendingState.AWAITING_CO_APPROVAL:
+                # back inside the limit: this click is the trader's fresh approval, and the old review stops counting
+                gate.close(p.id, "The trader is back inside their limit and approved again themselves.")
 
-        return await self._send(p)
+        return await self._send(p, review_required)
 
     @staticmethod
     def _waiting_text(reviewer: str | None) -> str:
         return f"Waiting for your Co-Captain, {reviewer}, to approve the same order. Nothing has been sent."
 
-    async def co_approve(self, pending_id: str, order_hash: str, reviewer_id: str) -> ExecutionResult:
+    async def co_approve(self, pending_id: str, order_hash: str, actor: Actor) -> ExecutionResult:
         """The Co-Captain's click. It adds their approval; the order goes only if everything still holds."""
+        gate = self.cocaptain
         p = self._store.get(pending_id)
-        if p is None or self.cocaptain is None or not self.cocaptain.may_review(reviewer_id):
+        if p is None or gate is None or not gate.enabled or not gate.is_reviewer_of(actor, p):
             raise ApprovalNotFound(pending_id)  # not theirs to see: the same answer as "no such card"
         if p.state is not PendingState.AWAITING_CO_APPROVAL:
             self._refuse(p, "NOT_PENDING", f"This card is {p.state.value.lower().replace('_', ' ')}, not waiting for you.")
@@ -147,37 +161,54 @@ class ApprovalService:
         if not hmac.compare_digest(order_hash, p.order_hash):
             self._refuse(p, "HASH_MISMATCH", "What you approved doesn't match this card, so it has been cancelled. "
                          "Nothing was sent.", PendingState.VOID)
-        price = p.limit_price or p.protection_price or p.ref_ltp
         try:
-            gate = await self.cocaptain.gate(orders=1, value=(p.quantity or 0) * price)
+            gate.reviews.decide(p.id, actor, "APPROVE", **gate.bindings(p))
+        except ReviewError as err:
+            self._refuse(p, "BLOCKED", str(err))
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {actor.id} approved {p.instrument.symbol}", subject_id=p.id,
+                           data={"actor_id": actor.id, "order_hash": p.order_hash})
+        try:
+            assessment = await gate.assess(p)
         except BrokerTimeout:
             self._void(p, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
-        p = self._fresh(p, only=PendingState.AWAITING_CO_APPROVAL)
-        if not self.cocaptain.may_review(reviewer_id):  # the link may have been revoked while we looked
+        p = self._fresh(p, only=PendingState.AWAITING_CO_APPROVAL)  # a revoke or another click may have landed meanwhile
+        if not gate.is_reviewer_of(actor, p):
             raise ApprovalNotFound(pending_id)
-        self.cocaptain.store.record(p.id, "CO_CAPTAIN", reviewer_id, p.order_hash, gate.policy_version, "APPROVE", self._clock())
-        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {reviewer_id} approved {p.instrument.symbol}", subject_id=p.id,
-                           data={"by": reviewer_id, "order_hash": p.order_hash})
-        if not gate.required:
+        if not assessment.required:
             # the trader is no longer past their limit: they must click Approve themselves, on this card, again
             raise ApprovalError("AWAITING_CO_CAPTAIN", "Thanks. The trader is back inside their limit, so they will "
                                 "need to approve it again themselves. Nothing has been sent.", p)
-        return await self._send(p)
+        if not gate.ready(p):
+            raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(actor.id), p)
+        return await self._send(p, review_required=True)
 
-    async def co_decline(self, pending_id: str, reviewer_id: str) -> PendingOrder:
+    async def co_decline(self, pending_id: str, actor: Actor) -> PendingOrder:
+        gate = self.cocaptain
         p = self._store.get(pending_id)
-        if p is None or self.cocaptain is None or not self.cocaptain.may_review(reviewer_id):
+        if p is None or gate is None or not gate.enabled or not gate.is_reviewer_of(actor, p):
             raise ApprovalNotFound(pending_id)
         if p.state is not PendingState.AWAITING_CO_APPROVAL:
             self._refuse(p, "NOT_PENDING", f"This card is {p.state.value.lower().replace('_', ' ')}, not waiting for you.")
-        self.cocaptain.store.record(p.id, "CO_CAPTAIN", reviewer_id, p.order_hash, "", "DECLINE", self._clock())
+        try:
+            gate.reviews.decide(p.id, actor, "DECLINE", **gate.bindings(p))
+        except ReviewError as err:
+            self._refuse(p, "BLOCKED", str(err))
         rejected = self._store.put(p.transition(PendingState.REJECTED))
         self._hub.publish(PendingUpdatedEvent, pending=rejected)
-        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {reviewer_id} declined {p.instrument.symbol}", subject_id=p.id,
-                           data={"by": reviewer_id})
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {actor.id} declined {p.instrument.symbol}", subject_id=p.id,
+                           data={"actor_id": actor.id})
         return rejected
 
-    async def _send(self, p: PendingOrder) -> ExecutionResult:
+    def void_waiting_on(self, reviewer_id: str, message: str) -> None:
+        """The pairing ended: every card still waiting for that reviewer is cancelled, and nothing was sent."""
+        for p in self._store.all():
+            if p.state is PendingState.AWAITING_CO_APPROVAL and p.co_captain == reviewer_id:
+                voided = self._store.put(p.transition(PendingState.VOID))
+                self._hub.publish(PendingUpdatedEvent, pending=voided)
+                self._audit.record(AuditKind.APPROVAL_REFUSED, "system", f"BLOCKED: {message}", subject_id=p.id,
+                                   data={"code": "BLOCKED"})
+
+    async def _send(self, p: PendingOrder, review_required: bool = False) -> ExecutionResult:
         """Claim the card, re-check everything, and send. The same path whether one person approved or two."""
         p = self._fresh(p)  # a second click that raced this one finds the card already claimed
         approved = self._store.put(p.transition(PendingState.APPROVED))  # claim: no await above this line
@@ -193,6 +224,11 @@ class ApprovalService:
             await self._recheck(approved)
         except BrokerTimeout:
             self._void(approved, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
+
+        if review_required and not self.cocaptain.ready(approved):
+            # the last look, with no await between it and the broker call: a link ended or a card changed since
+            self._void(approved, "Your Co-Captain's approval no longer holds (the link ended or the card changed), so "
+                       "nothing was sent. Ask again for a fresh card.")
 
         try:
             return await self._executor.execute(approved)
@@ -219,6 +255,8 @@ class ApprovalService:
         self._audit.record(
             AuditKind.APPROVAL_REFUSED, "user", f"Trader declined {p.instrument.symbol}", subject_id=p.id
         )
+        if self.cocaptain is not None:
+            self.cocaptain.close(p.id, "The trader declined this card.")
         return rejected
 
     # ------------------------------------------------------------------ #
@@ -267,6 +305,8 @@ class ApprovalService:
             self._void(p, exc.message)
         old = self._store.put(p.transition(PendingState.REQUOTE_REQUIRED))
         self._hub.publish(PendingUpdatedEvent, pending=old)
+        if self.cocaptain is not None:
+            self.cocaptain.close(p.id, "The price moved, so this card was replaced. Nothing carries over.")
         self._store.put(fresh_card)
         self._hub.publish(PendingCreatedEvent, pending=fresh_card)
         message = (
@@ -286,6 +326,8 @@ class ApprovalService:
         if new_state is not None:
             updated = self._store.put(p.transition(new_state))
             self._hub.publish(PendingUpdatedEvent, pending=updated)
+            if self.cocaptain is not None:
+                self.cocaptain.close(p.id, message)
         self._audit.record(
             AuditKind.APPROVAL_REFUSED, "system", f"{code}: {message}", subject_id=p.id, data={"code": code}
         )
@@ -294,6 +336,8 @@ class ApprovalService:
     def _void(self, p: PendingOrder, message: str, code: str = "BLOCKED") -> NoReturn:
         voided = self._store.put(p.transition(PendingState.VOID))
         self._hub.publish(PendingUpdatedEvent, pending=voided)
+        if self.cocaptain is not None:
+            self.cocaptain.close(p.id, message)
         self._audit.record(
             AuditKind.APPROVAL_REFUSED, "system", f"{code}: {message}", subject_id=p.id, data={"code": code}
         )

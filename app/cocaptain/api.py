@@ -1,122 +1,108 @@
-"""Co-Captain routes: pairing, the reviewer's inbox, and the reviewer's Approve / Decline.
+import asyncio
 
-The reviewer approves with a deliberate POST from the app, never from a link: nothing here changes state on a GET.
-Who is calling comes from `current_actor`: the trader ("local") unless demo/dev mode is on and an X-Actor header
-names someone else, which is how two people are tried before real accounts exist (app/config.py DEV_ACTORS).
-"""
-
-from typing import Literal
-
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
-
-from app.api_models import ApprovalConflict, ExecutionResult
-from app.cocaptain.service import OWNER, Actor, CoCaptainError
-from app.orders.approval import ApprovalError, ApprovalNotFound
-from app.schemas import Model, PendingOrder, PendingState
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import Field
 
-router = APIRouter(prefix="/api/cocaptain", tags=["Co-Captain"])
+from app.cocaptain.actors import Actor, current_actor
+from app.cocaptain.pairing import Link
+from app.schemas import Model
+
+router = APIRouter(prefix="/api/cocaptain")
 
 
-def current_actor(request: Request) -> Actor:
-    settings = request.app.state.settings
-    named = request.headers.get("x-actor", "").strip().lower()
-    if named and settings.dev_actors and settings.demo_mode:  # never in a real deployment
-        return Actor(named, named)
-    return Actor(OWNER, "You")
+def feature(request: Request):
+    if not request.app.state.settings.cocaptain_enabled:
+        raise HTTPException(404, "Co-Captain is not enabled")
+    return request.app.state.cocaptain_pairing
 
 
-class InviteRequest(Model):
-    reviewer: str = Field(min_length=1, max_length=120)
+class Invite(Model):
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^\s@]+@[^\s@]+$")
 
 
-class ReviewRequest(Model):
-    order_hash: str = Field(min_length=64, max_length=64)
+class LinkAction(Model):
+    owner_id: str
+    link_id: str
 
 
-class TraderLink(Model):
-    reviewer: str
-    status: Literal["INVITED", "ACTIVE"]
+class PairingStatus(Model):
+    actor: Actor
+    account_owner_id: str
+    links: list[Link]
+    people: list[Actor]
+    limits_configured: bool
+    dev_actors: bool
 
 
-class CoCaptainStatus(Model):
-    me: str
-    as_trader: TraderLink | None = None
-    invitation_from: str | None = None
-    reviewing: list[str] = []
-    blocks_without_reviewer: bool = False
+@router.get("/config")
+async def config(request: Request):
+    s = request.app.state.settings
+    return {"enabled": s.cocaptain_enabled, "dev_actors": s.cocaptain_dev_actors and s.demo_mode}
 
 
-def _service(request: Request):
-    return request.app.state.cocaptain
+@router.get("/settings", response_model=PairingStatus)
+async def settings(request: Request, actor: Actor = Depends(current_actor)):
+    pairing = feature(request)
+    links = pairing.for_actor(actor)
+    ids = {actor.id, *(person for link in links for person in (link.owner_id, link.reviewer_id))}
+    profile = request.app.state.profile_store.get_profile()
+    return PairingStatus(actor=actor, account_owner_id=request.app.state.settings.cocaptain_account_owner_id,
+                         links=links, people=[person for id in sorted(ids) if (person := pairing.directory.by_id(id))],
+                         limits_configured=profile is not None, dev_actors=request.app.state.settings.cocaptain_dev_actors)
 
 
-def _conflict(err: ApprovalError) -> JSONResponse:
-    body = ApprovalConflict(code=err.code, message=err.message, pending=err.pending)
-    return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+@router.post("/invite", response_model=Link)
+async def invite(body: Invite, request: Request, actor: Actor = Depends(current_actor)):
+    pairing = feature(request)
+    if actor.id != request.app.state.settings.cocaptain_account_owner_id:
+        raise HTTPException(403, "Only the trader can invite a reviewer for this account")
+    return pairing.invite(actor, body.email)
 
 
-@router.get("/status", response_model=CoCaptainStatus)
-async def status(request: Request):
-    return _service(request).status(current_actor(request))
+@router.post("/accept", response_model=Link)
+async def accept(body: LinkAction, request: Request, actor: Actor = Depends(current_actor)):
+    return feature(request).accept(actor, body.owner_id, body.link_id)
 
 
-@router.post("/invite", response_model=CoCaptainStatus)
-async def invite(body: InviteRequest, request: Request):
-    actor = current_actor(request)
+@router.post("/revoke", response_model=Link)
+async def revoke(body: LinkAction, request: Request, actor: Actor = Depends(current_actor)):
+    return feature(request).revoke(actor, body.owner_id, body.link_id)
+
+
+@router.websocket("/ws")
+async def events(websocket: WebSocket, actor: Actor = Depends(current_actor)):
+    if not websocket.app.state.settings.cocaptain_enabled:
+        await websocket.close(code=1008)
+        return
+    protocol = "tradedesk-cocaptain" if "tradedesk-cocaptain" in websocket.scope.get("subprotocols", []) else None
+    await websocket.accept(subprotocol=protocol)
+    hub = websocket.app.state.cocaptain_hub
+    queue = hub.subscribe(actor.id)
+    receive = asyncio.create_task(websocket.receive_text())
+    getter = None
     try:
-        _service(request).invite(actor, body.reviewer)
-    except CoCaptainError as err:
-        raise HTTPException(409, err.message)
-    return _service(request).status(actor)
-
-
-@router.post("/accept", response_model=CoCaptainStatus)
-async def accept(request: Request):
-    actor = current_actor(request)
-    try:
-        _service(request).accept(actor)
-    except CoCaptainError as err:
-        raise HTTPException(409, err.message)
-    return _service(request).status(actor)
-
-
-@router.post("/revoke", response_model=CoCaptainStatus)
-async def revoke(request: Request):
-    actor = current_actor(request)
-    _service(request).revoke(actor)
-    return _service(request).status(actor)
-
-
-@router.get("/inbox", response_model=list[PendingOrder])
-async def inbox(request: Request):
-    """Cards waiting for THIS person as a Co-Captain: nothing for anyone who isn't one."""
-    actor = current_actor(request)
-    if not _service(request).may_review(actor.id):
-        return []
-    return [p for p in request.app.state.pending.all() if p.state is PendingState.AWAITING_CO_APPROVAL]
-
-
-@router.post("/cards/{pending_id}/approve", response_model=ExecutionResult,
-             responses={404: {"description": "Not a card you may review"}, 409: {"model": ApprovalConflict}})
-async def approve(pending_id: str, body: ReviewRequest, request: Request):
-    actor = current_actor(request)
-    try:
-        return await request.app.state.approvals.co_approve(pending_id, body.order_hash, actor.id)
-    except ApprovalNotFound:
-        raise HTTPException(404, "unknown approval id")
-    except ApprovalError as err:
-        return _conflict(err)
-
-
-@router.post("/cards/{pending_id}/decline", response_model=PendingOrder,
-             responses={404: {"description": "Not a card you may review"}, 409: {"model": ApprovalConflict}})
-async def decline(pending_id: str, request: Request):
-    actor = current_actor(request)
-    try:
-        return await request.app.state.approvals.co_decline(pending_id, actor.id)
-    except ApprovalNotFound:
-        raise HTTPException(404, "unknown approval id")
-    except ApprovalError as err:
-        return _conflict(err)
+        await websocket.send_json({"type": "cocaptain_connected"})
+        while True:
+            getter = asyncio.create_task(queue.get())
+            done, _ = await asyncio.wait({getter, receive}, return_when=asyncio.FIRST_COMPLETED)
+            if receive in done:
+                # Incoming websocket text never records a decision.
+                receive.result()
+                receive = asyncio.create_task(websocket.receive_text())
+            if getter in done:
+                event = getter.result()
+                if event is None:
+                    await websocket.close(code=1013)
+                    break
+                await websocket.send_json(event)
+            else:
+                getter.cancel()
+                await asyncio.gather(getter, return_exceptions=True)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hub.unsubscribe(actor.id, queue)
+        for task in (getter, receive):
+            if task:
+                task.cancel()
+        await asyncio.gather(*(t for t in (getter, receive) if t), return_exceptions=True)

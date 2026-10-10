@@ -133,12 +133,13 @@ class ProfileGuard:
         until = self._store.cooldown_until(profile, facts, now)
         return evaluate(pending, stage, profile, facts, self._store.get_goal(), now, extra_orders, until)
 
-    async def zone(self, *, orders: int, value: int):
-        """Is this much more activity past a limit the trader set? (the Co-Captain's question; app/cocaptain/zone.py)"""
-        from app.cocaptain.zone import in_overtrading_zone
+    async def zone(self, proposed):
+        """Is this order or plan past a limit the trader set? (the Co-Captain's question; app/cocaptain/zone.py)"""
+        from app.cocaptain.zone import ZoneDecision, in_overtrading_zone, proposal_totals
 
         profile = self._store.get_profile()
-        if profile is None:
-            return in_overtrading_zone(None, None, orders=orders, value=value)  # type: ignore[arg-type]
+        if profile is None:  # no limits saved: nothing to cross
+            orders, value = proposal_totals(proposed)
+            return ZoneDecision(in_zone=False, configured=False, reasons=[], proposed_orders=orders, proposed_value_paise=value)
         facts = await compute_today(self._broker, profile, self._clock())
-        return in_overtrading_zone(profile, facts, orders=orders, value=value)
+        return in_overtrading_zone(profile, facts, proposed)
