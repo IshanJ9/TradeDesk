@@ -2,15 +2,18 @@
 // DEMO_MODE on the mock broker (otherwise /api/demo/* answers 404 and this shows nothing). They change the
 // fake market, never the safety rules.
 import { useEffect, useState } from "react";
+import { csrfHeaders } from "../lib/session";
 import { Button } from "./ui";
 
 interface DemoState { network_down: boolean; anchor_active: boolean; timeout_armed: boolean }
 
-async function call(path: string, body?: object): Promise<DemoState | null> {
+/** A demo call. Signed in like everything else: the session cookie, and for a POST the CSRF token. */
+export async function call(path: string, body?: object): Promise<DemoState | null> {
   try {
     const r = await fetch(`/api/demo/${path}`, {
       method: body === undefined && path === "status" ? "GET" : "POST",
-      headers: body ? { "content-type": "application/json" } : undefined,
+      credentials: "include",
+      headers: { ...(body ? { "content-type": "application/json" } : {}), ...csrfHeaders() },
       body: body ? JSON.stringify(body) : undefined,
     });
     return r.ok ? ((await r.json()) as DemoState) : null;
