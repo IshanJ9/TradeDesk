@@ -26,18 +26,21 @@ from app.api_models import (
     SnapshotEvent,
     WsEvent,
 )
+from app.auth.deps import authenticate_websocket
 from app.broker.base import BrokerTimeout
+from app.desk import desk_router
 from app.orders.approval import ApprovalError, ApprovalNotFound
 from app.plans.service import PlanApprovalError, PlanNotFound
 from app.rules.service import RuleNotActive, RuleNotFound
+from app.workspace import WorkspaceUnavailable
 from app.schemas import AuditEvent, AuditKind, Order, OrderIntent, PendingOrder, Plan, PlanReport, Rule, RuleStatus
 
-rest = APIRouter(prefix="/api")
+rest = desk_router(prefix="/api")
 ws_router = APIRouter()
 
 
-def _pending_list(app) -> PendingList:
-    return PendingList(orders=app.state.pending.awaiting_approval(), plans=app.state.plan_store.awaiting_approval())
+def _pending_list(ws) -> PendingList:
+    return PendingList(orders=ws.pending.awaiting_approval(), plans=ws.plan_store.awaiting_approval())
 
 
 def _conflict(code: str, message: str, pending: PendingOrder | None = None, plan: Plan | None = None) -> JSONResponse:
@@ -50,17 +53,17 @@ def _conflict(code: str, message: str, pending: PendingOrder | None = None, plan
 
 @rest.get("/account", response_model=AccountSnapshot)
 async def get_account(request: Request):
-    return await build_account(request.app.state.broker)
+    return await build_account(request.state.ws.broker)
 
 
 @rest.get("/orders", response_model=list[Order])
 async def get_orders(request: Request):
-    return await request.app.state.broker.get_orders()
+    return await request.state.ws.broker.get_orders()
 
 
 @rest.get("/pending", response_model=PendingList)
 async def get_pending(request: Request):
-    return _pending_list(request.app)
+    return _pending_list(request.state.ws)
 
 
 # ---- cards ---------------------------------------------------------------------- #
@@ -73,7 +76,7 @@ async def preview_order(intent: OrderIntent, request: Request):
     Nothing is sent. The card has to be approved separately, and the hash on it is what the
     approve call must echo. Ambiguous or unknown instruments come back as a question.
     """
-    return (await request.app.state.cards.propose(intent)).reply
+    return (await request.state.ws.cards.propose(intent)).reply
 
 
 @rest.post(
@@ -86,7 +89,7 @@ async def preview_order(intent: OrderIntent, request: Request):
 )
 async def approve(pending_id: str, body: ApproveRequest, request: Request):
     try:
-        return await request.app.state.approvals.approve(pending_id, body.order_hash, body.acknowledgment)
+        return await request.state.ws.approvals.approve(pending_id, body.order_hash, body.acknowledgment)
     except ApprovalNotFound:
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
@@ -100,7 +103,7 @@ async def approve(pending_id: str, body: ApproveRequest, request: Request):
 )
 async def reject(pending_id: str, request: Request):
     try:
-        return await request.app.state.approvals.reject(pending_id)
+        return await request.state.ws.approvals.reject(pending_id)
     except ApprovalNotFound:
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
@@ -113,7 +116,7 @@ async def reject(pending_id: str, request: Request):
 @rest.post("/plans/preview", response_model=ChatReply)
 async def preview_plan(body: ProposePlanRequest, request: Request):
     """Build a plan card from structured steps (the same object the assistant uses). Nothing is sent."""
-    return (await request.app.state.plans.propose(body)).reply
+    return (await request.state.ws.plans.propose(body)).reply
 
 
 @rest.post(
@@ -128,7 +131,7 @@ async def approve_plan(plan_id: str, body: PlanApproveRequest, request: Request)
     """Approve a whole plan. The steps then run in order in the background, each through the same
     executor as a single order; follow progress on the WebSocket or with GET /plans/{id}/report."""
     try:
-        return await request.app.state.plans.approve(plan_id, body.plan_hash)
+        return await request.state.ws.plans.approve(plan_id, body.plan_hash)
     except PlanNotFound:
         raise HTTPException(404, "unknown plan id")
     except PlanApprovalError as err:
@@ -142,7 +145,7 @@ async def approve_plan(plan_id: str, body: PlanApproveRequest, request: Request)
 )
 async def reject_plan(plan_id: str, request: Request):
     try:
-        return await request.app.state.plans.reject(plan_id)
+        return await request.state.ws.plans.reject(plan_id)
     except PlanNotFound:
         raise HTTPException(404, "unknown plan id")
     except PlanApprovalError as err:
@@ -153,7 +156,7 @@ async def reject_plan(plan_id: str, request: Request):
 async def plan_report(plan_id: str, request: Request):
     """Where each step stands: filled, partly filled, rejected, not sent. Nothing is hidden."""
     try:
-        return await request.app.state.plans.report(plan_id)
+        return await request.state.ws.plans.report(plan_id)
     except PlanNotFound:
         raise HTTPException(404, "unknown plan id")
 
@@ -164,7 +167,7 @@ async def plan_report(plan_id: str, request: Request):
 @rest.get("/rules", response_model=list[Rule])
 async def get_rules(request: Request, status: RuleStatus | None = None):
     """Newest first. A rule fires once; fired and cancelled rules stay listed."""
-    return request.app.state.rule_store.list(status)
+    return request.state.ws.rule_store.list(status)
 
 
 @rest.post("/rules", response_model=ChatReply)
@@ -173,13 +176,13 @@ async def create_rule(body: CreateRuleRequest, request: Request):
 
     A rule never sends an order: when it fires it prepares an approval card or an alert.
     """
-    return (await request.app.state.rules.create(body)).reply
+    return (await request.state.ws.rules.create(body)).reply
 
 
 @rest.delete("/rules/{rule_id}", response_model=Rule, responses={404: {"description": "Unknown rule"}, 409: {"description": "Rule is not active"}})
 async def delete_rule(rule_id: str, request: Request):
     try:
-        return await request.app.state.rules.cancel(rule_id)
+        return await request.state.ws.rules.cancel(rule_id)
     except RuleNotFound:
         raise HTTPException(404, "unknown rule id")
     except RuleNotActive:
@@ -192,14 +195,14 @@ async def delete_rule(rule_id: str, request: Request):
 @rest.get("/audit", response_model=list[AuditEvent])
 async def get_audit(request: Request, limit: int = Query(200, ge=1, le=1000), kind: AuditKind | None = None):
     """Newest first."""
-    return request.app.state.audit.list(limit=limit, kind=kind)
+    return request.state.ws.audit.list(limit=limit, kind=kind)
 
 
 @rest.get("/audit/export", response_class=Response, responses={200: {"content": {"application/x-ndjson": {}}}})
 async def export_audit(request: Request):
     """Downloadable session log: one JSON event per line, oldest first."""
     return Response(
-        request.app.state.audit.export_jsonl(),
+        request.state.ws.audit.export_jsonl(),
         media_type="application/x-ndjson",
         headers={"Content-Disposition": 'attachment; filename="tradedesk-audit.jsonl"'},
     )
@@ -208,7 +211,7 @@ async def export_audit(request: Request):
 @rest.post("/executions/reconcile", response_model=ReconcileResult)
 async def reconcile(request: Request):
     """Re-check orders whose outcome was unknown (e.g. after a timeout). Never re-sends."""
-    executor = request.app.state.executor
+    executor = request.state.ws.executor
     resolved = await executor.reconcile()
     return ReconcileResult(resolved=resolved, unresolved=len(executor.unresolved()))
 
@@ -219,7 +222,7 @@ async def reconcile(request: Request):
 @rest.post("/chat", response_model=ChatReply, responses={503: {"description": "Assistant or broker unavailable"}})
 async def chat(body: ChatRequest, request: Request):
     """Ask the copilot. Order requests come back as cards; nothing is ever sent from here."""
-    return await request.app.state.copilot.handle(body.message, body.via_voice)
+    return await request.state.ws.copilot.handle(body.message, body.via_voice)
 
 
 @rest.get("/ws-events", response_model=list[WsEvent], summary="Shape of messages on /ws (documentation only)")
@@ -234,9 +237,19 @@ async def ws_events_doc():
 
 @ws_router.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
+    # Browsers send the session cookie with the upgrade request. No live session (or a foreign Origin): refused
+    # before the connection is accepted, so nothing is ever sent to an anonymous client.
+    actor = authenticate_websocket(websocket)
+    if actor is None:
+        await websocket.close(code=1008)
+        return
+    try:
+        ws = await websocket.app.state.workspaces.get(actor)
+    except WorkspaceUnavailable:
+        await websocket.close(code=1013)
+        return
     await websocket.accept()
-    state = websocket.app.state
-    hub, broker = state.hub, state.broker
+    hub, broker = ws.hub, ws.broker  # this user's stream: events for anyone else are never put on this queue
     queue = hub.subscribe()  # subscribe first so nothing published during the snapshot is lost
     getter = receiver = None
     try:
@@ -245,9 +258,9 @@ async def ws_endpoint(websocket: WebSocket):
             snapshot = SnapshotEvent(
                 seq=seq0,
                 account=await build_account(broker),
-                pending=_pending_list(websocket.app),
+                pending=_pending_list(ws),
                 orders=await broker.get_orders(),
-                rules=websocket.app.state.rule_store.list(limit=100),
+                rules=ws.rule_store.list(limit=100),
             )
         except BrokerTimeout:
             await websocket.close(code=1013)

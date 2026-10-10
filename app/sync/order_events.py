@@ -62,9 +62,9 @@ class OrderPublisher:
             self._seen = sigs
 
 
-async def run_order_watcher(app, wake: asyncio.Event, settle: float = 0.25) -> None:
-    """On each socket event: resolve any send still waiting for an answer, and push changed orders to the screen."""
-    state = app.state
+async def run_order_watcher(state, wake: asyncio.Event, settle: float = 0.25) -> None:
+    """On each socket event: resolve any send still waiting for an answer, and push changed orders to the screen.
+    `state` is one user's Workspace (anything with .executor and .order_publisher)."""
     while True:
         await wake.wait()
         await asyncio.sleep(settle)  # one fill often comes as several frames: read once after they land

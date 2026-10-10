@@ -1,6 +1,5 @@
 """App factory. Run with: uvicorn app.main:create_app --factory --reload"""
 
-import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
@@ -10,47 +9,26 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.account import build_account
 from app.api import rest, ws_router
-from app.api_models import AccountUpdateEvent, TickEvent
-from app.audit import AuditLog
 from app.auth.api import private as auth_private, public as auth_public
 from app.auth.ratelimit import LoginLimiter
 from app.auth.service import AuthService
-from app.auth.store import AuthStore
+from app.auth.store import AuthStore, UserRow
 from app.broker.base import BrokerAdapter, BrokerTimeout
 from app.broker.mock import MockBroker
 from app.config import Settings
 from app.db import Database
 from app.events import EventHub
-from app.history.sqlite_store import SqliteActivityStore  # voice-live: durable activity
-from app.orders.approval import ApprovalService
-from app.llm.copilot import Copilot
+from app.identity import Actor
 from app.llm.factory import make_llm
-from app.llm.tools import build_tools
 from app.llm.types import LLMUnavailable
-from app.orders.builder import OrderBuilder
-from app.orders.cards import CardService
-from app.orders.executor import Executor
-from app.pending import PendingStore
-from app.plans.builder import PlanBuilder
-from app.plans.service import PlanAssistant, PlanService
-from app.plans.store import PlanStore
-# risk-goals: profile/goal persistence, routes and trader-selected limits.
-from app.risk.engine import ProfileGuard
 from app.risk.api import router as risk_router
-from app.risk.store import ProfileStore
-from app.risk.report_store import ReportStore  # risk-goals
-from app.risk.service import DisciplineService  # risk-goals
-from app.rules.engine import RuleEngine
-from app.rules.service import RuleService
-from app.rules.store import RuleStore
-from app.schemas import RuleStatus
+from app.schema import adopt_legacy_rows
+from app.auth.service import actor_of
 from app.voice.api import router as voice_router  # voice-live: transcription only
-from app.sync.external import run_external_sync  # voice-live: uses the existing broker session
-from app.sync.order_events import OrderPublisher, run_order_watcher, wait_or_wake
 from app.sync.dev import router as sync_dev_router  # voice-live: demo-only trace sample
 from app.sync.api import router as activity_router  # voice-live: restore saved activity on refresh
+from app.workspace import WorkspaceRegistry
 
 log = logging.getLogger("tradedesk")
 
@@ -76,172 +54,88 @@ def make_broker(settings: Settings) -> BrokerAdapter:
     raise NotImplementedError(f"BROKER={settings.broker!r}: use mock or zerotwoone")
 
 
-async def _tick_bridge(app: FastAPI) -> None:
-    """Broker ticks -> websocket events, plus a throttled live account and order refresh."""
-    state = app.state
-    loop = asyncio.get_running_loop()
-    last_push = loop.time()  # clients start from a snapshot, so the first push waits one interval
-    async for tick in state.broker.subscribe_ticks([]):
-        try:
-            state.hub.publish(TickEvent, tick=tick)
-            try:
-                await state.rule_engine.on_tick(tick)
-            except BrokerTimeout:
-                pass  # the card/alert is retried by the periodic recover()
-            except Exception:
-                log.exception("rule engine error")
-            if loop.time() - last_push < state.settings.account_push_interval:
-                continue
-            last_push = loop.time()
-            state.hub.publish(AccountUpdateEvent, account=await build_account(state.broker))
-            await state.order_publisher.publish_changes()  # shared with the orders-socket watcher
-        except BrokerTimeout:
-            continue
-        except Exception:  # keep the feed alive; one bad push must not stop live prices
-            log.exception("tick bridge error")
-
-
-async def _reconcile_loop(app: FastAPI, interval: float, wake: asyncio.Event | None = None) -> None:
-    while True:
-        await wait_or_wake(interval, wake)  # sooner when the orders socket reports something
-        try:
-            await app.state.executor.reconcile()
-            await app.state.rule_engine.recover()
-        except Exception:
-            log.exception("reconcile error")
-
 
 def create_app(
     settings: Settings | None = None,
     broker: BrokerAdapter | None = None,
     clock: Callable[[], datetime] = _utcnow,
+    broker_factory: Callable[[Actor], BrokerAdapter] | None = None,
 ) -> FastAPI:
+    """`broker` is the account configured for this server (BROKER / .env): it belongs to the owner, the first person
+    to register (or TRADEDESK_OWNER_EMAIL). Every other user gets `broker_factory(user)`, which by default is their
+    own mock account."""
     settings = settings or Settings.from_env()
+    # Misconfiguration stops the app at start, not at some user's first request.
+    if settings.orchestrator not in ("classic", "langgraph"):
+        raise RuntimeError(f"ORCHESTRATOR={settings.orchestrator!r}: use classic or langgraph")
+    make_llm(settings, {})
+    default_broker = broker or make_broker(settings)
+    make_user_broker = broker_factory or (lambda _actor: MockBroker(clock=clock))
+    claimed = {"default": False}
+
+    db = Database(settings.database_url)
+    events = EventHub()
+    auth_store = AuthStore(db)
+
+    def owner() -> UserRow | None:
+        return auth_store.user_by_email(settings.owner_email) if settings.owner_email else auth_store.first_user()
+
+    def user_created(user: UserRow, first: bool) -> None:
+        """Data saved before accounts existed goes to the owner (and to nobody else)."""
+        if (settings.owner_email and user.email == settings.owner_email) or (not settings.owner_email and first):
+            adopted = adopt_legacy_rows(db, user.id)
+            if adopted:
+                log.info("handed data saved before accounts existed to the owner account: %s", adopted)
+
+    def broker_for(actor: Actor) -> tuple[BrokerAdapter, bool]:
+        o = owner()
+        if o is not None and o.id == actor.id and not claimed["default"]:
+            claimed["default"] = True
+            return default_broker, True  # already started in the lifespan, so a wrong 021 password stops the app early
+        return make_user_broker(actor), False
+
+    registry = WorkspaceRegistry(settings=settings, clock=clock, db=db, events=events, broker_for=broker_for)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         # A live broker logs in and opens its price feed first. If it cannot (wrong password, no network) the
         # app does not start, rather than running with a broker that is not there.
-        await app.state.broker.start()
-        await app.state.broker.watch(
-            sorted({r.condition.instrument_key for r in app.state.rule_store.list(RuleStatus.ACTIVE)})
-        )
-        # Crash recovery: anything that was mid-send when we last stopped gets looked up, not re-sent.
-        app.state.plans.recover()  # a plan whose runner stopped with the app is halted, never resumed blindly
-        try:
-            await app.state.executor.reconcile()
-            await app.state.rule_engine.recover()
-        except BrokerTimeout:
-            log.warning("broker unreachable at startup; unresolved executions and rules stay as they are")
-        tasks = [asyncio.create_task(_tick_bridge(app))]
-        # A broker with an orders socket (021) wakes these loops on every order event and after every reconnect;
-        # they then read REST. Without one (the mock) they simply poll on their timers.
-        order_wake = getattr(app.state.broker, "order_wake", None)
-        wake = order_wake.subscribe if order_wake is not None else (lambda: None)
-        if order_wake is not None:
-            tasks.append(asyncio.create_task(run_order_watcher(app, order_wake.subscribe())))
-        # voice-live: participates in the same cancellation/shutdown as the other tasks.
-        if settings.external_sync_interval is not None:
-            tasks.append(asyncio.create_task(run_external_sync(app, settings.external_sync_interval, wake())))
-        tasks.append(asyncio.create_task(app.state.discipline.run()))  # risk-goals: 20-second reports
-        if settings.reconcile_interval:
-            tasks.append(asyncio.create_task(_reconcile_loop(app, settings.reconcile_interval, wake())))
-        if isinstance(app.state.broker, MockBroker) and settings.ticker_interval:
-            tasks.append(asyncio.create_task(app.state.broker.run_ticker(settings.ticker_interval)))
+        await default_broker.start()
+        o = owner()
+        if o is not None:
+            adopt_legacy_rows(db, o.id)  # finishes the hand-over if a crash interrupted it; a no-op once done
+        # Every existing account gets its desk now, so standing rules keep watching prices while their owner is away.
+        for user in auth_store.all_users():
+            if user.disabled:
+                continue
+            try:
+                await registry.get(actor_of(user))
+            except Exception:
+                if o is not None and user.id == o.id:
+                    raise  # the configured account must work, as it always has
+                log.warning("a user's desk could not be started at startup; it will be retried on their next request")
         try:
             yield
         finally:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            await app.state.plans.shutdown()  # a plan in flight stops cleanly; unsent steps stay unsent
-            await app.state.broker.close()
-            app.state.db.close()
+            await registry.stop_all()
+            if not claimed["default"]:
+                with contextlib.suppress(Exception):
+                    await default_broker.close()
+            db.close()
 
     app = FastAPI(title="TradeDesk-AI", version="0.1.0", lifespan=lifespan)
-    the_broker = broker or make_broker(settings)
-    hub, db = EventHub(), Database(settings.database_url)
-    store = PendingStore(db)  # cards waiting for approval survive a restart
-    audit = AuditLog(db, clock, hub)
-    builder = OrderBuilder(the_broker, settings, clock)
-    executor = Executor(
-        the_broker,
-        db,
-        audit,
-        store,
-        hub,
-        clock,
-        reconcile_attempts=settings.timeout_reconcile_attempts,
-        reconcile_delay=settings.timeout_reconcile_delay,
-        grace_seconds=settings.reconcile_grace_seconds,
-    )
     app.state.settings = settings
     app.state.clock = clock
+    app.state.db = db
+    app.state.events = events
+    app.state.workspaces = registry
+    app.state.default_broker = default_broker
     app.state.auth = AuthService(
-        AuthStore(db), clock, LoginLimiter(clock),
+        auth_store, clock, LoginLimiter(clock),
         idle_timeout=timedelta(hours=settings.session_idle_hours),
         absolute_timeout=timedelta(days=settings.session_absolute_days),
+        on_user_created=user_created,
     )
-    app.state.broker = the_broker
-    app.state.hub = hub
-    app.state.order_publisher = OrderPublisher(the_broker, hub)  # one "order changed" stream for the screen
-    app.state.pending = store
-    app.state.db = db
-    app.state.audit = audit
-    app.state.builder = builder
-    app.state.executor = executor
-    # Shared hooks for the parallel workstreams (each owner replaces only their own line):
-    recording_source = "mock" if isinstance(the_broker, MockBroker) else settings.broker
-    history = SqliteActivityStore(db, recording_source=recording_source)
-    profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
-    risk = ProfileGuard(the_broker.read_only(), profile_store, clock)  # risk-goals
-    app.state.history = history
-    app.state.risk = risk
-    app.state.profile_store = profile_store  # risk-goals
-    app.state.discipline = DisciplineService(  # risk-goals: reads only; owns its report tables
-        the_broker.read_only(), profile_store, ReportStore(db), lambda: app.state.history, hub, clock,
-        settings.demo_mode and settings.broker == "mock", recording_source=recording_source
-    )
-    cards = CardService(builder, store, hub, audit, risk)
-    tools = build_tools(profile_reader=profile_store.get_profile, discipline_reader=app.state.discipline.refresh)
-    renderers = {name: t.render for name, t in tools.items()}
-    llm = make_llm(settings, renderers)
-    if settings.llm_provider not in ("", "rules"):  # a provider outage falls back to the keyword stand-in
-        from app.llm.fallback import FallbackLLM
-        from app.llm.rules import RuleBasedLLM
-
-        llm = FallbackLLM(llm, RuleBasedLLM(renderers))
-    rule_store = RuleStore(db)
-    rules = RuleService(rule_store, the_broker.read_only(), cards, builder.limits, audit, hub, settings, clock)
-    plan_store = PlanStore(db)  # plans and their reports survive a restart
-    plans = PlanService(
-        plan_store,
-        PlanBuilder(builder, the_broker.read_only(), settings, clock),
-        builder,
-        executor,
-        the_broker,
-        audit,
-        hub,
-        settings,
-        clock,
-        risk,  # every plan step is checked against the trader's own limits too
-    )
-    app.state.cards = cards
-    app.state.rule_store = rule_store
-    app.state.rules = rules
-    app.state.plan_store = plan_store
-    app.state.plans = plans
-    app.state.rule_engine = RuleEngine(rule_store, cards, the_broker.read_only(), audit, hub, settings, clock)
-    copilot_args = (llm, tools, the_broker.read_only(), cards, rules, PlanAssistant(plans), audit, clock)
-    if settings.orchestrator == "langgraph":
-        from app.agent.graph import GraphCopilot  # imported only when used: classic mode needs no LangGraph
-
-        app.state.copilot = GraphCopilot(*copilot_args, hub=hub)
-    elif settings.orchestrator == "classic":
-        app.state.copilot = Copilot(*copilot_args)
-    else:
-        raise RuntimeError(f"ORCHESTRATOR={settings.orchestrator!r}: use classic or langgraph")
-    app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock, risk)
 
     app.add_middleware(
         CORSMiddleware,

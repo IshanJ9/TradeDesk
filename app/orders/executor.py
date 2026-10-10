@@ -58,6 +58,7 @@ class Executor:
         hub: EventHub,
         clock: Callable[[], datetime],
         *,
+        user_id: str,
         reconcile_attempts: int = 3,
         reconcile_delay: float = 0.2,
         grace_seconds: float = 120.0,
@@ -67,6 +68,7 @@ class Executor:
         self._audit = audit
         self._store = store
         self._hub = hub
+        self._user_id = user_id  # this executor only ever reads and writes this user's rows of the shared ledger
         self._clock = clock
         self._attempts = reconcile_attempts
         self._delay = reconcile_delay
@@ -170,7 +172,7 @@ class Executor:
 
     def _claimed_order_ids(self) -> set[str]:
         """Broker order ids that already belong to one of our sends; never attribute them twice."""
-        rows = self._db.query("SELECT broker_order_id FROM executions WHERE broker_order_id IS NOT NULL")
+        rows = self._db.query("SELECT broker_order_id FROM executions WHERE broker_order_id IS NOT NULL AND user_id = ?", (self._user_id,))
         return {r["broker_order_id"] for r in rows}
 
     async def _match(self, spec: SentOrderSpec, subject_id: str) -> Order | None:
@@ -208,7 +210,7 @@ class Executor:
         look-alike orders make the match ambiguous, the row stays UNKNOWN (never guessed at).
         """
         rows = self._db.query(
-            "SELECT * FROM executions WHERE status IN (?, ?) AND action = ?", (*UNRESOLVED, OrderAction.PLACE.value)
+            "SELECT * FROM executions WHERE user_id = ? AND status IN (?, ?) AND action = ?", (self._user_id, *UNRESOLVED, OrderAction.PLACE.value)
         )
         resolved = 0
         for row in rows:
@@ -250,17 +252,17 @@ class Executor:
 
     async def order_for(self, client_order_id: str) -> Order | None:
         """The broker order that our send `client_order_id` became, if we know its id."""
-        row = self._db.query("SELECT broker_order_id FROM executions WHERE client_order_id = ?", (client_order_id,))
+        row = self._db.query("SELECT broker_order_id FROM executions WHERE client_order_id = ? AND user_id = ?", (client_order_id, self._user_id))
         if not row or not row[0]["broker_order_id"]:
             return None
         return await self._broker.get_order(row[0]["broker_order_id"])
 
     def _started_at(self, client_order_id: str) -> datetime:
-        row = self._db.query("SELECT created_at FROM executions WHERE client_order_id = ?", (client_order_id,))
+        row = self._db.query("SELECT created_at FROM executions WHERE client_order_id = ? AND user_id = ?", (client_order_id, self._user_id))
         return datetime.fromisoformat(row[0]["created_at"])
 
     def unresolved(self) -> list[dict]:
-        rows = self._db.query("SELECT * FROM executions WHERE status IN (?, ?)", UNRESOLVED)
+        rows = self._db.query("SELECT * FROM executions WHERE user_id = ? AND status IN (?, ?)", (self._user_id, *UNRESOLVED))
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ #
@@ -275,10 +277,11 @@ class Executor:
         now = now.isoformat()
         try:
             self._db.execute(
-                "INSERT INTO executions (client_order_id, pending_id, action, status, created_at, updated_at, detail)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO executions (client_order_id, user_id, pending_id, action, status, created_at, updated_at, detail)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (
                     p.client_order_id,
+                    self._user_id,
                     p.id,
                     p.action.value,
                     "SENDING",
@@ -293,8 +296,8 @@ class Executor:
     def _finish(self, client_order_id: str, status: str, broker_order_id: str | None) -> None:
         self._db.execute(
             "UPDATE executions SET status = ?, broker_order_id = COALESCE(?, broker_order_id), updated_at = ?"
-            " WHERE client_order_id = ?",
-            (status, broker_order_id, self._clock().isoformat(), client_order_id),
+            " WHERE client_order_id = ? AND user_id = ?",
+            (status, broker_order_id, self._clock().isoformat(), client_order_id, self._user_id),
         )
 
     # ------------------------------------------------------------------ #

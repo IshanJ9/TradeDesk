@@ -4,6 +4,108 @@
  */
 
 export interface paths {
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_api_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_api_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Password */
+        post: operations["change_password_api_auth_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account": {
         parameters: {
             query?: never;
@@ -840,6 +942,13 @@ export interface components {
          * @enum {string}
          */
         AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
+        /** ChangePasswordRequest */
+        ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /** ChaosStatus */
         ChaosStatus: {
             /**
@@ -1424,6 +1533,24 @@ export interface components {
              */
             type: "lock_update";
             locks: components["schemas"]["AccountLocks"];
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /** Me */
+        Me: {
+            /** Id */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /** Created At */
+            created_at: string | null;
         };
         /**
          * NoticeCard
@@ -2081,6 +2208,23 @@ export interface components {
             /** Unresolved */
             unresolved: number;
         };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name?: string;
+            /**
+             * Accepts No Advice
+             * @default false
+             */
+            accepts_no_advice?: boolean;
+        };
         /**
          * RejectionReason
          * @enum {string}
@@ -2317,6 +2461,16 @@ export interface components {
             weight: number;
         };
         /**
+         * Session
+         * @description Returned after register, login, change-password and on every page load. The CSRF token is sent back in the
+         *     X-CSRF-Token header on every request that changes something; it is not a credential on its own.
+         */
+        Session: {
+            user: components["schemas"]["Me"];
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /**
          * Side
          * @enum {string}
          */
@@ -2549,6 +2703,163 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    me_api_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_change_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_account_api_account_get: {
         parameters: {
             query?: never;

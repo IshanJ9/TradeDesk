@@ -31,7 +31,7 @@ def day(offset=1, **kw):
 @pytest.fixture
 def reports():
     db=Database()
-    yield ReportStore(db)
+    yield ReportStore(db, user_id="u1")
     db.close()
 
 
@@ -49,11 +49,11 @@ def test_five_minute_sampling_ignores_refresh_frequency_and_returns_need_baselin
 def test_observations_persist_and_zero_baseline_never_divides(tmp_path):
     url='sqlite:///'+str(tmp_path/'observations.db')
     db=Database(url)
-    ReportStore(db).observe(FACTS.model_copy(update={'portfolio_value':0}),None,NOW)
+    ReportStore(db, user_id="u1").observe(FACTS.model_copy(update={'portfolio_value':0}),None,NOW)
     db.close()
     db=Database(url)
     try:
-        result=ReportStore(db).observe(FACTS,50,NOW+timedelta(minutes=5))
+        result=ReportStore(db, user_id="u1").observe(FACTS,50,NOW+timedelta(minutes=5))
         assert result['observed_return_pct'] is None
         assert result['risk_samples']==1 and result['average_risk_score']==50
         assert result['first_observed_at']==NOW

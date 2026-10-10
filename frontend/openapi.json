@@ -5,6 +5,183 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Change Password",
+        "operationId": "change_password_api_auth_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account": {
       "get": {
         "summary": "Get Account",
@@ -1996,6 +2173,27 @@
         ],
         "title": "AuditKind"
       },
+      "ChangePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Current Password"
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "New Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest"
+      },
       "ChaosStatus": {
         "properties": {
           "network_down": {
@@ -3573,6 +3771,64 @@
           "locks"
         ],
         "title": "LockUpdateEvent"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "Me": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "created_at"
+        ],
+        "title": "Me"
       },
       "NoticeCard": {
         "properties": {
@@ -5374,6 +5630,38 @@
         ],
         "title": "ReconcileResult"
       },
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Display Name",
+            "default": ""
+          },
+          "accepts_no_advice": {
+            "type": "boolean",
+            "title": "Accepts No Advice",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest"
+      },
       "RejectionReason": {
         "type": "string",
         "enum": [
@@ -6009,6 +6297,25 @@
           "weight"
         ],
         "title": "ScoreComponent"
+      },
+      "Session": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Me"
+          },
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "title": "Session",
+        "description": "Returned after register, login, change-password and on every page load. The CSRF token is sent back in the\nX-CSRF-Token header on every request that changes something; it is not a credential on its own."
       },
       "Side": {
         "type": "string",

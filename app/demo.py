@@ -17,14 +17,15 @@ real 021 broker these routes do not exist, so a demo switch can never touch a re
 import uuid
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api_models import ChaosStatus, ChaosStatusEvent, LockUpdateEvent
 from app.broker.mock import MockBroker
+from app.desk import desk_router
 from app.schemas import OrderAction, OrderType, PendingOrder, PendingState, Product, Side, paise
 
-router = APIRouter(prefix="/api/demo", tags=["demo"])
+router = desk_router(prefix="/api/demo", tags=["demo"])
 
 
 class DemoState(BaseModel):
@@ -47,8 +48,8 @@ class TimeoutNext(BaseModel):
 
 
 def _mock(request: Request) -> MockBroker:
-    broker = request.app.state.broker
-    if not request.app.state.settings.demo_mode or not isinstance(broker, MockBroker):
+    broker = request.state.ws.broker
+    if not request.state.ws.settings.demo_mode or not isinstance(broker, MockBroker):
         raise HTTPException(404, "not found")
     return broker
 
@@ -85,7 +86,7 @@ async def timeout_next(body: TimeoutNext, request: Request):
 async def network(body: Switch, request: Request):
     b = _mock(request)
     b.network_down = body.on
-    request.app.state.hub.publish(ChaosStatusEvent, status=ChaosStatus(network_down=body.on))
+    request.state.ws.hub.publish(ChaosStatusEvent, status=ChaosStatus(network_down=body.on))
     return _state(b)
 
 
@@ -113,7 +114,7 @@ async def anchor(body: Switch, request: Request):
         "anchor_active": body.on,
         "anchor_message": "Anchor is on: you chose to pause new orders in 021's app." if body.on else None,
     })
-    request.app.state.hub.publish(LockUpdateEvent, locks=b.locks)
+    request.state.ws.hub.publish(LockUpdateEvent, locks=b.locks)
     return _state(b)
 
 
@@ -121,7 +122,7 @@ async def anchor(body: Switch, request: Request):
 async def external_order(request: Request):
     """Places 2 TCS straight on the mock broker, the way 021's own app would: no card, no TradeDesk send log."""
     b = _mock(request)
-    key, now = "NSE:TCS", request.app.state.clock()
+    key, now = "NSE:TCS", request.state.ws.clock()
     order = PendingOrder(
         id=f"ext-{uuid.uuid4().hex[:8]}", action=OrderAction.PLACE, instrument=b._instruments[key], side=Side.BUY,
         quantity=2, order_type=OrderType.LIMIT, limit_price=b._prices[key], client_order_id=f"ext-{uuid.uuid4().hex[:8]}",

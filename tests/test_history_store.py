@@ -4,6 +4,7 @@ import pytest
 
 from app.db import Database
 from app.history.sqlite_store import SqliteActivityStore
+from app.schema import adopt_legacy_rows, ensure_schema
 from app.history.store import DaySummary, InMemoryActivityStore, trading_day
 from app.schemas import Exchange, Instrument, Order, OrderStatus, OrderType, Side
 
@@ -13,13 +14,16 @@ NOW = datetime(2026, 10, 9, 5, tzinfo=timezone.utc)
 def test_legacy_order_provenance_is_unknown_until_observed_from_broker():
     db = Database()
     # An existing database must not be retroactively labelled real.
+    db.execute("DROP TABLE activity_orders")  # put back the shape an older database had, then open it the normal way
     db.execute("CREATE TABLE activity_orders (order_id TEXT PRIMARY KEY, source TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL)")
     legacy = order()
     db.execute("INSERT INTO activity_orders VALUES (?,?,?,?)", (legacy.order_id, 'external', NOW.date().isoformat(), legacy.model_dump_json(round_trip=True)))
-    store = SqliteActivityStore(db, recording_source='zerotwoone')
+    ensure_schema(db)
+    adopt_legacy_rows(db, "u1")  # the first account inherits what was saved before accounts existed
+    store = SqliteActivityStore(db, user_id="u1", recording_source='zerotwoone')
     assert store.orders_on(NOW.date())[0].recording_source == 'unknown'
     store.record_order(legacy, 'external')
-    assert SqliteActivityStore(db).orders_on(NOW.date())[0].recording_source == 'zerotwoone'
+    assert SqliteActivityStore(db, user_id="u1").orders_on(NOW.date())[0].recording_source == 'zerotwoone'
     db.close()
 
 
@@ -37,7 +41,7 @@ def summary(day, **updates):
 @pytest.fixture(params=["memory", "sqlite"])
 def store(request):
     db = Database()
-    yield InMemoryActivityStore() if request.param == "memory" else SqliteActivityStore(db)
+    yield InMemoryActivityStore() if request.param == "memory" else SqliteActivityStore(db, user_id="u1")
     db.close()
 
 
@@ -87,13 +91,13 @@ def test_day_summary_round_trip_and_replace(store):
 def test_database_reopen_keeps_orders_sources_and_days(tmp_path):
     path = f"sqlite:///{tmp_path / 'history.db'}"
     db = Database(path)
-    store = SqliteActivityStore(db)
+    store = SqliteActivityStore(db, user_id="u1")
     store.record_order(order(), "external")
     store.save_day(summary(NOW.date(), demo=True))
     db.close()
     db = Database(path)
     try:
-        store = SqliteActivityStore(db)
+        store = SqliteActivityStore(db, user_id="u1")
         store.record_order(order(filled_quantity=5, avg_fill_price=145000, status=OrderStatus.PARTIAL), "app")
         record, = store.orders_on(trading_day(NOW))
         assert record.source == "external"
@@ -107,7 +111,7 @@ def test_two_store_instances_keep_the_original_attribution(tmp_path):
     path = f"sqlite:///{tmp_path / 'shared.db'}"
     db1, db2 = Database(path), Database(path)
     try:
-        a, b = SqliteActivityStore(db1), SqliteActivityStore(db2)
+        a, b = SqliteActivityStore(db1, user_id="u1"), SqliteActivityStore(db2, user_id="u1")
         a.record_order(order(), "external")
         b.record_order(order(status=OrderStatus.FILLED, filled_quantity=10, avg_fill_price=145005), "app")
         record, = a.orders_on(NOW.date())

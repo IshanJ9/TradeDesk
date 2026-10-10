@@ -223,7 +223,7 @@ def test_zero_portfolio_and_excess_loss_budget_rejected(client):
 def test_settings_persist_across_database_reopen(tmp_path):
     url = f"sqlite:///{(tmp_path / 'risk.db').as_posix()}"
     db = Database(url)
-    store = ProfileStore(db)
+    store = ProfileStore(db, user_id="u1")
     p = preset("aggressive")
     g = Goal(target_pct=10, start_date=date(2026, 10, 10), end_date=date(2026, 12, 1),
              start_value=1_000_000, max_acceptable_loss_paise=100_000)
@@ -232,10 +232,10 @@ def test_settings_persist_across_database_reopen(tmp_path):
     # Updating one record doesn't alter the other or multiply the singleton rows.
     store.save_profile(preset("conservative"))
     store.save_profile(p)
-    assert len(db.query("SELECT id FROM risk_profile")) == 1
+    assert len(db.query("SELECT user_id FROM risk_profile")) == 1
     db.close()
     reopened = Database(url)
-    restored = ProfileStore(reopened)
+    restored = ProfileStore(reopened, user_id="u1")
     assert restored.get_profile() == p
     assert restored.get_goal() == g
     restored.delete_goal()

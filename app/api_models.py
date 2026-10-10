@@ -250,7 +250,9 @@ class ChaosStatus(Model):
 
 
 class _Event(Model):
-    seq: int  # global, increasing; a gap means the client should refetch a snapshot
+    seq: int  # increasing per user; a gap means the client should refetch a snapshot
+    # Who the event is for. Set by the hub, used for delivery, never sent to the client.
+    user_id: str | None = Field(default=None, exclude=True)
 
 
 class SnapshotEvent(_Event):
