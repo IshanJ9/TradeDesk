@@ -296,3 +296,31 @@ def test_b_socket_never_receives_a_events_and_a_user_with_two_tabs_gets_both(des
         got = until(wb, "pending_created")
         assert all(pa["id"] not in str(e) for e in got), "B's socket was sent something about A's card"
         assert got[-1]["pending"]["id"] == pb["id"]
+
+
+# ---- background loops: one user's trouble does not stall another's --------------------------------------------------- #
+
+
+def test_a_stuck_or_failing_desk_does_not_stall_another_users_rules(desk):
+    import asyncio
+    import time
+
+    async def never_returns(_tick):
+        await asyncio.sleep(3600)  # B's rule engine hangs on every price tick
+
+    async def explodes(_tick):
+        raise RuntimeError("B's rule engine is broken")
+
+    def status(rule_id):
+        return next(r for r in desk.a.get("/api/rules").json() if r["id"] == rule_id)["status"]
+
+    for broken in (never_returns, explodes):
+        desk.ws("b").rule_engine.on_tick = broken
+        rule = desk.a.post("/api/rules", json=RULE).json()["cards"][0]["rule"]
+        desk.on_loop(desk.ws("b").broker.set_price, "NSE:TCS", paise(3790))  # B's loop is now stuck or failing...
+        desk.on_loop(desk.ws("a").broker.set_price, "NSE:TCS", paise(3799))  # ...A's rule must still fire
+        deadline = time.time() + 3
+        while time.time() < deadline and status(rule["id"]) != "FIRED":
+            time.sleep(0.05)
+        assert status(rule["id"]) == "FIRED", broken.__name__
+        desk.on_loop(desk.ws("a").broker.set_price, "NSE:TCS", paise(3900))  # back above, ready for the next round
