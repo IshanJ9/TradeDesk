@@ -181,17 +181,19 @@ def create_app(
     app.state.builder = builder
     app.state.executor = executor
     # Shared hooks for the parallel workstreams (each owner replaces only their own line):
-    history = SqliteActivityStore(db)  # voice-live: database-backed store + order sync
+    recording_source = "mock" if isinstance(the_broker, MockBroker) else settings.broker
+    history = SqliteActivityStore(db, recording_source=recording_source)
     profile_store = ProfileStore(db)  # risk-goals: own tables on the shared database
     risk = ProfileGuard(the_broker.read_only(), profile_store, clock)  # risk-goals
     app.state.history = history
     app.state.risk = risk
     app.state.profile_store = profile_store  # risk-goals
     app.state.discipline = DisciplineService(  # risk-goals: reads only; owns its report tables
-        the_broker.read_only(), profile_store, ReportStore(db), lambda: app.state.history, hub, clock, settings.demo_mode
+        the_broker.read_only(), profile_store, ReportStore(db), lambda: app.state.history, hub, clock,
+        settings.demo_mode and settings.broker == "mock", recording_source=recording_source
     )
     cards = CardService(builder, store, hub, audit, risk)
-    tools = build_tools()
+    tools = build_tools(profile_reader=profile_store.get_profile, discipline_reader=app.state.discipline.refresh)
     renderers = {name: t.render for name, t in tools.items()}
     llm = make_llm(settings, renderers)
     if settings.llm_provider not in ("", "rules"):  # a provider outage falls back to the keyword stand-in

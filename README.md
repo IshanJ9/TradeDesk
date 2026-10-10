@@ -277,6 +277,14 @@ answered by the built-in keyword stand-in instead (`app/llm/fallback.py`), with 
 every guard and approval check is unchanged. Bedrock is skipped for a minute after a failure, so an outage doesn't
 make every message wait for a timeout. `scripts/model_eval.py` always tests the real model, never the fallback.
 
+## Current implementation work
+
+See [FEATURE_CHECKLIST.md](FEATURE_CHECKLIST.md) for completed items and the full
+remaining scope, and [ANALYTICS_HANDOFF.md](ANALYTICS_HANDOFF.md) for the new
+observed-risk/returns/patterns calculations and manual 021 acceptance steps.
+These analytics exclude mock/demo and unverified legacy records; an empty view
+means actual recorded history is still needed.
+
 ## Where things are
 
 | Path | What |

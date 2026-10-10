@@ -5,7 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from random import Random
 
 from app.risk.models import (ComparisonGroup, DisciplineDay, Goal, GoalProgress, HistoryComparison,
-                             RiskProfile, RiskScore, ScoreComponent, TodayFacts)
+                             RiskProfile, RiskScore, ScoreComponent, TodayFacts, TrendPoint)
 from app.schemas import fmt_rupees
 
 
@@ -40,11 +40,18 @@ def compare_history(days: list[DisciplineDay], today: date) -> HistoryComparison
                                profitable_days=sum(d.pnl_after_charges > 0 for d in items))
 
     window = chosen[:30]
+    cumulative = 0
+    timeline = []
+    for day in reversed(window):
+        cumulative += day.pnl_after_charges
+        timeline.append(TrendPoint(day=day.day, cumulative_pnl_paise=cumulative,
+                                   risk_score=day.risk_score, demo=day.demo))
     above = [d for d in window if d.risk_score is not None and average is not None and d.risk_score > average]
     below = [d for d in window if d.risk_score is not None and average is not None and d.risk_score <= average]
     return HistoryComparison(average_score=average, baseline_days=len(baseline),
                              source="real" if real else "demo" if chosen else "none",
-                             above_usual=group(above), at_or_below_usual=group(below), days=window)
+                             above_usual=group(above), at_or_below_usual=group(below), days=window,
+                             timeline=timeline)
 
 
 def goal_progress(goal: Goal, portfolio: int, today: date) -> GoalProgress:

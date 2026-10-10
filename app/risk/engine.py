@@ -21,7 +21,8 @@ def within_window(now: datetime, last: datetime | None, minutes: int) -> bool:
 
 
 def evaluate(pending: PendingOrder, stage: Stage, profile: RiskProfile,
-             facts: TodayFacts, goal: Goal | None, now: datetime, extra_orders: int = 0) -> RiskVerdict:
+             facts: TodayFacts, goal: Goal | None, now: datetime, extra_orders: int = 0,
+             cooldown_until: datetime | None = None) -> RiskVerdict:
     if pending.action == OrderAction.CANCEL:
         return RiskVerdict()
     placing = pending.action == OrderAction.PLACE
@@ -39,14 +40,39 @@ def evaluate(pending: PendingOrder, stage: Stage, profile: RiskProfile,
     elif placing and profile.hard_stop_on_daily_loss and reached_loss:
         block = (f"You switched on a hard daily loss limit of {profile.daily_loss_limit_pct:g}% of your portfolio. "
                  "Today's estimated loss after charges has reached it. You can change it in Discipline.")
+    elif (placing and profile.hard_cooling_off and
+          ((cooldown_until is not None and cooldown_until > now) or
+           (facts.consecutive_losses >= profile.cooling_off_after_losses and
+            within_window(now, facts.last_loss_at, profile.cooling_off_minutes)))):
+        until = cooldown_until or facts.last_loss_at + timedelta(minutes=profile.cooling_off_minutes)
+        block = (f"Your cooling-off stop is on after {profile.cooling_off_after_losses} consecutive losses. "
+                 f"New orders are paused until {until.isoformat()}. You can change it in Discipline.")
+    elif (placing and profile.hard_stop_on_goal_loss and goal is not None and
+          goal.start_date <= facts.day <= goal.end_date and
+          goal.start_value - facts.portfolio_value >= goal.max_acceptable_loss_paise):
+        block = ("Your goal-loss stop is on. The portfolio decline from your saved goal baseline "
+                 "has reached your maximum acceptable loss. You can change it in Discipline.")
     if stage == "approve":
         return RiskVerdict(block=block)
     warnings = []
+    recent = facts.recent_orders + extra_orders + int(placing)
+    if profile.short_window_order_limit is not None and recent > profile.short_window_order_limit:
+        warnings.append(f"You set a 20-minute order allowance of {profile.short_window_order_limit}; "
+                        f"including this proposal and earlier plan steps, the count would be {recent}.")
     if over_orders:
         warnings.append(f"You set {orders_a_day(profile.max_orders_per_day)}; "
                         + (f"this would be order #{count}." if placing else f"you already have {count} today. A modification adds no order."))
     price = pending.limit_price or pending.protection_price or pending.ref_ltp
     value = (pending.quantity or 0) * price
+    if (profile.daily_turnover_limit_paise is not None and
+            facts.turnover + (value if placing else 0) > profile.daily_turnover_limit_paise):
+        warnings.append(f"You set a daily turnover allowance of {fmt_rupees(profile.daily_turnover_limit_paise)}; "
+                        f"filled turnover is {fmt_rupees(facts.turnover)} and this proposed order is {fmt_rupees(value)}. "
+                        "This estimate excludes other unfilled orders and other plan steps.")
+    if (profile.charges_turnover_limit_pct is not None and facts.turnover > 0 and
+            Decimal(facts.charges) * 100 >= Decimal(facts.turnover) * Decimal(str(profile.charges_turnover_limit_pct))):
+        warnings.append(f"You set a charges-to-turnover warning at {profile.charges_turnover_limit_pct:g}%; "
+                        f"today's estimated charges are {percentage(facts.charges, facts.turnover):.2f}% of filled turnover.")
     portfolio = facts.portfolio_value
     if portfolio > 0:
         if Decimal(value) * 100 > Decimal(portfolio) * Decimal(str(profile.max_order_pct)):
@@ -99,8 +125,10 @@ class ProfileGuard:
         if profile is None:
             return RiskVerdict()
         if stage == "approve" and (pending.action != OrderAction.PLACE or
-                not (profile.hard_order_limit or profile.hard_stop_on_daily_loss)):
+                not (profile.hard_order_limit or profile.hard_stop_on_daily_loss or
+                     profile.hard_cooling_off or profile.hard_stop_on_goal_loss)):
             return RiskVerdict()
         now = self._clock()
         facts = await compute_today(self._broker, profile, now)
-        return evaluate(pending, stage, profile, facts, self._store.get_goal(), now, extra_orders)
+        until = self._store.cooldown_until(profile, facts, now)
+        return evaluate(pending, stage, profile, facts, self._store.get_goal(), now, extra_orders, until)

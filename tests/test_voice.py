@@ -254,7 +254,7 @@ async def test_default_dependency_reuses_limiter_without_real_network(make_voice
     client, app, _ = make_voice()
     del app.state.voice_transcriber
 
-    async def fake_post(self, client, audio, content_type):
+    async def fake_post(self, client, audio, content_type, language=None):
         return httpx.Response(200, json={"text": "hello"})
 
     monkeypatch.setattr(Transcriber, "_post", fake_post)
@@ -270,3 +270,17 @@ async def test_openapi_documents_raw_audio_and_transcript(make_voice):
     route = spec["paths"][PATH]["post"]
     assert set(route["requestBody"]["content"]) == set(CONTENT_TYPES)
     assert route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith("/Transcript")
+
+
+@pytest.mark.parametrize("language", ["en","hi"])
+async def test_language_hint_reaches_provider(make_voice, language):
+    client,app,requests=make_voice()
+    r=await client.post(PATH+"?language="+language,content=AUDIO,headers={"Content-Type":"audio/webm"})
+    assert r.status_code==200
+    assert f'name="language"\r\n\r\n{language}\r\n' in requests[0].content.decode()
+
+
+async def test_invalid_language_never_calls_provider(make_voice):
+    client,app,requests=make_voice()
+    r=await client.post(PATH+"?language=xyz",content=AUDIO,headers={"Content-Type":"audio/webm"})
+    assert r.status_code==422 and not requests

@@ -4,6 +4,8 @@ import { disciplineApi } from "../lib/api";
 import { rupees } from "../lib/format";
 import type { State } from "../lib/store";
 import type { components } from "../lib/types.gen";
+import { DisciplineTrend } from "./DisciplineTrend";
+import { DisciplineAnalytics } from "./DisciplineAnalytics";
 import { GoalForm, Onboarding, ProfileForm } from "./DisciplineForms";
 import { Banner, Button, Chip, Empty, Signed } from "./ui";
 
@@ -85,6 +87,7 @@ export function DisciplinePanel({ state }: { state: State }) {
         </Card>
         {editProfile && <Card title="Edit your profile"><ProfileForm initial={report.profile} saved={() => { setEditProfile(false); void refresh(); }} cancel={() => setEditProfile(false)} /></Card>}
       </>}
+      {report.cooling_off_until && <Banner tone="warn">New orders paused until {new Date(report.cooling_off_until).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST by your cooling-off stop. You can change this in your profile.</Banner>}
       <Card title="Your goal" aside={g && <Button onClick={() => setEditGoal(!editGoal)}>Replace goal</Button>}>
         {editGoal ? <GoalForm today={report.today.day} portfolio={report.today.portfolio_value} saved={() => { setEditGoal(false); void refresh(); }} cancel={() => setEditGoal(false)} /> : g ? <>
           <div className="flex flex-wrap items-center gap-2"><Chip>{g.status}</Chip><span className="text-xs text-muted">Ends {g.goal.end_date} · {g.days_left} days left</span></div>
@@ -112,6 +115,8 @@ export function DisciplinePanel({ state }: { state: State }) {
         </table></div></details>}
         <p className="text-xs text-muted">{report.history.note}</p>
       </Card>
+      <Card title="Risk and reward over time"><DisciplineTrend history={report.history} /></Card>
+      {report.analytics && <Card title="Daily risk, returns and trading patterns"><DisciplineAnalytics data={report.analytics} hidden={hidden} /></Card>}
       <Card title="Charges meter"><div className="grid grid-cols-2 gap-4">
         <div><p className="text-xs text-muted">Today · estimated</p><p className="num text-xl">{rupees(report.charges.today_paise)}</p><p className="text-xs text-muted">{report.charges.turnover_pct.toFixed(2)}% of filled turnover</p></div>
         <div><p className="text-xs text-muted">Recorded charges · last 30 calendar days</p><p className="num text-xl">{rupees(report.charges.last_30_days_paise)}</p></div>

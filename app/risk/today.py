@@ -125,6 +125,7 @@ def calculate_today(*, orders: list[Order], holdings: list[Holding],
     unrealised = sum(p.pnl for p in positions) + sum(h.day_pnl for h in holdings)
     pnl = realised + unrealised
     return TodayFacts(day=day, orders_today=len(today), turnover=turnover, charges=charges,
+                      recent_orders=sum(now-timedelta(minutes=20) < o.created_at <= now for o in today),
                       realised_pnl=realised, unrealised_pnl=unrealised, pnl_estimate=pnl,
                       pnl_after_charges=pnl - charges, portfolio_value=portfolio,
                       largest_order_pct=percentage(largest, portfolio),

@@ -220,7 +220,7 @@ def test_main_wires_same_guard_and_store_into_services():
         assert state.cards._risk is state.risk and state.approvals._risk is state.risk
 
 
-@pytest.mark.parametrize("failure", ["order_limit", "loss_limit", "timeout"])
+@pytest.mark.parametrize("failure", ["order_limit", "loss_limit", "cooldown", "goal_loss", "timeout"])
 def test_real_approval_route_returns_blocked_and_never_sends(failure):
     broker = MockBroker(clock=lambda: NOW)
     broker.place_order = AsyncMock(side_effect=AssertionError("Must not send"))
@@ -229,7 +229,9 @@ def test_real_approval_route_returns_blocked_and_never_sends(failure):
     with TestClient(create_app(settings, broker=broker, clock=lambda: NOW)) as client:
         state = client.app.state
         state.profile_store.save_profile(PROFILE.model_copy(update={
-            "hard_order_limit": True, "hard_stop_on_daily_loss": True}))
+            "hard_order_limit": True, "hard_stop_on_daily_loss": True,
+            "hard_cooling_off": True, "hard_stop_on_goal_loss": True}))
+        state.profile_store.save_goal(goal())
         p = pending()
         state.pending.put(p)
         with patch("app.risk.engine.compute_today", new_callable=AsyncMock) as compute:
@@ -238,7 +240,10 @@ def test_real_approval_route_returns_blocked_and_never_sends(failure):
             else:
                 compute.return_value = FACTS.model_copy(update={
                     "orders_today": 6 if failure == "order_limit" else 0,
-                    "pnl_after_charges": -20_000 if failure == "loss_limit" else 0})
+                    "pnl_after_charges": -20_000 if failure == "loss_limit" else 0,
+                    "consecutive_losses": 3 if failure == "cooldown" else 0,
+                    "last_loss_at": NOW,
+                    "portfolio_value": 900_000 if failure == "goal_loss" else 1_000_000})
             response = client.post(f"/api/approvals/{p.id}/approve", json={"order_hash": p.order_hash})
         assert response.status_code == 409
         assert response.json()["code"] == "BLOCKED"
@@ -264,3 +269,120 @@ async def test_preview_service_attaches_warning_or_blocks_without_card():
         app.state.profile_store.save_profile(PROFILE.model_copy(update={"hard_order_limit": True}))
         hard = await app.state.cards.propose(intent)
         assert hard.status == "blocked" and hard.pending is None
+
+
+@pytest.mark.parametrize("stage", ["preview", "approve"])
+@pytest.mark.parametrize("streak,seconds,blocked", [(2, 0, False), (3, 0, True),
+    (3, 1199, True), (3, 1200, False), (3, -1, False)])
+def test_opt_in_cooldown_boundaries(stage, streak, seconds, blocked):
+    facts = dict(consecutive_losses=streak, last_loss_at=NOW-timedelta(seconds=seconds))
+    assert bool(verdict(stage=stage, profile=PROFILE.model_copy(update={"hard_cooling_off": True}),
+                        **facts).block) is blocked
+    assert verdict(stage=stage, **facts).block is None
+
+
+@pytest.mark.parametrize("stage", ["preview", "approve"])
+@pytest.mark.parametrize("portfolio,blocked", [(900_001, False), (900_000, True), (899_999, True)])
+def test_opt_in_goal_stop_uses_baseline_not_overlapping_daily_loss(stage, portfolio, blocked):
+    profile = PROFILE.model_copy(update={"hard_stop_on_goal_loss": True})
+    result = verdict(stage=stage, profile=profile, goal=goal(), portfolio_value=portfolio,
+                     pnl_after_charges=-100_000)
+    assert bool(result.block) is blocked
+    assert verdict(stage=stage, goal=goal(), portfolio_value=portfolio).block is None
+
+
+@pytest.mark.parametrize("g", [None, goal(start_date=NOW.date()+timedelta(days=1)),
+                               goal(start_date=NOW.date()-timedelta(days=3), end_date=NOW.date()-timedelta(days=1))])
+def test_goal_stop_requires_goal_in_its_date_window(g):
+    assert verdict(profile=PROFILE.model_copy(update={"hard_stop_on_goal_loss": True}),
+                   goal=g, portfolio_value=800_000).block is None
+
+
+@pytest.mark.parametrize("action", ["CANCEL", "MODIFY"])
+@pytest.mark.parametrize("stage", ["preview", "approve"])
+def test_new_stops_never_block_cancellations_or_modifications(action, stage):
+    assert verdict(p=pending(action=action, target_order_id="old"), stage=stage,
+                   profile=PROFILE.model_copy(update={"hard_cooling_off": True, "hard_stop_on_goal_loss": True}),
+                   goal=goal(), portfolio_value=800_000, consecutive_losses=3, last_loss_at=NOW).block is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag", ["hard_cooling_off", "hard_stop_on_goal_loss"])
+async def test_new_stops_refresh_facts_at_approval_and_can_be_switched_off(store, flag):
+    store.save_profile(PROFILE.model_copy(update={flag: True}))
+    store.save_goal(goal())
+    guard = ProfileGuard(AsyncMock(), store, lambda: NOW)
+    with patch("app.risk.engine.compute_today", new_callable=AsyncMock) as compute:
+        compute.return_value = FACTS
+        assert (await guard.check(pending(), "preview")).block is None
+        compute.return_value = FACTS.model_copy(update={"portfolio_value": 900_000,
+            "consecutive_losses": 3, "last_loss_at": NOW})
+        assert (await guard.check(pending(), "approve")).block
+        assert compute.await_count == 2
+        store.save_profile(PROFILE)
+        assert (await guard.check(pending(), "approve")).block is None
+
+
+def test_legacy_profiles_default_new_stops_off():
+    from app.risk.models import RiskProfile
+    raw = PROFILE.model_dump()
+    raw.pop("hard_cooling_off")
+    raw.pop("hard_stop_on_goal_loss")
+    loaded = RiskProfile.model_validate(raw)
+    assert loaded.hard_cooling_off is False
+    assert loaded.hard_stop_on_goal_loss is False
+
+
+
+def test_cooldown_survives_restart_day_rollover_and_streak_reset(tmp_path):
+    from app.history.store import trading_day
+    url = "sqlite:///" + str(tmp_path / "cooldown.db")
+    db = Database(url)
+    first = ProfileStore(db)
+    profile = PROFILE.model_copy(update={"hard_cooling_off": True, "cooling_off_minutes": 60})
+    first.save_profile(profile)
+    late = NOW.replace(hour=18, minute=15)  # 23:45 IST
+    facts = FACTS.model_copy(update={"day": trading_day(late), "consecutive_losses": 3, "last_loss_at": late})
+    assert first.cooldown_until(profile, facts, late) == late+timedelta(hours=1)
+    db.close()
+    db = Database(url)
+    try:
+        store = ProfileStore(db)
+        later = late+timedelta(minutes=30)
+        reset = FACTS.model_copy(update={"day": trading_day(later), "consecutive_losses": 0, "last_loss_at": None})
+        until = store.cooldown_until(store.get_profile(), reset, later)
+        assert until == late+timedelta(hours=1)
+        assert evaluate(pending(), "approve", profile, reset, None, later, cooldown_until=until).block
+        assert store.cooldown_until(profile, reset, late+timedelta(hours=1)) is None
+    finally:
+        db.close()
+
+
+def test_switching_cooldown_off_clears_latched_pause(store):
+    profile = PROFILE.model_copy(update={"hard_cooling_off": True})
+    store.save_profile(profile)
+    facts = FACTS.model_copy(update={"consecutive_losses": 3, "last_loss_at": NOW})
+    assert store.cooldown_until(profile, facts, NOW)
+    store.save_profile(PROFILE)
+    store.save_profile(profile)
+    assert store.cooldown_until(profile, FACTS, NOW) is None
+
+
+@pytest.mark.parametrize("turnover,quantity,warns", [(0,10,False),(1,10,True),(100000,1,True)])
+def test_optional_turnover_allowance(turnover,quantity,warns):
+    result=verdict(p=pending(quantity=quantity),profile=PROFILE.model_copy(update={"daily_turnover_limit_paise":100000}),turnover=turnover)
+    assert has(result,"daily turnover allowance") is warns
+    assert result.block is None
+
+
+@pytest.mark.parametrize("turnover,charges,warns", [(0,100,False),(100000,999,False),(100000,1000,True)])
+def test_optional_charge_ratio(turnover,charges,warns):
+    result=verdict(profile=PROFILE.model_copy(update={"charges_turnover_limit_pct":1.0}),turnover=turnover,charges=charges)
+    assert has(result,"charges-to-turnover") is warns
+
+
+def test_pace_warning_includes_proposed_plan_steps_but_is_not_hard_stop():
+    p=PROFILE.model_copy(update={"short_window_order_limit":3})
+    result=evaluate(pending(),"preview",p,FACTS.model_copy(update={"recent_orders":2}),None,NOW,extra_orders=1)
+    assert has(result,"20-minute order allowance")
+    assert result.block is None

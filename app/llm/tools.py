@@ -687,10 +687,51 @@ async def _plan_report(ctx: ToolContext, args: dict) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def build_tools() -> dict[str, Tool]:
+def build_tools(*, profile_reader=None, discipline_reader=None) -> dict[str, Tool]:
     from app.llm.portfolio_tools import alert_on_holdings, exit_losing_positions, trim_to_max_weight  # they build on this module
 
+    async def profile_read(ctx, args):
+        profile = profile_reader() if profile_reader else None
+        if profile is None:
+            return {"message":"No saved profile is available. Review and save your settings in Discipline."}
+        return {"message":f"Your profile allows {profile.max_orders_per_day} orders per day, "
+                f"{profile.max_order_pct:g}% per order and {profile.max_stock_pct:g}% in one stock. "
+                f"Daily loss allowance: {profile.daily_loss_limit_pct:g}%. "
+                f"Cooling-off window: {profile.cooling_off_minutes} minutes after {profile.cooling_off_after_losses} losses. "
+                "Change these settings explicitly in Discipline.",
+                "settings":{**profile.model_dump(exclude={'daily_turnover_limit_paise'}),
+                            'daily_turnover_allowance':rs(profile.daily_turnover_limit_paise) if profile.daily_turnover_limit_paise else None}}
+
+    async def discipline_read(ctx, args):
+        if discipline_reader is None:
+            return {"message":"The discipline report is not available in this context."}
+        report = await discipline_reader()
+        parts = [f"Today: {report.today.orders_today} orders. Risk score: {report.score.total if report.score else 'not available'}. "]
+        if not (report.profile and report.profile.hide_day_pnl):
+            parts.append(f"Today's estimated net P&L after charges: {rs(report.today.pnl_after_charges)}.")
+        else:
+            parts.append("Today's monetary results are hidden in mindful mode.")
+        if report.analytics:
+            a=report.analytics
+            s=a.summary
+            parts.append(f"Recorded past days: {s.days}. Profitable days: {s.profitable_days}.")
+            if s.average_net_pnl_paise is not None:
+                parts.append(f"Average daily estimated net P&L: {rs(s.average_net_pnl_paise)}.")
+            if s.average_risk is not None:
+                parts.append(f"Average observed risk: {s.average_risk:.2f}, across {s.risk_days} days with observations.")
+            if s.average_observed_return_pct is not None:
+                parts.append(f"Average observed-period return: {s.average_observed_return_pct:.2f}% across {s.return_days} days. Periods may be partial days; not cash-flow adjusted.")
+            parts.append(f"Re-entries after losses: {a.reentries}; cooling-off breaches: {a.cooling_off_breaches}, across {a.behavior_days} recorded days.")
+            if a.pace.orders_now is not None:
+                parts.append(f"Orders in the last {a.pace.window_minutes} minutes: {a.pace.orders_now}.")
+            if a.pace.usual_orders is not None:
+                parts.append(f"Usual count in that clock window: {a.pace.usual_orders:.2f} across {a.pace.baseline_days} covered days.")
+            parts.append("These are observations, not predictions or trading advice.")
+        return {"message":" ".join(parts)}
+
     tools = [
+        Tool(ToolSpec("get_risk_profile", "Read the trader's saved risk limits. This tool cannot change settings.", _schema()), profile_read, lambda o:o.get('message','')),
+        Tool(ToolSpec("get_discipline", "Read recorded daily risk, average net returns, trading patterns and order pace. Figures are calculated by code. Respects mindful mode.", _schema()), discipline_read, lambda o:o.get('message','')),
         Tool(ToolSpec("get_funds", "Available cash and used margin.", _schema()), _funds, _render_funds),
         _valued_tool("holdings", lambda b: b.get_holdings(), "positions", lambda b: b.get_positions()),
         _valued_tool("positions", lambda b: b.get_positions(), "holdings", lambda b: b.get_holdings()),

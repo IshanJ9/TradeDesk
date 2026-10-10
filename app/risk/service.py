@@ -10,6 +10,7 @@ from app.broker.base import BrokerTimeout, ReadOnlyBroker
 from app.events import EventHub
 from app.history.store import ActivityStore, DaySummary, trading_day
 from app.risk.engine import orders_a_day
+from app.risk.analytics import build_analytics
 from app.risk.models import ChargesMeter, DisciplineDay, DisciplineReport
 from app.risk.presets import preset
 from app.risk.report import compare_history, demo_days, goal_progress, rounded, score_today
@@ -22,10 +23,12 @@ log = logging.getLogger("tradedesk.risk")
 
 class DisciplineService:
     def __init__(self, broker: ReadOnlyBroker, profiles: ProfileStore, reports: ReportStore,
-                 history: Callable[[], ActivityStore], hub: EventHub, clock: Callable[[], datetime], demo_mode: bool):
+                 history: Callable[[], ActivityStore], hub: EventHub, clock: Callable[[], datetime], demo_mode: bool,
+                 recording_source: str = "unknown"):
         self.broker, self.profiles, self.reports = broker, profiles, reports
         self.history, self.hub, self.clock, self.demo_mode = history, hub, clock, demo_mode
         self._lock = asyncio.Lock()
+        self.recording_source = recording_source
 
     def _days(self) -> list[DisciplineDay]:
         owned = self.reports.days()
@@ -36,7 +39,8 @@ class DisciplineService:
                 continue
             existing = merged.get(d.day)
             components = existing.components if existing and not existing.demo and existing.risk_score == d.risk_score else []
-            merged[d.day] = DisciplineDay(**d.model_dump(), pnl_after_charges=d.pnl-d.charges, components=components)
+            base = existing.model_dump() if existing else {}
+            merged[d.day] = DisciplineDay(**{**base, **d.model_dump(), 'pnl_after_charges':d.pnl-d.charges, 'components':components})
         return sorted(merged.values(), key=lambda d: d.day, reverse=True)
 
     def _seed(self, force: bool = False) -> int:
@@ -68,14 +72,16 @@ class DisciplineService:
             now = self.clock()
             profile = self.profiles.get_profile()
             facts = await compute_today(self.broker, profile or preset("balanced"), now)
+            cooling_until = self.profiles.cooldown_until(profile, facts, now) if profile else None
             score = score_today(facts, profile) if profile else None
-            self._seed()
+            observation = self.reports.observe(facts, score.total if score else None, now, source=self.recording_source)
             summary = DaySummary(day=facts.day, orders=facts.orders_today, turnover=facts.turnover,
                                  pnl=facts.pnl_estimate, charges=facts.charges,
                                  risk_score=score.total if score else None)
             self.history().save_day(summary)
             self.reports.save_day(DisciplineDay(**summary.model_dump(), pnl_after_charges=facts.pnl_after_charges,
-                                               components=score.components if score else []))
+                                               components=score.components if score else [],
+                                               recording_source=self.recording_source, **observation))
             days = self._days()
             comparison = compare_history(days, facts.day)
             goal = self.profiles.get_goal()
@@ -88,6 +94,9 @@ class DisciplineService:
             if comparison.source == "demo":
                 warnings.append("DEMO DATA: the usual-risk comparison uses synthetic days, not your trading history.")
             report = DisciplineReport(profile=profile, today=facts, score=score, history=comparison,
+                                      analytics=build_analytics(days,self.history(),self.reports,now,
+                                                                recording_source=self.recording_source),
+                                      cooling_off_until=cooling_until,
                                       goal=goal_progress(goal, facts.portfolio_value, facts.day) if goal else None,
                                       charges=ChargesMeter(today_paise=facts.charges,
                                           turnover_pct=percentage(facts.charges, facts.turnover),

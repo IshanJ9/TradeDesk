@@ -491,6 +491,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_demo_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/price-jump": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Price Jump */
+        post: operations["price_jump_api_demo_price_jump_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/timeout-next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Timeout Next */
+        post: operations["timeout_next_api_demo_timeout_next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Network */
+        post: operations["network_api_demo_network_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/poison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Poison */
+        post: operations["poison_api_demo_poison_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/losers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Losers */
+        post: operations["losers_api_demo_losers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/anchor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Anchor */
+        post: operations["anchor_api_demo_anchor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/external-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * External Order
+         * @description Places 2 TCS straight on the mock broker, the way 021's own app would: no card, no TradeDesk send log.
+         */
+        post: operations["external_order_api_demo_external_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -558,6 +697,60 @@ export interface components {
             query: string;
             /** Candidates */
             candidates: components["schemas"]["Instrument"][];
+        };
+        /** AnalyticsGroup */
+        AnalyticsGroup: {
+            /** Label */
+            label: string;
+            /** Days */
+            days: number;
+            /** Risk Days */
+            risk_days: number;
+            /** Average Risk */
+            average_risk: number | null;
+            /** Average Net Pnl Paise */
+            average_net_pnl_paise: number | null;
+            /** Total Net Pnl Paise */
+            total_net_pnl_paise: number;
+            /** Profitable Days */
+            profitable_days: number;
+            /** Profitable Day Pct */
+            profitable_day_pct: number | null;
+            /** Return Days */
+            return_days: number;
+            /** Average Observed Return Pct */
+            average_observed_return_pct: number | null;
+        };
+        /** AnalyticsReport */
+        AnalyticsReport: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "real" | "demo" | "none";
+            summary: components["schemas"]["AnalyticsGroup"];
+            /** Weekdays */
+            weekdays: components["schemas"]["AnalyticsGroup"][];
+            /** Risk Bands */
+            risk_bands: components["schemas"]["AnalyticsGroup"][];
+            /** Days */
+            days: components["schemas"]["DisciplineDay"][];
+            /** Symbols */
+            symbols: components["schemas"]["OrderPattern"][];
+            /** Hours */
+            hours: components["schemas"]["OrderPattern"][];
+            /** Pattern Days */
+            pattern_days: number;
+            /** Reentries */
+            reentries: number;
+            /** Cooling Off Breaches */
+            cooling_off_breaches: number;
+            /** Behavior Days */
+            behavior_days: number;
+            pace: components["schemas"]["PaceReport"];
+            /** Notes */
+            notes: string[];
+            today: components["schemas"]["DisciplineDay"] | null;
         };
         /**
          * ApprovalConflict
@@ -812,8 +1005,23 @@ export interface components {
             /** Seeded Days */
             seeded_days: number;
         };
+        /** DemoState */
+        DemoState: {
+            /** Network Down */
+            network_down: boolean;
+            /** Anchor Active */
+            anchor_active: boolean;
+            /** Timeout Armed */
+            timeout_armed: boolean;
+        };
         /** DisciplineDay */
         DisciplineDay: {
+            /**
+             * Recording Source
+             * @default unknown
+             * @enum {string}
+             */
+            recording_source: "unknown" | "mock" | "zerotwoone";
             /**
              * Day
              * Format: date
@@ -835,6 +1043,31 @@ export interface components {
             components: components["schemas"]["ScoreComponent"][];
             /** Demo */
             demo: boolean;
+            /** Average Risk Score */
+            average_risk_score: number | null;
+            /**
+             * Risk Samples
+             * @default 0
+             */
+            risk_samples: number;
+            /** First Observed At */
+            first_observed_at: string | null;
+            /** Last Observed At */
+            last_observed_at: string | null;
+            /** Opening Portfolio Paise */
+            opening_portfolio_paise: number | null;
+            /** Opening Pnl Paise */
+            opening_pnl_paise: number | null;
+            /** Observed Return Pct */
+            observed_return_pct: number | null;
+            /** Reentries */
+            reentries: number | null;
+            /** Cooling Off Breaches */
+            cooling_off_breaches: number | null;
+            /** Intraday Share Pct */
+            intraday_share_pct: number | null;
+            /** Consecutive Losses */
+            consecutive_losses: number | null;
         };
         /** DisciplineReport */
         DisciplineReport: {
@@ -846,6 +1079,9 @@ export interface components {
             charges: components["schemas"]["ChargesMeter"];
             /** Warnings */
             warnings: string[];
+            /** Cooling Off Until */
+            cooling_off_until: string | null;
+            analytics: components["schemas"]["AnalyticsReport"] | null;
         };
         /**
          * DisciplineSummary
@@ -1041,6 +1277,8 @@ export interface components {
             at_or_below_usual: components["schemas"]["ComparisonGroup"];
             /** Days */
             days: components["schemas"]["DisciplineDay"][];
+            /** Timeline */
+            timeline: components["schemas"]["TrendPoint"][];
             /**
              * Note
              * @default Past days don't predict future ones.
@@ -1313,6 +1551,17 @@ export interface components {
             /** Target Order Id */
             target_order_id: string | null;
         };
+        /** OrderPattern */
+        OrderPattern: {
+            /** Label */
+            label: string;
+            /** Orders */
+            orders: number;
+            /** Filled Turnover Paise */
+            filled_turnover_paise: number;
+            /** External Orders */
+            external_orders: number;
+        };
         /**
          * OrderStatus
          * @enum {string}
@@ -1333,6 +1582,22 @@ export interface components {
              */
             type: "order_update";
             order: components["schemas"]["Order"];
+        };
+        /** PaceReport */
+        PaceReport: {
+            /**
+             * Window Minutes
+             * @default 20
+             */
+            window_minutes: number;
+            /** Orders Now */
+            orders_now: number | null;
+            /** Usual Orders */
+            usual_orders: number | null;
+            /** Baseline Days */
+            baseline_days: number;
+            /** Note */
+            note: string;
         };
         /** PendingCreatedEvent */
         PendingCreatedEvent: {
@@ -1681,6 +1946,13 @@ export interface components {
              */
             note: string;
         };
+        /** PriceJump */
+        PriceJump: {
+            /** Symbol */
+            symbol: string;
+            /** Percent */
+            percent: number;
+        };
         /**
          * Product
          * @enum {string}
@@ -1752,10 +2024,26 @@ export interface components {
              */
             hard_stop_on_daily_loss?: boolean;
             /**
+             * Hard Cooling Off
+             * @default false
+             */
+            hard_cooling_off?: boolean;
+            /**
+             * Hard Stop On Goal Loss
+             * @default false
+             */
+            hard_stop_on_goal_loss?: boolean;
+            /**
              * Hide Day Pnl
              * @default false
              */
             hide_day_pnl?: boolean;
+            /** Daily Turnover Limit Paise */
+            daily_turnover_limit_paise?: number | null;
+            /** Charges Turnover Limit Pct */
+            charges_turnover_limit_pct?: number | null;
+            /** Short Window Order Limit */
+            short_window_order_limit?: number | null;
         };
         /** RiskProfile */
         "RiskProfile-Output": {
@@ -1791,10 +2079,26 @@ export interface components {
              */
             hard_stop_on_daily_loss: boolean;
             /**
+             * Hard Cooling Off
+             * @default false
+             */
+            hard_cooling_off: boolean;
+            /**
+             * Hard Stop On Goal Loss
+             * @default false
+             */
+            hard_stop_on_goal_loss: boolean;
+            /**
              * Hide Day Pnl
              * @default false
              */
             hide_day_pnl: boolean;
+            /** Daily Turnover Limit Paise */
+            daily_turnover_limit_paise: number | null;
+            /** Charges Turnover Limit Pct */
+            charges_turnover_limit_pct: number | null;
+            /** Short Window Order Limit */
+            short_window_order_limit: number | null;
         };
         /** RiskScore */
         RiskScore: {
@@ -1937,6 +2241,11 @@ export interface components {
             /** Rules */
             rules: components["schemas"]["Rule"][];
         };
+        /** Switch */
+        Switch: {
+            /** On */
+            on: boolean;
+        };
         /** Tick */
         Tick: {
             /** Instrument Key */
@@ -1961,6 +2270,14 @@ export interface components {
              */
             type: "tick";
             tick: components["schemas"]["Tick"];
+        };
+        /** TimeoutNext */
+        TimeoutNext: {
+            /**
+             * Accepted
+             * @description True: the broker received the order but the reply was lost (the dangerous case)
+             */
+            accepted: boolean;
         };
         /** TodayFacts */
         TodayFacts: {
@@ -2011,6 +2328,11 @@ export interface components {
             closed_trades: components["schemas"]["ClosedTrade"][];
             /** Notes */
             notes: string[];
+            /**
+             * Recent Orders
+             * @default 0
+             */
+            recent_orders: number;
         };
         /**
          * TraceEvent
@@ -2064,6 +2386,20 @@ export interface components {
             text: string;
             /** Seconds */
             seconds: number | null;
+        };
+        /** TrendPoint */
+        TrendPoint: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Cumulative Pnl Paise */
+            cumulative_pnl_paise: number;
+            /** Risk Score */
+            risk_score: number | null;
+            /** Demo */
+            demo: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -2695,7 +3031,9 @@ export interface operations {
     };
     transcribe_api_voice_transcribe_post: {
         parameters: {
-            query?: never;
+            query?: {
+                language?: ("en" | "hi") | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2716,6 +3054,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Transcript"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2992,6 +3339,218 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    status_api_demo_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+        };
+    };
+    price_jump_api_demo_price_jump_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceJump"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    timeout_next_api_demo_timeout_next_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeoutNext"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_api_demo_network_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Switch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poison_api_demo_poison_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+        };
+    };
+    losers_api_demo_losers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+        };
+    };
+    anchor_api_demo_anchor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Switch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    external_order_api_demo_external_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoState"];
+                };
             };
         };
     };

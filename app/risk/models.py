@@ -27,7 +27,12 @@ class RiskProfile(Model):
     intraday_allowed: StrictBool
     hard_order_limit: StrictBool = False
     hard_stop_on_daily_loss: StrictBool = False
+    hard_cooling_off: StrictBool = False
+    hard_stop_on_goal_loss: StrictBool = False
     hide_day_pnl: StrictBool = False
+    daily_turnover_limit_paise: Money | None = None
+    charges_turnover_limit_pct: Annotated[float, Field(strict=True, gt=0, le=100, allow_inf_nan=False)] | None = None
+    short_window_order_limit: PositiveCount | None = None
 
 
 class PresetOption(Model):
@@ -109,6 +114,7 @@ class TodayFacts(Model):
     cooling_off_breaches: int
     closed_trades: list[ClosedTrade]
     notes: list[str]
+    recent_orders: int = 0
 
 
 class ScoreComponent(Model):
@@ -124,6 +130,7 @@ class RiskScore(Model):
 
 
 class DisciplineDay(Model):
+    recording_source: Literal["unknown", "mock", "zerotwoone"] = "unknown"
     day: date
     orders: int
     turnover: int
@@ -133,12 +140,30 @@ class DisciplineDay(Model):
     risk_score: int | None
     components: list[ScoreComponent]
     demo: bool
+    average_risk_score: float | None = None
+    risk_samples: int = 0
+    first_observed_at: datetime | None = None
+    last_observed_at: datetime | None = None
+    opening_portfolio_paise: int | None = None
+    opening_pnl_paise: int | None = None
+    observed_return_pct: float | None = None
+    reentries: int | None = None
+    cooling_off_breaches: int | None = None
+    intraday_share_pct: float | None = None
+    consecutive_losses: int | None = None
 
 
 class ComparisonGroup(Model):
     days: int
     net_pnl: int
     profitable_days: int
+
+
+class TrendPoint(Model):
+    day: date
+    cumulative_pnl_paise: int
+    risk_score: int | None
+    demo: bool
 
 
 class HistoryComparison(Model):
@@ -148,6 +173,7 @@ class HistoryComparison(Model):
     above_usual: ComparisonGroup
     at_or_below_usual: ComparisonGroup
     days: list[DisciplineDay]
+    timeline: list[TrendPoint] = Field(default_factory=list)
     note: str = "Past days don't predict future ones."
 
 
@@ -173,6 +199,51 @@ class ChargesMeter(Model):
     last_30_days_demo_paise: int
 
 
+class AnalyticsGroup(Model):
+    label: str
+    days: int
+    risk_days: int
+    average_risk: float | None
+    average_net_pnl_paise: int | None
+    total_net_pnl_paise: int
+    profitable_days: int
+    profitable_day_pct: float | None
+    return_days: int
+    average_observed_return_pct: float | None
+
+
+class OrderPattern(Model):
+    label: str
+    orders: int
+    filled_turnover_paise: int
+    external_orders: int
+
+
+class PaceReport(Model):
+    window_minutes: int = 20
+    orders_now: int | None
+    usual_orders: float | None
+    baseline_days: int
+    note: str
+
+
+class AnalyticsReport(Model):
+    source: Literal["real", "demo", "none"]
+    summary: AnalyticsGroup
+    weekdays: list[AnalyticsGroup]
+    risk_bands: list[AnalyticsGroup]
+    days: list[DisciplineDay]
+    symbols: list[OrderPattern]
+    hours: list[OrderPattern]
+    pattern_days: int
+    reentries: int
+    cooling_off_breaches: int
+    behavior_days: int
+    pace: PaceReport
+    notes: list[str]
+    today: DisciplineDay | None = None
+
+
 class DisciplineReport(Model):
     profile: RiskProfile | None
     today: TodayFacts
@@ -181,6 +252,8 @@ class DisciplineReport(Model):
     goal: GoalProgress | None
     charges: ChargesMeter
     warnings: list[str]
+    cooling_off_until: datetime | None = None
+    analytics: AnalyticsReport | None = None
 
 
 class DemoSeedResult(Model):
