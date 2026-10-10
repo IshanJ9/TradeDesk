@@ -789,7 +789,52 @@
         ],
         "summary": "Transcribe",
         "operationId": "transcribe_api_voice_transcribe_post",
+        "parameters": [
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "en",
+                    "hi"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcript"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
+          "required": true,
           "content": {
             "audio/webm": {
               "schema": {
@@ -813,19 +858,6 @@
               "schema": {
                 "type": "string",
                 "format": "binary"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Transcript"
-                }
               }
             }
           }
@@ -1141,6 +1173,255 @@
           }
         }
       }
+    },
+    "/api/demo/status": {
+      "get": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_demo_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/price-jump": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Price Jump",
+        "operationId": "price_jump_api_demo_price_jump_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceJump"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/timeout-next": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Timeout Next",
+        "operationId": "timeout_next_api_demo_timeout_next_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeoutNext"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/network": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Network",
+        "operationId": "network_api_demo_network_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Switch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/poison": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Poison",
+        "operationId": "poison_api_demo_poison_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/losers": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Losers",
+        "operationId": "losers_api_demo_losers_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/anchor": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Anchor",
+        "operationId": "anchor_api_demo_anchor_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Switch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/external-order": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "External Order",
+        "description": "Places 2 TCS straight on the mock broker, the way 021's own app would: no card, no TradeDesk send log.",
+        "operationId": "external_order_api_demo_external_order_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoState"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1310,6 +1591,199 @@
         ],
         "title": "AmbiguityCard",
         "description": "'Which Tata?': the trader must pick; the copilot never guesses."
+      },
+      "AnalyticsGroup": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "risk_days": {
+            "type": "integer",
+            "title": "Risk Days"
+          },
+          "average_risk": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Risk"
+          },
+          "average_net_pnl_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Net Pnl Paise"
+          },
+          "total_net_pnl_paise": {
+            "type": "integer",
+            "title": "Total Net Pnl Paise"
+          },
+          "profitable_days": {
+            "type": "integer",
+            "title": "Profitable Days"
+          },
+          "profitable_day_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitable Day Pct"
+          },
+          "return_days": {
+            "type": "integer",
+            "title": "Return Days"
+          },
+          "average_observed_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Observed Return Pct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "days",
+          "risk_days",
+          "average_risk",
+          "average_net_pnl_paise",
+          "total_net_pnl_paise",
+          "profitable_days",
+          "profitable_day_pct",
+          "return_days",
+          "average_observed_return_pct"
+        ],
+        "title": "AnalyticsGroup"
+      },
+      "AnalyticsReport": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "real",
+              "demo",
+              "none"
+            ],
+            "title": "Source"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AnalyticsGroup"
+          },
+          "weekdays": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsGroup"
+            },
+            "type": "array",
+            "title": "Weekdays"
+          },
+          "risk_bands": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsGroup"
+            },
+            "type": "array",
+            "title": "Risk Bands"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DisciplineDay"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "symbols": {
+            "items": {
+              "$ref": "#/components/schemas/OrderPattern"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/OrderPattern"
+            },
+            "type": "array",
+            "title": "Hours"
+          },
+          "pattern_days": {
+            "type": "integer",
+            "title": "Pattern Days"
+          },
+          "reentries": {
+            "type": "integer",
+            "title": "Reentries"
+          },
+          "cooling_off_breaches": {
+            "type": "integer",
+            "title": "Cooling Off Breaches"
+          },
+          "behavior_days": {
+            "type": "integer",
+            "title": "Behavior Days"
+          },
+          "pace": {
+            "$ref": "#/components/schemas/PaceReport"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "today": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisciplineDay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "summary",
+          "weekdays",
+          "risk_bands",
+          "days",
+          "symbols",
+          "hours",
+          "pattern_days",
+          "reentries",
+          "cooling_off_breaches",
+          "behavior_days",
+          "pace",
+          "notes",
+          "today"
+        ],
+        "title": "AnalyticsReport"
       },
       "ApprovalConflict": {
         "properties": {
@@ -1926,8 +2400,41 @@
         ],
         "title": "DemoSeedResult"
       },
+      "DemoState": {
+        "properties": {
+          "network_down": {
+            "type": "boolean",
+            "title": "Network Down"
+          },
+          "anchor_active": {
+            "type": "boolean",
+            "title": "Anchor Active"
+          },
+          "timeout_armed": {
+            "type": "boolean",
+            "title": "Timeout Armed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "network_down",
+          "anchor_active",
+          "timeout_armed"
+        ],
+        "title": "DemoState"
+      },
       "DisciplineDay": {
         "properties": {
+          "recording_source": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "mock",
+              "zerotwoone"
+            ],
+            "title": "Recording Source",
+            "default": "unknown"
+          },
           "day": {
             "type": "string",
             "format": "date",
@@ -1974,11 +2481,129 @@
           "demo": {
             "type": "boolean",
             "title": "Demo"
+          },
+          "average_risk_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Risk Score"
+          },
+          "risk_samples": {
+            "type": "integer",
+            "title": "Risk Samples",
+            "default": 0
+          },
+          "first_observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Observed At"
+          },
+          "last_observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Observed At"
+          },
+          "opening_portfolio_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opening Portfolio Paise"
+          },
+          "opening_pnl_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opening Pnl Paise"
+          },
+          "observed_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Return Pct"
+          },
+          "reentries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reentries"
+          },
+          "cooling_off_breaches": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooling Off Breaches"
+          },
+          "intraday_share_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intraday Share Pct"
+          },
+          "consecutive_losses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consecutive Losses"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "recording_source",
           "day",
           "orders",
           "turnover",
@@ -1987,7 +2612,18 @@
           "pnl_after_charges",
           "risk_score",
           "components",
-          "demo"
+          "demo",
+          "average_risk_score",
+          "risk_samples",
+          "first_observed_at",
+          "last_observed_at",
+          "opening_portfolio_paise",
+          "opening_pnl_paise",
+          "observed_return_pct",
+          "reentries",
+          "cooling_off_breaches",
+          "intraday_share_pct",
+          "consecutive_losses"
         ],
         "title": "DisciplineDay"
       },
@@ -2038,6 +2674,28 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "cooling_off_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooling Off Until"
+          },
+          "analytics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticsReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2049,7 +2707,9 @@
           "history",
           "goal",
           "charges",
-          "warnings"
+          "warnings",
+          "cooling_off_until",
+          "analytics"
         ],
         "title": "DisciplineReport"
       },
@@ -2527,6 +3187,13 @@
             "type": "array",
             "title": "Days"
           },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array",
+            "title": "Timeline"
+          },
           "note": {
             "type": "string",
             "title": "Note",
@@ -2542,6 +3209,7 @@
           "above_usual",
           "at_or_below_usual",
           "days",
+          "timeline",
           "note"
         ],
         "title": "HistoryComparison"
@@ -3348,6 +4016,35 @@
         "title": "OrderIntent",
         "description": "The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."
       },
+      "OrderPattern": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "orders": {
+            "type": "integer",
+            "title": "Orders"
+          },
+          "filled_turnover_paise": {
+            "type": "integer",
+            "title": "Filled Turnover Paise"
+          },
+          "external_orders": {
+            "type": "integer",
+            "title": "External Orders"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "orders",
+          "filled_turnover_paise",
+          "external_orders"
+        ],
+        "title": "OrderPattern"
+      },
       "OrderStatus": {
         "type": "string",
         "enum": [
@@ -3394,6 +4091,55 @@
           "order"
         ],
         "title": "OrderUpdateEvent"
+      },
+      "PaceReport": {
+        "properties": {
+          "window_minutes": {
+            "type": "integer",
+            "title": "Window Minutes",
+            "default": 20
+          },
+          "orders_now": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orders Now"
+          },
+          "usual_orders": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usual Orders"
+          },
+          "baseline_days": {
+            "type": "integer",
+            "title": "Baseline Days"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "window_minutes",
+          "orders_now",
+          "usual_orders",
+          "baseline_days",
+          "note"
+        ],
+        "title": "PaceReport"
       },
       "PendingCreatedEvent": {
         "properties": {
@@ -4272,6 +5018,28 @@
         ],
         "title": "PresetOption"
       },
+      "PriceJump": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Symbol"
+          },
+          "percent": {
+            "type": "number",
+            "maximum": 20.0,
+            "minimum": -20.0,
+            "title": "Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "percent"
+        ],
+        "title": "PriceJump"
+      },
       "Product": {
         "type": "string",
         "enum": [
@@ -4432,10 +5200,59 @@
             "title": "Hard Stop On Daily Loss",
             "default": false
           },
+          "hard_cooling_off": {
+            "type": "boolean",
+            "title": "Hard Cooling Off",
+            "default": false
+          },
+          "hard_stop_on_goal_loss": {
+            "type": "boolean",
+            "title": "Hard Stop On Goal Loss",
+            "default": false
+          },
           "hide_day_pnl": {
             "type": "boolean",
             "title": "Hide Day Pnl",
             "default": false
+          },
+          "daily_turnover_limit_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9007199254740991.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Turnover Limit Paise"
+          },
+          "charges_turnover_limit_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Turnover Limit Pct"
+          },
+          "short_window_order_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Window Order Limit"
           }
         },
         "additionalProperties": false,
@@ -4521,10 +5338,59 @@
             "title": "Hard Stop On Daily Loss",
             "default": false
           },
+          "hard_cooling_off": {
+            "type": "boolean",
+            "title": "Hard Cooling Off",
+            "default": false
+          },
+          "hard_stop_on_goal_loss": {
+            "type": "boolean",
+            "title": "Hard Stop On Goal Loss",
+            "default": false
+          },
           "hide_day_pnl": {
             "type": "boolean",
             "title": "Hide Day Pnl",
             "default": false
+          },
+          "daily_turnover_limit_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9007199254740991.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Turnover Limit Paise"
+          },
+          "charges_turnover_limit_pct": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Turnover Limit Pct"
+          },
+          "short_window_order_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Window Order Limit"
           }
         },
         "additionalProperties": false,
@@ -4541,7 +5407,12 @@
           "intraday_allowed",
           "hard_order_limit",
           "hard_stop_on_daily_loss",
-          "hide_day_pnl"
+          "hard_cooling_off",
+          "hard_stop_on_goal_loss",
+          "hide_day_pnl",
+          "daily_turnover_limit_paise",
+          "charges_turnover_limit_pct",
+          "short_window_order_limit"
         ],
         "title": "RiskProfile"
       },
@@ -4929,6 +5800,19 @@
         ],
         "title": "SnapshotEvent"
       },
+      "Switch": {
+        "properties": {
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "on"
+        ],
+        "title": "Switch"
+      },
       "Tick": {
         "properties": {
           "instrument_key": {
@@ -4985,6 +5869,20 @@
           "tick"
         ],
         "title": "TickEvent"
+      },
+      "TimeoutNext": {
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "description": "True: the broker received the order but the reply was lost (the dangerous case)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accepted"
+        ],
+        "title": "TimeoutNext"
       },
       "TodayFacts": {
         "properties": {
@@ -5089,6 +5987,11 @@
             },
             "type": "array",
             "title": "Notes"
+          },
+          "recent_orders": {
+            "type": "integer",
+            "title": "Recent Orders",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -5113,7 +6016,8 @@
           "reentries",
           "cooling_off_breaches",
           "closed_trades",
-          "notes"
+          "notes",
+          "recent_orders"
         ],
         "title": "TodayFacts"
       },
@@ -5236,6 +6140,43 @@
           "seconds"
         ],
         "title": "Transcript"
+      },
+      "TrendPoint": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "cumulative_pnl_paise": {
+            "type": "integer",
+            "title": "Cumulative Pnl Paise"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "demo": {
+            "type": "boolean",
+            "title": "Demo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "cumulative_pnl_paise",
+          "risk_score",
+          "demo"
+        ],
+        "title": "TrendPoint"
       },
       "ValidationError": {
         "properties": {

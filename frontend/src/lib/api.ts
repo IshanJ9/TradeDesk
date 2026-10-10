@@ -70,7 +70,7 @@ export function voiceError(status: number): string {
 }
 
 export async function transcribe(
-  audio: Blob, signal?: AbortSignal,
+  audio: Blob, signal?: AbortSignal, language?: "en" | "hi",
 ): Promise<Result<import("./types.gen").components["schemas"]["Transcript"]>> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -78,7 +78,7 @@ export async function transcribe(
   if (signal?.aborted) cancel();
   const timer = setTimeout(cancel, 25_000);
   try {
-    const response = await fetch("/api/voice/transcribe", {
+    const response = await fetch(`/api/voice/transcribe${language ? `?language=${language}` : ""}`, {
       method: "POST", body: audio, signal: controller.signal,
       headers: { "Content-Type": audio.type || "application/octet-stream" },
     });

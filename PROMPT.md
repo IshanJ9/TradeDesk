@@ -70,7 +70,7 @@ between any draft and the broker.
 
 **Tools per route:**
 
-- READ: `get_funds`, `get_holdings`, `get_positions`, `get_pnl_summary`, `get_orders`, `get_quote`, `find_instrument`, `get_option_expiries`, `get_option_chain`, `list_rules`, `get_plan_report`
+- READ: `get_risk_profile`, `get_discipline`, `get_funds`, `get_holdings`, `get_positions`, `get_pnl_summary`, `get_orders`, `get_quote`, `find_instrument`, `get_option_expiries`, `get_option_chain`, `list_rules`, `get_plan_report`
 - ACT: all of them (section 4)
 
 With `ORCHESTRATOR=classic` the same prompt, tools and guards run as a plain loop (`app/llm/copilot.py`),
@@ -109,6 +109,8 @@ send or execute an order, and the broker connection the tools use is read-only.
 
 | Tool | What it can do |
 |---|---|
+| `get_risk_profile` | reads the account |
+| `get_discipline` | reads the account |
 | `get_funds` | reads the account |
 | `get_holdings` | reads the account |
 | `get_positions` | reads the account |
@@ -127,6 +129,32 @@ send or execute an order, and the broker connection the tools use is read-only.
 | `exit_losing_positions` | drafts an order card or plan; nothing is sent until the trader approves it |
 | `trim_to_max_weight` | drafts an order card or plan; nothing is sent until the trader approves it |
 | `alert_on_holdings` | saves or cancels a standing rule; a rule only ever alerts or prepares a card, it never sends |
+
+### `get_risk_profile`
+
+Read the trader's saved risk limits. This tool cannot change settings.
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false
+}
+```
+
+### `get_discipline`
+
+Read recorded daily risk, average net returns, trading patterns and order pace. Figures are calculated by code. Respects mindful mode.
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false
+}
+```
 
 ### `get_funds`
 

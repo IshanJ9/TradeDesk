@@ -78,7 +78,9 @@ class Transcriber:
         self._client = client  # injected clients are owned/closed by their caller
         self._limiter = limiter or VoiceLimiter()
 
-    async def transcribe(self, audio: bytes, content_type: str) -> Transcript:
+    async def transcribe(self, audio: bytes, content_type: str, *, language: str | None = None) -> Transcript:
+        if language not in (None, 'en', 'hi'):
+            raise VoiceError(422, "Choose English, Hindi or automatic language detection")
         if content_type not in CONTENT_TYPES:
             raise VoiceError(415, "Use audio/webm, audio/ogg, audio/mp4 or audio/wav")
         if not audio:
@@ -91,12 +93,12 @@ class Transcriber:
 
         try:
             if self._client is not None:
-                response = await self._post(self._client, audio, content_type)
+                response = await self._post(self._client, audio, content_type, language)
             else:
                 # No retries, redirects, or environment proxy credentials. Close the
                 # client per request so this router needs no extra lifespan hooks.
                 async with httpx.AsyncClient(trust_env=False) as client:
-                    response = await self._post(client, audio, content_type)
+                    response = await self._post(client, audio, content_type, language)
             if response.status_code == 429:
                 raise VoiceError(429, RATE_LIMITED)
             if response.status_code != 200:
@@ -118,12 +120,13 @@ class Transcriber:
         except (httpx.HTTPError, ValueError, OverflowError):
             raise VoiceError(502, FAILED) from None
 
-    async def _post(self, client: httpx.AsyncClient, audio: bytes, content_type: str) -> httpx.Response:
+    async def _post(self, client: httpx.AsyncClient, audio: bytes, content_type: str, language: str | None = None) -> httpx.Response:
         return await client.post(
             GROQ_URL,
             headers={"Authorization": f"Bearer {self._key}"},
             files={"file": (f"recording.{CONTENT_TYPES[content_type]}", audio, content_type)},
-            data={"model": self._model, "temperature": "0", "response_format": "json", "prompt": PROMPT},
+            data={"model": self._model, "temperature": "0", "response_format": "json", "prompt": PROMPT,
+                  **({'language':language} if language else {})},
             timeout=20.0,
             follow_redirects=False,
         )

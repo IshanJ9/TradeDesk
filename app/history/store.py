@@ -23,6 +23,7 @@ def trading_day(ts: datetime) -> date:
 
 
 class OrderRecord(Model):
+    recording_source: Literal["unknown", "mock", "zerotwoone"] = "unknown"
     order: Order  # the latest state we have seen
     source: Source
     day: date
@@ -54,14 +55,16 @@ class ActivityStore(Protocol):
 
 
 class InMemoryActivityStore:
-    def __init__(self) -> None:
+    def __init__(self, recording_source: Literal["unknown", "mock", "zerotwoone"] = "unknown") -> None:
+        self.recording_source = recording_source
         self._orders: dict[str, OrderRecord] = {}
         self._days: dict[date, DaySummary] = {}
 
     def record_order(self, order: Order, source: Source) -> None:
         known = self._orders.get(order.order_id)
         self._orders[order.order_id] = OrderRecord(
-            order=order, source=known.source if known else source, day=trading_day(order.created_at)
+            order=order, source=known.source if known else source, day=trading_day(order.created_at),
+            recording_source=self.recording_source
         )
 
     def orders_on(self, day: date) -> list[OrderRecord]:

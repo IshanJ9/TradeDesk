@@ -1,6 +1,6 @@
 """Raw audio in, editable text out. No chat, card or approval side effects."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -27,7 +27,8 @@ async def get_transcriber(request: Request) -> Transcriber:
         }
     },
 )
-async def transcribe(request: Request, service: Annotated[Transcriber, Depends(get_transcriber)]) -> Transcript:
+async def transcribe(request: Request, service: Annotated[Transcriber, Depends(get_transcriber)],
+                     language: Literal['en','hi'] | None = None) -> Transcript:
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in CONTENT_TYPES:
         raise HTTPException(415, "Use audio/webm, audio/ogg, audio/mp4 or audio/wav")
@@ -48,7 +49,7 @@ async def transcribe(request: Request, service: Annotated[Transcriber, Depends(g
             raise HTTPException(413, "The recording must be 5 MB or smaller")
         audio.extend(chunk)
     try:
-        result = await service.transcribe(bytes(audio), content_type)
+        result = await service.transcribe(bytes(audio), content_type, language=language) if language else await service.transcribe(bytes(audio), content_type)
     except VoiceError as exc:
         raise HTTPException(exc.status, exc.message) from None
     # This records metadata only. Even a transcript asking to approve an order

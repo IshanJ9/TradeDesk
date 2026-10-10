@@ -10,6 +10,19 @@ from app.schemas import Exchange, Instrument, Order, OrderStatus, OrderType, Sid
 NOW = datetime(2026, 10, 9, 5, tzinfo=timezone.utc)
 
 
+def test_legacy_order_provenance_is_unknown_until_observed_from_broker():
+    db = Database()
+    # An existing database must not be retroactively labelled real.
+    db.execute("CREATE TABLE activity_orders (order_id TEXT PRIMARY KEY, source TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL)")
+    legacy = order()
+    db.execute("INSERT INTO activity_orders VALUES (?,?,?,?)", (legacy.order_id, 'external', NOW.date().isoformat(), legacy.model_dump_json(round_trip=True)))
+    store = SqliteActivityStore(db, recording_source='zerotwoone')
+    assert store.orders_on(NOW.date())[0].recording_source == 'unknown'
+    store.record_order(legacy, 'external')
+    assert SqliteActivityStore(db).orders_on(NOW.date())[0].recording_source == 'zerotwoone'
+    db.close()
+
+
 def order(oid="1", at=NOW, **updates):
     values = dict(order_id=oid, instrument=Instrument(symbol="INFY", exchange=Exchange.NSE),
                   side=Side.BUY, quantity=10, order_type=OrderType.LIMIT, limit_price=145005,

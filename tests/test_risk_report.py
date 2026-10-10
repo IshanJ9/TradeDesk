@@ -140,15 +140,15 @@ def service():
 async def test_refresh_persists_shared_summary_and_components_without_get_event(service):
     with patch("app.risk.service.compute_today", new_callable=AsyncMock, return_value=FACTS):
         first = await service.refresh()
-        assert first.history.source == "demo"
-        assert any("DEMO DATA" in w for w in first.warnings)
+        assert first.history.source == "none"
+        assert not any("DEMO DATA" in w for w in first.warnings)
         assert service.hub.seq == 0
         assert service.history().days()[0].day == TODAY
         stored = next(d for d in service.reports.days() if d.day == TODAY)
         assert stored.components == first.score.components
         assert not stored.demo
         await service.refresh()
-        assert len(service.reports.days()) == 21  # upsert, not duplicate snapshots
+        assert len(service.reports.days()) == 1  # no automatic synthetic history
         assert service.hub.seq == 0
 
 
@@ -161,7 +161,7 @@ async def test_publish_uses_shared_event_contract(service):
     assert event.type == "discipline_update"
     assert event.summary.order_limit == 6
     assert event.summary.risk_score == report.score.total
-    assert event.summary.average_score is not None
+    assert event.summary.average_score is None  # no fabricated baseline
 
 
 @pytest.mark.asyncio
@@ -275,3 +275,22 @@ def test_profile_save_survives_broker_timeout_but_report_returns_503():
         assert client.put("/api/profile", json=PROFILE.model_dump(mode="json")).status_code == 200
         assert client.get("/api/profile").json()["style"] == "balanced"
         assert client.get("/api/discipline").status_code == 503
+
+
+
+def test_timeline_sums_net_paise_chronologically_and_excludes_demo_and_today():
+    result = compare_history([day(2, pnl=1000, charges=100), day(1, score=None, pnl=-2000, charges=100),
+                              day(0, pnl=999999), day(3, demo=True, pnl=999999)], TODAY)
+    assert [p.day for p in result.timeline] == [TODAY-timedelta(days=2), TODAY-timedelta(days=1)]
+    assert [p.cumulative_pnl_paise for p in result.timeline] == [900, -1200]
+    assert result.timeline[1].risk_score is None
+    assert all(not p.demo for p in result.timeline)
+
+
+def test_timeline_baseline_is_shown_window_not_lifetime():
+    result = compare_history([day(i, pnl=2000, charges=1000) for i in range(1, 35)], TODAY)
+    assert len(result.timeline) == 30
+    assert result.timeline[0].cumulative_pnl_paise == 1000
+    assert result.timeline[-1].cumulative_pnl_paise == 30000
+    assert compare_history([], TODAY).timeline == []
+    assert all(p.demo for p in compare_history(demo_days(TODAY), TODAY).timeline)

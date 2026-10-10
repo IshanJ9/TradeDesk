@@ -383,6 +383,7 @@ def test_no_tool_can_approve_send_or_execute():
         "create_rule", "list_rules", "cancel_rule", "propose_plan", "get_plan_report",
         "exit_losing_positions", "trim_to_max_weight",  # level 4: they only draft a card, like propose_plan
         "alert_on_holdings",  # alerts only notify
+        "get_risk_profile", "get_discipline",  # read-only risk reports
     }
     assert not {n for n in names if any(w in n for w in ("approve", "send", "execute", "place", "confirm", "cancel_order"))}
     from app.llm.tools import ToolContext

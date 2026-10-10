@@ -82,3 +82,36 @@ def test_the_real_guard_counts_plan_steps_toward_orders_a_day(env):
     assert c.put("/api/profile", json=profile).status_code == 200
     reply = c.post("/api/plans/preview", json=PLAN).json()
     assert reply["cards"][0]["type"] == "notice" and reply["text"].startswith("Step 2:")
+
+
+@pytest.mark.parametrize("flag", ["hard_cooling_off", "hard_stop_on_goal_loss"])
+def test_new_stops_block_plan_at_preview_and_after_preview(env, flag):
+    from datetime import timedelta
+    from unittest.mock import AsyncMock, patch
+    from app.risk.models import Goal
+    from app.risk.presets import preset
+    from app.risk.today import calculate_today
+    from app.schemas import Funds
+
+    c, broker = env
+    profile = preset("balanced").model_copy(update={flag: True})
+    state = c.app.state
+    state.profile_store.save_profile(profile)
+    state.profile_store.save_goal(Goal(target_paise=10000, start_date=NOW.date(),
+        end_date=NOW.date()+timedelta(days=7), start_value=1000000, max_acceptable_loss_paise=100000))
+    safe = calculate_today(orders=[], holdings=[], positions=[], funds=Funds(available_cash=1000000),
+                           profile=profile, now=NOW)
+    blocked = safe.model_copy(update={"portfolio_value": 900000, "consecutive_losses": 3, "last_loss_at": NOW})
+    with patch("app.risk.engine.compute_today", new_callable=AsyncMock) as compute:
+        compute.return_value = blocked
+        preview = c.post("/api/plans/preview", json=PLAN).json()
+        assert preview["cards"][0]["type"] == "notice"
+        # Start a separate approval-time scenario, clearing the first latched pause.
+        state.profile_store.save_profile(preset("balanced"))
+        state.profile_store.save_profile(profile)
+        compute.return_value = safe
+        plan = c.post("/api/plans/preview", json=PLAN).json()["cards"][0]["plan"]
+        compute.return_value = blocked
+        reply = c.post(f"/api/plans/{plan['id']}/approve", json={"plan_hash": plan["plan_hash"]})
+        assert reply.status_code == 409 and reply.json()["code"] == "BLOCKED"
+        assert broker._orders == {}

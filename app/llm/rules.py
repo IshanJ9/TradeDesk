@@ -101,6 +101,10 @@ class RuleBasedLLM:
         t = raw.lower().rstrip("?.! ")
         if not t:
             return []
+        if re.search(r"\b(?:risk profile|my limits|my profile)\b", t) and not re.search(r"\b(?:buy|sell|cancel|modify)\b",t):
+            return [_call("get_risk_profile")]
+        if re.search(r"\b(?:discipline|trading patterns?|average (?:risk|returns?|pnl)|trading pace)\b",t) and not re.search(r"\b(?:buy|sell|cancel|modify)\b",t):
+            return [_call("get_discipline")]
 
         if m := re.match(r"(?:please\s+)?cancel\s+(?:my\s+)?(?:rule|alert|instruction)\s+(?P<id>r-[a-z0-9]+)$", t):
             return [_call("cancel_rule", rule_id=m["id"])]

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { legLine, legStatusWord, STATE_NOTE } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
-import { crossesOwnLimit } from "../lib/limits";
+import { crossesOwnLimit, riskAcknowledged } from "../lib/limits";
 import type { Note } from "../lib/store";
 import type { Plan, PlanLegResult, PlanReport } from "../lib/types";
 import { Fingerprint } from "./Fingerprint";
@@ -60,7 +60,9 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
   const running = plan.state === "APPROVED" || plan.state === "RUNNING";
   const n = plan.legs.length;
   const ownLimit = crossesOwnLimit(plan.legs.flatMap((leg) => leg.order.warnings)); // a tick before Approve (lib/limits.ts)
-  const [acknowledged, setAcknowledged] = useState(false);
+  const ackKey = JSON.stringify([plan.id, plan.plan_hash, plan.legs.flatMap(leg => leg.order.warnings)]);
+  const [ack, setAck] = useState({ key: "", text: "" });
+  const acknowledged = ack.key === ackKey && riskAcknowledged(ack.text);
 
   return (
     <article id={`card-${plan.id}`} className="ticket" data-tone={note?.tone === "warn" ? "warn" : undefined} data-resolved={!waiting} aria-label={plan.title}>
@@ -104,9 +106,9 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
               : "If a step fails, the others are still tried, except any that need its money."}
           </p>
           {ownLimit && (
-            <label className="mx-4 mt-2 flex items-center gap-2 text-[13px] text-ink">
-              <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
-              I've read this. It crosses a limit I set myself.
+            <label className="mx-4 mt-2 flex flex-col items-start gap-2 text-[13px] text-ink">
+              <input aria-label="Type I UNDERSTAND to acknowledge your risk warnings" autoComplete="off" className="min-w-0 rounded border border-strong bg-surface px-2 py-1" value={ack.key === ackKey ? ack.text : ""} onChange={e => setAck({ key: ackKey, text: e.target.value })} />
+              Type I UNDERSTAND. This crosses a limit you set.
             </label>
           )}
           <div className="mt-3"><div className="perf" /></div>

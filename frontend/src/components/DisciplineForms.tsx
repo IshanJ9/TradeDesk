@@ -39,16 +39,30 @@ export function ProfileForm({ initial, saved, cancel }: { initial: Profile; save
           onChange={e => setValue({ ...value, style: "custom", [key]: e.target.valueAsNumber })} />
       </Field>)}
     </fieldset>
+    <fieldset disabled={busy} className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+      <Field label="Daily filled turnover allowance (₹; blank disables)"><input className={input} type="number" min="0.01" step="0.01"
+        value={value.daily_turnover_limit_paise == null ? "" : value.daily_turnover_limit_paise / 100}
+        onChange={e => setValue({ ...value, daily_turnover_limit_paise: e.target.value === "" ? null : Math.round(e.target.valueAsNumber * 100) })} /></Field>
+      <Field label="Charges / filled turnover warning (%; blank disables)"><input className={input} type="number" min="0.0001" max="100" step="any"
+        value={value.charges_turnover_limit_pct ?? ""} onChange={e => setValue({ ...value, charges_turnover_limit_pct: e.target.value === "" ? null : e.target.valueAsNumber })} /></Field>
+      <Field label="Orders in 20 minutes (blank disables warning)"><input className={input} type="number" min="1" max="100000" step="1"
+        value={value.short_window_order_limit ?? ""} onChange={e => setValue({ ...value, short_window_order_limit: e.target.value === "" ? null : e.target.valueAsNumber })} /></Field>
+    </fieldset>
     <fieldset disabled={busy} className="space-y-3 text-sm">
       {([ ["intraday_allowed", "Allow intraday (MIS) trading in my profile"],
           ["hard_order_limit", "Block new orders above my daily order limit"],
           ["hard_stop_on_daily_loss", "Block new orders when my daily loss limit is reached"],
+          ["hard_cooling_off", "Block new orders during my cooling-off window"],
+          ["hard_stop_on_goal_loss", "Block new orders when my goal maximum loss is reached"],
           ["hide_day_pnl", "Mindful mode: hide today’s P&L in Discipline"] ] as const).map(([key, label]) =>
         <label key={key} className="flex items-start gap-2"><input type="checkbox" checked={value[key]}
           onChange={e => setValue({ ...value, [key]: e.target.checked })} className="mt-1 shrink-0" />{label}</label>)}
     </fieldset>
-    <Banner tone="info">Limits normally show warnings. The two “Block new orders” switches also prevent approval.
-      Cancellations remain available; modifications receive warnings only. Plan legs and orders sent from the broker’s own app aren’t blocked here.</Banner>
+    <Banner tone="info">Limits normally show warnings. The “Block new orders” switches also prevent approval.
+      Cancellations remain available; modifications receive warnings only. Plan legs are checked too.
+      Orders sent from the broker's own app cannot be blocked here. The goal stop uses the decline from
+      your saved baseline during the goal dates; deposits and withdrawals affect this value.
+      An active cooling-off pause is not shortened by editing its duration; switch it off to clear it.</Banner>
     {error && <Banner tone="error" role="alert">{error}</Banner>}
     <div className="flex flex-wrap gap-2"><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}</Button>
       {cancel && <Button type="button" variant="plain" disabled={busy} onClick={cancel}>Cancel</Button>}</div>

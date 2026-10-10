@@ -8,6 +8,9 @@ export function MicButton({ disabled, onTranscript, onActive }: {
 }) {
   const [state, setState] = useState<VoiceState>({ phase: "idle", seconds: 0 });
   const [mime, setMime] = useState<string>();
+  const [language, setLanguage] = useState<"auto" | "en" | "hi">("auto");
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const callbacks = useRef({ onTranscript, onActive });
   callbacks.current = { onTranscript, onActive };
   const recording = useRef<VoiceRecording | null>(null);
@@ -20,7 +23,7 @@ export function MicButton({ disabled, onTranscript, onActive }: {
         setState(next);
         callbacks.current.onActive(["requesting", "recording", "transcribing"].includes(next.phase));
       },
-      (text) => callbacks.current.onTranscript(text), transcribe,
+      (text) => callbacks.current.onTranscript(text), (audio, signal) => transcribe(audio, signal, languageRef.current === "auto" ? undefined : languageRef.current),
     );
     recording.current = controller;
     return () => { controller.cancel(); };
@@ -32,6 +35,11 @@ export function MicButton({ disabled, onTranscript, onActive }: {
 
   return (
     <div className="contents">
+      <div className="flex flex-col items-center gap-1">
+      <select aria-label="Voice language" value={language} disabled={waiting || recordingNow}
+        onChange={e => setLanguage(e.target.value as typeof language)} className="min-w-0 max-w-24 rounded border border-line bg-surface px-1 text-xs text-ink">
+        <option value="auto">Auto voice</option><option value="en">English</option><option value="hi">Hindi</option>
+      </select>
       <span title={label}>
         <Button type="button" aria-label={label} aria-pressed={recordingNow}
           aria-describedby="voice-status" disabled={!mime || state.denied || waiting || (disabled && !recordingNow)}
@@ -45,6 +53,7 @@ export function MicButton({ disabled, onTranscript, onActive }: {
           {recordingNow && <span className="num text-xs" aria-hidden="true">{state.seconds}s</span>}
         </Button>
       </span>
+      </div>
       <p id="voice-status" role="status" aria-live="polite" className="sr-only">
         {state.error || (recordingNow ? "Recording. Stops automatically after 30 seconds." : waiting ? label : "Voice ready. Recording uses Groq transcription.")}
       </p>

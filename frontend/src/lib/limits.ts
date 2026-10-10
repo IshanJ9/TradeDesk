@@ -4,3 +4,7 @@
 export function crossesOwnLimit(warnings: readonly string[]): boolean {
   return warnings.some((w) => w.startsWith("You set") || w.startsWith("You switched"));
 }
+
+export function riskAcknowledged(value: string): boolean {
+  return value.trim() === "I UNDERSTAND";
+}
