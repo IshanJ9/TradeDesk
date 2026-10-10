@@ -48,6 +48,12 @@ class Settings:
     reconcile_grace_seconds: float = 120.0
     timeout_reconcile_attempts: int = 3  # order-book lookups right after a timed-out send
     timeout_reconcile_delay: float = 0.2  # seconds between those lookups
+    # Accounts and sessions (app/auth/)
+    allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")  # browsers allowed to call the API
+    cookie_secure: bool | None = None  # None = Secure unless served from this machine; COOKIE_SECURE=true/false overrides
+    session_idle_hours: float = 12.0
+    session_absolute_days: float = 7.0
+    owner_email: str = ""  # the account that inherits data saved before accounts existed (default: the first to register)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -77,4 +83,10 @@ class Settings:
             max_order_value_rupees=int(env.get("MAX_ORDER_VALUE_RUPEES", "10000000")),
             max_fo_lots_per_order=max(1, int(env.get("MAX_FO_LOTS_PER_ORDER", "2"))),
             allow_unlimited_risk_fo=env.get("ALLOW_UNLIMITED_RISK_FO", "").strip().lower() in ("1", "true", "yes", "on"),
+            allowed_origins=tuple(o.strip().rstrip("/") for o in env.get("TRADEDESK_ORIGINS", "").split(",") if o.strip())
+            or cls.allowed_origins,
+            cookie_secure=None if not env.get("COOKIE_SECURE", "").strip() else _flag("COOKIE_SECURE", True),
+            session_idle_hours=float(env.get("SESSION_IDLE_HOURS", "12")),
+            session_absolute_days=float(env.get("SESSION_ABSOLUTE_DAYS", "7")),
+            owner_email=env.get("TRADEDESK_OWNER_EMAIL", "").strip().lower(),
         )

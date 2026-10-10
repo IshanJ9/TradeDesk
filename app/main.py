@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,10 @@ from app.account import build_account
 from app.api import rest, ws_router
 from app.api_models import AccountUpdateEvent, TickEvent
 from app.audit import AuditLog
+from app.auth.api import private as auth_private, public as auth_public
+from app.auth.ratelimit import LoginLimiter
+from app.auth.service import AuthService
+from app.auth.store import AuthStore
 from app.broker.base import BrokerAdapter, BrokerTimeout
 from app.broker.mock import MockBroker
 from app.config import Settings
@@ -173,6 +177,11 @@ def create_app(
     )
     app.state.settings = settings
     app.state.clock = clock
+    app.state.auth = AuthService(
+        AuthStore(db), clock, LoginLimiter(clock),
+        idle_timeout=timedelta(hours=settings.session_idle_hours),
+        absolute_timeout=timedelta(days=settings.session_absolute_days),
+    )
     app.state.broker = the_broker
     app.state.hub = hub
     app.state.order_publisher = OrderPublisher(the_broker, hub)  # one "order changed" stream for the screen
@@ -236,9 +245,10 @@ def create_app(
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vite dev server
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["*"],
+        allow_origins=list(settings.allowed_origins),  # the Vite dev server by default; the cookie needs credentials
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
     )
 
     @app.exception_handler(BrokerTimeout)
@@ -249,6 +259,12 @@ def create_app(
     async def assistant_unavailable(_: Request, exc: LLMUnavailable):
         return JSONResponse(status_code=503, content={"detail": "assistant unavailable"})
 
+    @app.get("/api/health", tags=["health"])
+    async def health():
+        return {"status": "ok"}
+
+    app.include_router(auth_public)
+    app.include_router(auth_private)
     app.include_router(rest)
     app.include_router(ws_router)
     app.include_router(voice_router)  # voice-live: editable text, never an order action
