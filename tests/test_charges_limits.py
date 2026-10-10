@@ -116,17 +116,18 @@ def test_value_limit_is_one_crore():
     assert err.reason is RejectionReason.VALUE_LIMIT and "1,00,00,000" in err.message
 
 
-def test_shares_and_options_may_be_traded_but_not_an_index_or_futures():
+def test_shares_options_and_futures_may_be_traded_but_not_an_index():
     check_instrument(inst(), LIMITS)
     index = inst(symbol="NIFTY", series="INDEX")
-    future = inst(symbol="NIFTY26OCTFUT", series="FUT")
+    future = inst(symbol="NIFTY261027FUT", series="FUT", underlying="NIFTY", expiry=date(2026, 10, 27), lot_size=75)
     option = inst(
         symbol="NIFTY261013024500CE", series="OPT", option_type=OptionType.CE, expiry=date(2026, 10, 13),
         strike=paise(24500), lot_size=75,
     )
     check_instrument(option, LIMITS)  # buying it, or selling one held: the builder enforces which
     assert blocked(check_instrument, index, LIMITS).reason is RejectionReason.SEGMENT_NOT_ALLOWED
-    assert blocked(check_instrument, future, LIMITS).reason is RejectionReason.SEGMENT_NOT_ALLOWED
+    check_instrument(future, LIMITS)  # sized, capped and warned about by the builder
+    assert blocked(check_instrument, future, HardLimits(allow_futures=False)).reason is RejectionReason.SEGMENT_NOT_ALLOWED
     no_options = HardLimits(allow_options=False)
     assert blocked(check_instrument, option, no_options).reason is RejectionReason.SEGMENT_NOT_ALLOWED
 

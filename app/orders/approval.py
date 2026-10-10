@@ -24,7 +24,7 @@ from app.config import Settings
 from app.events import EventHub
 from app.orders.builder import OrderBuilder
 from app.orders.executor import DuplicateExecution, Executor
-from app.orders.limits import OrderBlocked, check_instrument, check_locks
+from app.orders.limits import HIGH_RISK_PAUSED, OrderBlocked, check_instrument, check_locks, crosses_own_limit
 from app.pending import PendingStore
 from app.risk.guard import NoRiskGuard, RiskGuard
 from app.schemas import (
@@ -35,6 +35,9 @@ from app.schemas import (
     PendingState,
     fmt_rupees,
 )
+
+
+RISK_ACK_TEXT = "I UNDERSTAND"  # typed by the trader on cards that can lose more than they put in
 
 
 class ApprovalNotFound(Exception):
@@ -76,7 +79,7 @@ class ApprovalService:
 
     # ------------------------------------------------------------------ #
 
-    async def approve(self, pending_id: str, order_hash: str) -> ExecutionResult:
+    async def approve(self, pending_id: str, order_hash: str, acknowledgment: str | None = None) -> ExecutionResult:
         p = self._store.get(pending_id)
         if p is None:
             raise ApprovalNotFound(pending_id)
@@ -92,6 +95,10 @@ class ApprovalService:
                 "What you approved doesn't match this card, so it has been cancelled. Nothing was sent.",
                 PendingState.VOID,
             )
+
+        if p.risk_ack_required and (acknowledgment or "").strip() != RISK_ACK_TEXT:
+            # the card stays open: nothing is claimed, nothing is sent, the trader can type it and try again
+            self._refuse(p, "ACK_REQUIRED", f"This order needs you to type {RISK_ACK_TEXT} first. Nothing was sent.")
 
         approved = self._store.put(p.transition(PendingState.APPROVED))  # claim: no await above this line
         self._audit.record(
@@ -145,6 +152,12 @@ class ApprovalService:
         if verdict.block:
             self._audit.record(AuditKind.LIMIT_BLOCKED, "system", verdict.block, subject_id=p.id)
             self._void(p, verdict.block)
+        if p.risk_ack_required:
+            # the "approve" stage only reports hard stops, so ask again as a preview to see the trader's own warnings
+            soft = await self._risk.check(p, "preview")
+            if crosses_own_limit(soft.warnings):
+                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", HIGH_RISK_PAUSED, subject_id=p.id)
+                self._void(p, HIGH_RISK_PAUSED)
 
         if p.action in (OrderAction.MODIFY, OrderAction.CANCEL):
             target = next((o for o in await self._broker.get_orders() if o.order_id == p.target_order_id), None)

@@ -80,7 +80,7 @@ def calculate_today(*, orders: list[Order], holdings: list[Holding],
         intraday += value if order.product == Product.MIS else 0
         charges += compute_charges(exchange=order.instrument.exchange, side=order.side,
                                    product=order.product, quantity=qty, price=price,
-                                   option=order.instrument.is_option).total
+                                   option=order.instrument.is_option, future=order.instrument.is_future).total
         inventory = lots[(key, order.product)]
         sign = 1 if order.side == Side.BUY else -1
         remaining, matched, realised = qty, 0, 0

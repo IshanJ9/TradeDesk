@@ -27,6 +27,7 @@ from app.plans.service import PlanAssistant
 from app.rules.service import RuleNotActive, RuleNotFound, RuleService
 from app.schemas import (
     Model,
+    FutureRef,
     OptionRef,
     OptionType,
     OrderAction,
@@ -52,6 +53,7 @@ class ToolContext:
     plans: PlanAssistant  # can draft a plan card and read reports; it cannot approve or run anything
     clock: Callable[[], datetime]
     user_texts: list[str] = field(default_factory=list)  # what the trader actually wrote (this turn and recent ones)
+    via_voice: bool = False  # this turn's text was dictated, so high-risk orders are refused in code
     findings: list[Finding] = field(default_factory=list)
     reply_cards: list[Card] = field(default_factory=list)
     proposal_texts: list[str] = field(default_factory=list)
@@ -477,11 +479,21 @@ class ProposeOrderInput(Model):
         "nearest expiry, which the card states",
     )
     lots: int | None = Field(
-        default=None, gt=0, description="Options only: number of lots ('1 lot'). Use this instead of quantity; the code "
-        "multiplies by the contract's lot size",
+        default=None, gt=0, description="Options and futures only: number of lots ('1 lot'). Use this instead of "
+        "quantity; the code multiplies by the contract's lot size",
+    )
+    # ---- futures contracts ----
+    future_underlying: str | None = Field(
+        default=None, max_length=20, description="For a futures contract instead of a stock: the index or stock, e.g. "
+        "'NIFTY' ('buy 1 lot NIFTY futures'). Leave instrument empty. Use expiry only if the trader named a date",
     )
 
     def to_intent(self) -> OrderIntent:
+        future = None
+        if self.future_underlying:
+            if self.option_underlying or self.option_type or self.strike_rupees is not None:
+                raise ValueError("a futures contract has no strike or option type")
+            future = FutureRef(underlying=self.future_underlying, expiry=self.expiry)
         option = None
         if self.option_underlying or self.option_type or self.strike_rupees is not None:
             if not (self.option_underlying and self.option_type and self.strike_rupees is not None):
@@ -490,8 +502,9 @@ class ProposeOrderInput(Model):
                                option_type=self.option_type, expiry=self.expiry)
         return OrderIntent(
             action=self.action,
-            instrument_ref=None if option else self.instrument,
+            instrument_ref=None if (option or future) else self.instrument,
             option=option,
+            future=future,
             lots=self.lots,
             side=self.side,
             quantity=self.quantity,
@@ -535,7 +548,7 @@ async def _propose(ctx: ToolContext, args: dict) -> dict:
             if problem is not None:
                 return problem
             parsed = parsed.model_copy(update={"target_order_id": found})
-        intent = parsed.to_intent()
+        intent = parsed.to_intent().model_copy(update={"via_voice": ctx.via_voice})  # set by code, never by the model
     except ValidationError as exc:
         errors = [f"{'.'.join(map(str, e['loc'])) or 'input'}: {e['msg']}" for e in exc.errors()]
         return {"status": "invalid", "errors": errors, "note": "Fix the arguments, or ask the trader for what is missing."}
@@ -833,7 +846,8 @@ def build_tools(*, profile_reader=None, discipline_reader=None) -> dict[str, Too
                 "click Approve on the card. Use it for every buy, sell, modify or cancel request. If the stock "
                 "name is ambiguous it returns candidates: ask the trader which one; never guess. For an option "
                 "('buy 1 lot NIFTY 24500 CE') give option_underlying, strike_rupees, option_type and lots. Options "
-                "can only be bought, or sold if already held; selling an option not held is refused.",
+                "can be bought or sold; selling more than the trader holds is writing, which the code caps and warns about on the card. For a futures contract "
+                "('buy 1 lot NIFTY futures', 'sell 2 lots BANKNIFTY futures') give future_underlying and lots.",
                 ProposeOrderInput.model_json_schema(),
             ),
             _propose,

@@ -29,22 +29,41 @@ class HardLimits:
     max_quantity: int = 100_000  # 021's published limit
     max_order_value: int = paise(10_000_000)  # Rs 1 crore, in paise (021's published limit)
     allowed_series: frozenset[str] = frozenset({"EQ", "BE"})  # equity; no futures, no indices
-    allow_options: bool = True  # buying options and selling ones held (no writing: the builder enforces it)
+    allow_options: bool = True  # buying options, selling ones held, and writing (the builder adds the extra checks)
+    allow_futures: bool = True
+    max_fo_lots: int = 2  # new futures / written-option exposure per order, in lots; closing is never capped
 
     @classmethod
     def from_settings(cls, s: Settings) -> "HardLimits":
-        return cls(max_quantity=s.max_order_quantity, max_order_value=paise(s.max_order_value_rupees))
+        return cls(max_quantity=s.max_order_quantity, max_order_value=paise(s.max_order_value_rupees),
+                   max_fo_lots=s.max_fo_lots_per_order)
 
 
 def check_instrument(inst: Instrument, limits: HardLimits) -> None:
-    allowed = (inst.is_option and limits.allow_options) or (not inst.is_option and inst.series in limits.allowed_series)
+    allowed = (
+        (inst.is_option and limits.allow_options)
+        or (inst.is_future and limits.allow_futures)
+        or (not inst.is_derivative and inst.series in limits.allowed_series)
+    )
     if not allowed:
         raise OrderBlocked(
             RejectionReason.SEGMENT_NOT_ALLOWED,
-            f"{inst.symbol} can't be traded here: only shares and buying options are supported.",
+            f"{inst.symbol} can't be traded here: only shares, options and futures are supported.",
         )
     if inst.suspended:
         raise OrderBlocked(RejectionReason.SUSPENDED, f"{inst.symbol} is suspended and can't be traded right now.")
+
+
+# app/risk words every warning about the trader's own limits this way ("You set 5 orders a day; ...").
+_OWN_LIMIT_PREFIXES = ("You set", "You switched")
+HIGH_RISK_PAUSED = (
+    "You are past a limit you set for yourself, so new futures and short options are paused. "
+    "Closing a position you already hold is still allowed."
+)
+
+
+def crosses_own_limit(warnings) -> bool:
+    return any(w.startswith(_OWN_LIMIT_PREFIXES) for w in warnings)
 
 
 def check_size(quantity: int, price: int, limits: HardLimits) -> None:

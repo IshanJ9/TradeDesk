@@ -98,6 +98,7 @@ export function describeConflict(c: S["ApprovalConflict"]): string {
     case "EXPIRED":
     case "NOT_PENDING":
     case "BLOCKED":
+    case "ACK_REQUIRED":
       return c.message;
   }
 }

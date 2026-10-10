@@ -429,7 +429,7 @@ class PlanService:
         source = sent[leg.proceeds_from_leg]
         sale = compute_charges(
             exchange=source.instrument.exchange, side=Side.SELL, product=source.product,
-            quantity=source.filled_quantity, price=source.avg_fill_price, option=source.instrument.is_option,
+            quantity=source.filled_quantity, price=source.avg_fill_price, option=source.instrument.is_option, future=source.instrument.is_future,
         )
         net = source.filled_quantity * source.avg_fill_price - sale.total
         price = leg.order.limit_price or leg.order.protection_price

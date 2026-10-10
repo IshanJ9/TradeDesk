@@ -97,6 +97,7 @@ def test_an_option_position_is_read_and_only_that_much_can_be_sold(setup, fake, 
     assert (pos.quantity, pos.product, pos.avg_price, pos.ltp) == (75, Product.NRML, 12000, 12500)
 
     sell = client.post("/api/orders/preview", json=option(side="SELL")).json()
-    assert sell["cards"][0]["type"] == "pending_order"
-    writing = client.post("/api/orders/preview", json=option(side="SELL", lots=2)).json()
-    assert writing["cards"][0]["level"] == "blocked" and "writing" in writing["text"]
+    assert sell["cards"][0]["type"] == "pending_order" and sell["cards"][0]["pending"]["risk_ack_required"] is False
+    beyond = client.post("/api/orders/preview", json=option(side="SELL", lots=2)).json()  # 1 lot closes, 1 lot writes
+    p = beyond["cards"][0]["pending"]
+    assert p["risk_ack_required"] is True and "against your 75 units long" in " ".join(p["warnings"])

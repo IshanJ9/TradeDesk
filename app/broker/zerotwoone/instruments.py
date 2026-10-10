@@ -71,6 +71,10 @@ def option_symbol(underlying: str, expiry: date, strike_paise: int, kind: Option
     return f"{underlying}{expiry:%y%m%d}{strike}{kind.value}"
 
 
+def future_symbol(underlying: str, expiry: date) -> str:
+    return f"{underlying}{expiry:%y%m%d}FUT"
+
+
 def _int(value: str, default: int = 0) -> int:
     try:
         return int(value)
@@ -85,6 +89,7 @@ class InstrumentMaster:
         option_rows: list[dict],
         index_tokens: dict[tuple[str, int], str],
         today: date | None = None,
+        future_rows: list[dict] | None = None,
     ):
         self._today = today
         self._by_key: dict[str, Listing] = {}
@@ -100,6 +105,11 @@ class InstrumentMaster:
         self._option_by_key: dict[str, Listing] = {}
         self._option_by_token: dict[tuple[str, int], Listing] = {}
         self._option_row_by_token: dict[tuple[str, int], dict] | None = None
+        # futures are few (a few hundred), so they are built up front; found by key and token like options
+        self._futures: dict[str, list[Listing]] = {}
+        for row in future_rows or []:
+            if (made := self._future_listing(row)) is not None:
+                self._futures.setdefault(made.instrument.underlying, []).append(made)
 
     # ---- building ---------------------------------------------------------------------------- #
 
@@ -107,6 +117,7 @@ class InstrumentMaster:
     def from_csv(cls, text: str, today: date | None = None) -> "InstrumentMaster":
         listings: list[Listing] = []
         option_rows: list[dict] = []
+        future_rows: list[dict] = []
         index_tokens: dict[tuple[str, int], str] = {}
         skipped = 0
         for row in csv.DictReader(io.StringIO(text)):
@@ -118,6 +129,9 @@ class InstrumentMaster:
                 continue
             if kind in ("OPTIDX", "OPTSTK") and exch in ("NSEFO", "BSEEQD"):
                 option_rows.append(row)
+                continue
+            if kind in ("FUTIDX", "FUTSTK") and exch == "NSEFO":
+                future_rows.append(row)
                 continue
             is_stock = kind == "STK" and exch in EXCHANGE_BY_FILE_NAME
             if not is_stock:
@@ -155,7 +169,7 @@ class InstrumentMaster:
                 index_tokens[(u_exch, u_token)] = name
         if skipped:
             log.info("skipped %d unusable rows in the instrument file", skipped)
-        return cls(listings, option_rows, index_tokens, today)
+        return cls(listings, option_rows, index_tokens, today, future_rows)
 
     # ---- lookups ------------------------------------------------------------------------------ #
 
@@ -242,6 +256,39 @@ class InstrumentMaster:
         self._option_by_key.setdefault(inst.key, listing)
         self._option_by_token[(listing.exchange, token)] = listing
         return listing
+
+    def _future_listing(self, row: dict) -> Listing | None:
+        """One futures row -> a Listing, registered so it is found again by key and by token."""
+        token = _int(row["token"], -1)
+        underlying = (row.get("symbol") or "").strip().upper().replace(" ", "")
+        expiry, lot = expiry_to_date(_int(row["expiry"]), self._today), max(_int(row["board_lot_quantity"], 1), 1)
+        if expiry is None or token < 0 or not underlying:
+            return None
+        low, high = _int(row.get("lower_circuit", "")), _int(row.get("upper_circuit", ""))
+        try:
+            inst = Instrument(
+                symbol=future_symbol(underlying, expiry), exchange=Exchange.NSE, series="FUT",
+                tick_size=_int(row.get("ticksize", "")) or 5, underlying=underlying, lot_size=lot, expiry=expiry,
+                price_band_low=low if low > 0 and high > 0 else None,
+                price_band_high=high if low > 0 and high > 0 else None,
+            )
+        except ValidationError:
+            return None
+        listing = Listing(token, row["exchange"].strip(), inst, lot, _int(row.get("freeze_quantity", "")))
+        self._option_by_key.setdefault(inst.key, listing)
+        self._option_by_token[(listing.exchange, token)] = listing
+        return listing
+
+    def future_expiries(self, underlying: str, today: date | None = None) -> list[date]:
+        found = {f.instrument.expiry for f in self._futures.get(underlying.upper(), [])}
+        return sorted(d for d in found if today is None or d >= today)
+
+    def find_future(self, underlying: str, expiry: date | None, today: date) -> Listing | None:
+        """The exact futures contract; `expiry` None = the nearest one from today."""
+        chosen = expiry or next(iter(self.future_expiries(underlying, today)), None)
+        if chosen is None or chosen < today:
+            return None
+        return next((f for f in self._futures.get(underlying.upper(), []) if f.instrument.expiry == chosen), None)
 
     def _options(self, underlying: str) -> list[Listing]:
         underlying = underlying.upper()

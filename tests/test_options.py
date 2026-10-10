@@ -1,5 +1,5 @@
-"""Options, end to end on the mock broker: buy calls/puts in whole lots, sell only what is held (never write an option),
-021's Options charges, and the factual risk notice on every buy card."""
+"""Options, end to end on the mock broker: buy calls/puts in whole lots, sell what is held (selling beyond it is
+writing: see test_option_writing.py), 021's Options charges, and the factual risk notice on every buy card."""
 
 import functools
 from datetime import date, datetime, timezone
@@ -102,23 +102,25 @@ def test_option_charges_follow_021s_options_column():
 # ---- selling: only what is held ---------------------------------------------------------------------- #
 
 
-def test_selling_an_option_not_held_is_refused_as_writing(client, broker):
-    reply = preview(client, option(side="SELL"))
-    assert reply["cards"][0]["level"] == "blocked"
-    assert "Selling options you don't hold (writing) isn't supported" in reply["text"]
-    assert broker._orders == {}
+def test_selling_an_option_not_held_is_writing_and_needs_the_acknowledgment(client, broker):
+    p, text = card(client, option(side="SELL"))
+    assert p["risk_ack_required"] is True and text.startswith("You are selling 1 lot (75 units)")
+    assert "(writing it)" in " ".join(p["warnings"])
+    assert broker._orders == {}  # a card only; nothing is sent until it is approved with the typed words
 
 
-def test_buy_approve_then_sell_what_is_held_but_never_more(client, broker):
+def test_buy_approve_then_sell_what_is_held_and_selling_beyond_it_is_writing(client, broker):
     p, _ = card(client, option(lots=2))
     assert approve(client, p).status_code == 200
     [position] = [x for x in client.portal.call(broker.get_positions) if x.instrument.is_option]
     assert (position.instrument.symbol, position.quantity, position.product) == ("NIFTY26101324500CE", 150, Product.NRML)
 
-    too_many = preview(client, option(side="SELL", lots=3))
-    assert too_many["cards"][0]["level"] == "blocked" and "You hold 150 of NIFTY 24,500 CE (13 Oct 2026) as NRML" in too_many["text"]
+    beyond, _ = card(client, option(side="SELL", lots=3))  # closes the 2 lots held, then writes 1 more
+    assert beyond["risk_ack_required"] is True
+    assert "against your 150 units long, which closes that part" in " ".join(beyond["warnings"])
     p_sell, text = card(client, option(side="SELL", lots=1))
     assert text.startswith("You are selling 1 lot (75 units)") and "after charges" in text
+    assert p_sell["risk_ack_required"] is False  # selling what you hold is closing, not writing
     assert not any("expire worthless" in w for w in p_sell["warnings"])  # the buy-side notice is for buying
     half, _ = card(client, option(side="SELL", lots=None, fraction_of_holding=0.5))
     assert half["quantity"] == 75  # half of 150, in whole lots
@@ -127,8 +129,8 @@ def test_buy_approve_then_sell_what_is_held_but_never_more(client, broker):
 def test_an_intraday_position_cant_be_sold_as_carry(client, broker):
     p, _ = card(client, option(product="MIS"))
     approve(client, p)
-    wrong_product = preview(client, option(side="SELL"))  # NRML: nothing held as NRML
-    assert wrong_product["cards"][0]["level"] == "blocked"
+    wrong_product, _ = card(client, option(side="SELL"))  # NRML: nothing held as NRML, so this is a new short
+    assert wrong_product["risk_ack_required"] is True and "against your" not in " ".join(wrong_product["warnings"])
 
 
 # ---- through the assistant's tool ------------------------------------------------------------------- #

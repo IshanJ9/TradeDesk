@@ -1816,7 +1816,8 @@
               "EXPIRED",
               "NOT_PENDING",
               "REQUOTE_REQUIRED",
-              "BLOCKED"
+              "BLOCKED",
+              "ACK_REQUIRED"
             ],
             "title": "Code"
           },
@@ -1863,6 +1864,18 @@
             "maxLength": 64,
             "minLength": 64,
             "title": "Order Hash"
+          },
+          "acknowledgment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledgment"
           }
         },
         "additionalProperties": false,
@@ -2199,6 +2212,11 @@
             "maxLength": 2000,
             "minLength": 1,
             "title": "Message"
+          },
+          "via_voice": {
+            "type": "boolean",
+            "title": "Via Voice",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -2949,6 +2967,65 @@
           "total"
         ],
         "title": "Funds"
+      },
+      "FutureRef-Input": {
+        "properties": {
+          "underlying": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Underlying"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "underlying"
+        ],
+        "title": "FutureRef",
+        "description": "Which futures contract the trader named. Code finds the exact contract."
+      },
+      "FutureRef-Output": {
+        "properties": {
+          "underlying": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Underlying"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "underlying",
+          "expiry"
+        ],
+        "title": "FutureRef",
+        "description": "Which futures contract the trader named. Code finds the exact contract."
       },
       "Goal": {
         "properties": {
@@ -3881,6 +3958,16 @@
               }
             ]
           },
+          "future": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FutureRef-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "side": {
             "anyOf": [
               {
@@ -3992,6 +4079,11 @@
               }
             ],
             "title": "Target Order Id"
+          },
+          "via_voice": {
+            "type": "boolean",
+            "title": "Via Voice",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4029,6 +4121,16 @@
               }
             ]
           },
+          "future": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FutureRef-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "side": {
             "anyOf": [
               {
@@ -4140,6 +4242,11 @@
               }
             ],
             "title": "Target Order Id"
+          },
+          "via_voice": {
+            "type": "boolean",
+            "title": "Via Voice",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4148,6 +4255,7 @@
           "action",
           "instrument_ref",
           "option",
+          "future",
           "side",
           "quantity",
           "lots",
@@ -4158,7 +4266,8 @@
           "trigger_price",
           "product",
           "validity",
-          "target_order_id"
+          "target_order_id",
+          "via_voice"
         ],
         "title": "OrderIntent",
         "description": "The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."
@@ -4497,6 +4606,11 @@
             "type": "array",
             "title": "Warnings"
           },
+          "risk_ack_required": {
+            "type": "boolean",
+            "title": "Risk Ack Required",
+            "default": false
+          },
           "order_hash": {
             "type": "string",
             "title": "Order Hash",
@@ -4529,6 +4643,7 @@
           "plan_id",
           "rule_id",
           "warnings",
+          "risk_ack_required",
           "order_hash"
         ],
         "title": "PendingOrder",

@@ -38,6 +38,10 @@ from app.schemas import (
     fmt_rupees,
 )
 
+HIGH_RISK_VOICE_REFUSAL = (
+    "Futures and selling options you don't hold can't be started from a voice message, because a mis-heard "
+    "number is costly. Please type the order."
+)
 FAR_FROM_LTP_PCT = 5.0  # warn when a limit price is this far from the current price
 
 # Order words that a model sometimes leaves inside the stock name ("itc at market", "hdfc bank at 1450.50").
@@ -300,12 +304,32 @@ class OrderBuilder:
             "SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a loss.",
         ]
 
+    @staticmethod
+    def _write_notice(inst: Instrument, opening: int, premium: int) -> list[str]:
+        """Facts about selling an option the trader does not hold. Nothing here says whether to do it."""
+        kind = "call" if inst.option_type.value == "CE" else "put"
+        received = fmt_rupees(opening * premium)
+        notes = [f"This sells {opening} units of a {kind} you don't hold (writing it). You receive the premium, about "
+                 f"{received}, and that is the most you can gain."]
+        if inst.option_type.value == "CE":
+            notes.append(f"If {inst.underlying} rises above {fmt_rupees(inst.strike)}, the loss grows with the price and has no upper limit.")
+        else:
+            worst = fmt_rupees(opening * inst.strike - opening * premium)
+            notes.append(f"If {inst.underlying} falls below {fmt_rupees(inst.strike)}, you lose on every point it falls; "
+                         f"if it fell to zero the loss would be about {worst}.")
+        notes.append("021's API does not report margin, so TradeDesk cannot check it; if margin is short, 021 will reject the order.")
+        notes.append(f"This contract expires on {inst.expiry:%d %b %Y}.")
+        notes.append("SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a loss.")
+        return notes
+
     async def _build_place(
         self, intent, locks, instrument, client_order_id, rule_id, plan_id, ttl_seconds=None, funded_by_plan=False
     ) -> PendingOrder:
         inst = instrument
         if inst is None and intent.option is not None:
             inst = await self._find_option(intent)
+        if inst is None and intent.future is not None:
+            inst = await self._find_future(intent)
         if inst is None:
             resolution = await self.resolve(intent.instrument_ref or "")
             if resolution.status != "resolved":
@@ -314,6 +338,8 @@ class OrderBuilder:
         check_instrument(inst, self.limits)
         if inst.is_option:
             return await self._build_option(intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds)
+        if inst.is_future:
+            return await self._build_future(intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds)
 
         quote = await self._broker.get_quote(inst.key)
         ltp, side = quote.ltp, intent.side
@@ -412,7 +438,7 @@ class OrderBuilder:
         )
 
     async def _build_option(self, intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds=None) -> PendingOrder:
-        """Buy an option, or sell one held. Never a sale beyond the long position (no option writing)."""
+        """Buy an option, or sell one. Selling more than the long position held is writing: capped, acknowledged, never by voice."""
         if rule_id or plan_id:
             raise OrderBlocked(RejectionReason.SEGMENT_NOT_ALLOWED, "Options can be ordered one at a time, not from a rule or a plan.")
         product = Product.NRML if intent.product is Product.CNC else intent.product  # CNC is equity-only at 021
@@ -433,23 +459,24 @@ class OrderBuilder:
             protection = self._protection_price(inst, side, ltp)
             price, limit_price = protection, None
 
+        net = await self._net_position(inst, product)
         quantity, sizing = await self._option_sizing(inst, intent, product)
         warnings.append(sizing)
+        closing = min(quantity, abs(net)) if net and (net > 0) != (side is Side.BUY) else 0
+        opening = quantity - closing
+        writing = side is Side.SELL and opening > 0  # selling options the trader does not hold
+        if writing:
+            if intent.via_voice:
+                raise OrderBlocked(RejectionReason.OTHER, HIGH_RISK_VOICE_REFUSAL)
+            self._check_new_exposure_cap(inst, opening)
         check_size(quantity, price, self.limits)
         check_locks(locks, OrderAction.PLACE, quantity * price)
 
-        if side is Side.SELL:
-            held = await self._option_held(inst, product)
-            if quantity > held:
-                have = f"You hold {held} of {inst.label}" if held else f"You don't hold any {inst.label}"
-                raise OrderBlocked(
-                    RejectionReason.INVALID_QUANTITY,
-                    f"{have}{' as ' + product.value if held else ''}, so you can't sell {quantity}. "
-                    "Selling options you don't hold (writing) isn't supported: its losses aren't limited to a premium.",
-                )
-
         charges = compute_charges(exchange=inst.exchange, side=side, product=product, quantity=quantity, price=price, option=True)
         est_total = estimated_total(side, quantity, price, charges)
+        if closing:
+            held = f"{abs(net)} units {'long' if net > 0 else 'short'}"
+            warnings.append(f"This {'sells' if side is Side.SELL else 'buys'} {closing} units against your {held}, which closes that part.")
         if limit_price is not None and trigger is None:
             gap = (limit_price - ltp) * 100 / ltp
             if abs(gap) > FAR_FROM_LTP_PCT:
@@ -457,14 +484,19 @@ class OrderBuilder:
                     f"Your limit price {fmt_rupees(limit_price)} is {abs(gap):.1f}% "
                     f"{'above' if gap > 0 else 'below'} the current premium {fmt_rupees(ltp)}."
                 )
-        if side is Side.BUY:
+        if side is Side.BUY and opening:
+            buy_charges = charges if not closing else compute_charges(
+                exchange=inst.exchange, side=side, product=product, quantity=opening, price=price, option=True)
+            buy_total = est_total if not closing else estimated_total(side, opening, price, buy_charges)
             funds = await self._broker.get_funds()
-            if est_total > funds.available_cash:
+            if buy_total > funds.available_cash:
                 warnings.append(
-                    f"This needs about {fmt_rupees(est_total)} but your available cash is "
+                    f"This needs about {fmt_rupees(buy_total)} but your available cash is "
                     f"{fmt_rupees(funds.available_cash)}; the broker is likely to reject it."
                 )
-            warnings += self._option_notice(inst, est_total)
+            warnings += self._option_notice(inst, buy_total)
+        if writing:
+            warnings += self._write_notice(inst, opening, price)
 
         created, expires = self._expiry(ttl_seconds)
         return PendingOrder(
@@ -472,7 +504,125 @@ class OrderBuilder:
             order_type=intent.order_type, limit_price=limit_price, protection_price=protection, trigger_price=trigger,
             product=product, validity=intent.validity, client_order_id=client_order_id or self._new_id("td"),
             charges=charges, est_total=est_total, ref_ltp=ltp, created_at=created, expires_at=expires,
-            warnings=warnings,
+            warnings=warnings, risk_ack_required=writing,
+        )
+
+    # ---- futures ------------------------------------------------------------------ #
+
+    async def _find_future(self, intent: OrderIntent) -> Instrument:
+        ref = intent.future
+        inst = await self._broker.find_future(ref.underlying, ref.expiry)
+        if inst is None:
+            when = f"expiring {ref.expiry:%d %b %Y}" if ref.expiry else "for the nearest expiry"
+            raise OrderBlocked(RejectionReason.OTHER, f"I can't find a {ref.underlying} futures contract {when}.")
+        return inst
+
+    async def _net_position(self, inst: Instrument, product: Product) -> int:
+        """Signed units held in this contract under this product: long is positive, short is negative."""
+        return sum(p.quantity for p in await self._broker.get_positions() if p.instrument.key == inst.key and p.product is product)
+
+    @staticmethod
+    def _future_sizing(inst: Instrument, intent: OrderIntent, net: int) -> tuple[int, str]:
+        lot = inst.lot_size or 1
+        if intent.lots is not None:
+            quantity = intent.lots * lot
+        elif intent.fraction_of_holding is not None:
+            if net <= 0:
+                raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"You don't hold a long {inst.label}, so there is no part of it to sell.")
+            quantity = int(net * intent.fraction_of_holding) // lot * lot
+            if quantity < lot:
+                raise OrderBlocked(RejectionReason.INVALID_QUANTITY, f"That is less than one lot ({lot}) of {inst.label}.")
+        else:
+            quantity = intent.quantity
+            if quantity % lot:
+                raise OrderBlocked(
+                    RejectionReason.INVALID_QUANTITY,
+                    f"{inst.underlying} futures trade in lots of {lot}; {quantity} is not a whole number of lots. "
+                    f"Say how many lots, e.g. 1 lot = {lot}.",
+                )
+        lots = quantity // lot
+        return quantity, f"{lots} lot{'s' if lots != 1 else ''} of {lot} = {quantity} units of {inst.label}."
+
+    def _check_new_exposure_cap(self, inst: Instrument, opening: int) -> None:
+        lot = inst.lot_size or 1
+        if opening and opening // lot > self.limits.max_fo_lots:
+            raise OrderBlocked(
+                RejectionReason.QUANTITY_LIMIT,
+                f"This would open {opening // lot} lots of new exposure; the limit is {self.limits.max_fo_lots} per order "
+                "(set by MAX_FO_LOTS_PER_ORDER). Closing a position you already hold is never capped.",
+            )
+
+    def _future_notice(self, inst: Instrument, side: Side, closing: int, opening: int, net: int, value: int) -> list[str]:
+        """Facts the trader should have in front of them. None of it says whether to place the order."""
+        notes: list[str] = []
+        if closing:
+            held = f"{abs(net)} units {'long' if net > 0 else 'short'}"
+            notes.append(f"This {'sells' if side is Side.SELL else 'buys'} {closing} units against your {held}, which closes that part.")
+        if opening:
+            if side is Side.SELL:
+                notes.append(f"This sells {opening} units you don't hold (a short position). If the price rises, "
+                             "the loss can grow without limit.")
+            else:
+                notes.append(f"This buys {opening} units on margin. If the price falls, you can lose more than the margin set aside.")
+            notes.append(f"Each ₹1 move in {inst.label} changes this position's value by {fmt_rupees(opening * 100)}.")
+            notes.append(f"Contract value is about {fmt_rupees(value)}. 021's API does not report margin, so TradeDesk cannot "
+                         "check it; if margin is short, 021 will reject the order.")
+            notes.append(f"This contract expires on {inst.expiry:%d %b %Y}.")
+            notes.append("SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a loss.")
+        return notes
+
+    async def _build_future(self, intent, locks, inst, client_order_id, rule_id, plan_id, ttl_seconds=None) -> PendingOrder:
+        """Buy or sell a futures contract in whole lots. New exposure is capped, warned about and needs the
+        typed acknowledgment; closing what the trader already holds is never capped."""
+        if rule_id or plan_id:
+            raise OrderBlocked(RejectionReason.SEGMENT_NOT_ALLOWED, "Futures can be ordered one at a time, not from a rule or a plan.")
+        if intent.via_voice:
+            raise OrderBlocked(RejectionReason.OTHER, HIGH_RISK_VOICE_REFUSAL)
+        product = Product.NRML if intent.product is Product.CNC else intent.product
+        side = intent.side
+        quote = await self._broker.get_quote(inst.key)
+        ltp = quote.ltp
+        warnings: list[str] = []
+
+        trigger: int | None = None
+        if intent.order_type is OrderType.STOP_LIMIT:
+            trigger, limit_price = self._stop_prices(inst, side, ltp, intent.trigger_price, intent.limit_price)
+            price, protection = limit_price, None
+            warnings.append(self._stop_warning(inst, side, trigger, limit_price))
+        elif intent.order_type is OrderType.LIMIT:
+            price, limit_price, protection = intent.limit_price, intent.limit_price, None
+            check_price(inst, price)
+        else:
+            protection = self._protection_price(inst, side, ltp)
+            price, limit_price = protection, None
+
+        net = await self._net_position(inst, product)
+        quantity, sizing = self._future_sizing(inst, intent, net)
+        warnings.append(sizing)
+        closing = min(quantity, abs(net)) if net and (net > 0) != (side is Side.BUY) else 0
+        opening = quantity - closing
+        self._check_new_exposure_cap(inst, opening)
+        check_size(quantity, price, self.limits)
+        check_locks(locks, OrderAction.PLACE, quantity * price)
+
+        charges = compute_charges(exchange=inst.exchange, side=side, product=product, quantity=quantity, price=price, future=True)
+        est_total = estimated_total(side, quantity, price, charges)
+        if limit_price is not None and trigger is None:
+            gap = (limit_price - ltp) * 100 / ltp
+            if abs(gap) > FAR_FROM_LTP_PCT:
+                warnings.append(
+                    f"Your limit price {fmt_rupees(limit_price)} is {abs(gap):.1f}% "
+                    f"{'above' if gap > 0 else 'below'} the current price {fmt_rupees(ltp)}."
+                )
+        warnings += self._future_notice(inst, side, closing, opening, net, quantity * price)
+
+        created, expires = self._expiry(ttl_seconds)
+        return PendingOrder(
+            id=self._new_id("pend"), action=OrderAction.PLACE, instrument=inst, side=side, quantity=quantity,
+            order_type=intent.order_type, limit_price=limit_price, protection_price=protection, trigger_price=trigger,
+            product=product, validity=intent.validity, client_order_id=client_order_id or self._new_id("td"),
+            charges=charges, est_total=est_total, ref_ltp=ltp, created_at=created, expires_at=expires,
+            warnings=warnings, risk_ack_required=opening > 0,
         )
 
     async def _build_amend(self, intent, locks, instrument, client_order_id, rule_id, plan_id, ttl_seconds=None) -> PendingOrder:
@@ -541,7 +691,7 @@ class OrderBuilder:
             order_type = OrderType.LIMIT if limit_price is not None else target.order_type
         charges = compute_charges(
             exchange=inst.exchange, side=target.side, product=target.product, quantity=quantity, price=price,
-            option=inst.is_option,
+            option=inst.is_option, future=inst.is_future,
         )
         warnings = [self._stop_warning(inst, target.side, trigger, limit_price)] if trigger is not None else []
         return PendingOrder(

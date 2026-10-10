@@ -44,6 +44,9 @@ def csv_text() -> str:
             for kind in ("CALL", "PUT"):
                 token += 1
                 rows.append(f"{token},NSEFO,26000,NSEIDX,0,75,1800,5,500000,{exp},{kind},{strike * 100},NIFTY,OPTIDX,,5")
+    fut1, fut2 = expiry_seconds(2026, 10, 27), expiry_seconds(2026, 11, 24)
+    for token, exp in ((48704, fut1), (48705, fut2)):  # NIFTY futures, lot 65 as in the real file
+        rows.append(f'{token},NSEFO,26000,NSEIDX,0,65,3510,5,500000,{exp},"",0,NIFTY,FUTIDX,,10')
     return HEADER + "\n" + "\n".join(rows) + "\n"
 
 

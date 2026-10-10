@@ -11,7 +11,7 @@ from app.api_models import AmbiguityCard, ChatReply, NoticeCard, PendingCreatedE
 from app.audit import AuditLog
 from app.events import EventHub
 from app.orders.builder import NeedsClarification, OrderBuilder
-from app.orders.limits import OrderBlocked
+from app.orders.limits import HIGH_RISK_PAUSED, OrderBlocked, crosses_own_limit
 from app.orders.readback import readback
 from app.pending import PendingStore
 from app.risk.guard import NoRiskGuard, RiskGuard
@@ -84,6 +84,14 @@ class CardService:
                 "blocked",
                 ChatReply(text=verdict.block, cards=[NoticeCard(level="blocked", message=verdict.block)]),
                 verdict.block,
+            )
+        if pending.risk_ack_required and crosses_own_limit(verdict.warnings):
+            # past a limit the trader set themselves: no NEW futures / short options until they are back inside it
+            self._audit.record(AuditKind.LIMIT_BLOCKED, "system", HIGH_RISK_PAUSED, data={"reason": "RISK_LIMIT"})
+            return Proposal(
+                "blocked",
+                ChatReply(text=HIGH_RISK_PAUSED, cards=[NoticeCard(level="blocked", message=HIGH_RISK_PAUSED)]),
+                HIGH_RISK_PAUSED,
             )
         extra = [*verdict.warnings, *extra_warnings]
         if extra:  # warnings are not part of the order hash

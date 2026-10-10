@@ -54,12 +54,14 @@ class ApproveRequest(Model):
     """The client must echo the hash of the exact card it is approving."""
 
     order_hash: str = Field(min_length=64, max_length=64)
+    # Typed by the trader on cards whose risk_ack_required is set; the server checks it, not just the screen.
+    acknowledgment: str | None = Field(default=None, max_length=40)
 
 
 class ApprovalConflict(Model):
     """Body of a 409 from the approve route. Nothing was sent."""
 
-    code: Literal["HASH_MISMATCH", "EXPIRED", "NOT_PENDING", "REQUOTE_REQUIRED", "BLOCKED"]
+    code: Literal["HASH_MISMATCH", "EXPIRED", "NOT_PENDING", "REQUOTE_REQUIRED", "BLOCKED", "ACK_REQUIRED"]
     message: str
     # Set for REQUOTE_REQUIRED: the fresh card the trader must look at again.
     pending: PendingOrder | None = None
@@ -191,6 +193,8 @@ class CreateRuleRequest(Model):
 
 class ChatRequest(Model):
     message: str = Field(min_length=1, max_length=2000)
+    # True when the text came from the microphone. Futures and written options are not started that way.
+    via_voice: bool = False
 
 
 class PendingOrderCard(Model):

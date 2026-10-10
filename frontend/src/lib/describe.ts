@@ -1,7 +1,7 @@
 // Plain-English wording for order cards and their outcomes. Numbers come from the server;
 // this only chooses words.
 import { rupees, sideWord } from "./format";
-import { instrumentLabel, isOption, sizeText } from "./instrument";
+import { instrumentLabel, isDerivative, sizeText } from "./instrument";
 import type { Charges, ExecutionResult, PendingOrder, PlanLeg, PlanLegResult } from "./types";
 
 export const productWord = (p: string) => (p === "CNC" ? "Delivery" : p === "MIS" ? "Intraday" : p === "NRML" ? "Carry (NRML)" : p);
@@ -24,7 +24,7 @@ export const REASONS: Record<string, string> = {
   OI_LIMIT: "an open-interest limit applies",
   QUANTITY_LIMIT: "the quantity is above the limit",
   VALUE_LIMIT: "the order value is above the limit",
-  SEGMENT_NOT_ALLOWED: "only shares and buying options are supported",
+  SEGMENT_NOT_ALLOWED: "only shares, options and futures are supported",
   ANCHOR_ACTIVE: "Anchor is on",
   CO_APPROVAL_REQUIRED: "your Co-Captain's approval is needed",
   OTHER: "the broker refused it",
@@ -52,7 +52,7 @@ export function actionTitle(o: PendingOrder): string {
   if (o.action === "CANCEL") return `Cancel order ${o.target_order_id}`;
   if (o.action === "MODIFY") return `Change ${o.order_type === "STOP_LIMIT" ? "stop-loss" : "order"} ${o.target_order_id}`;
   const stop = o.order_type === "STOP_LIMIT" ? "Stop-loss · " : "";
-  if (isOption(o.instrument)) return `${stop}${sideWord(o.side)} ${sizeText(o.quantity ?? 0, o.instrument)} × ${instrumentLabel(o.instrument)}`;
+  if (isDerivative(o.instrument)) return `${stop}${sideWord(o.side)} ${sizeText(o.quantity ?? 0, o.instrument)} × ${instrumentLabel(o.instrument)}`;
   return `${stop}${sideWord(o.side)} ${o.quantity} × ${o.instrument.symbol}`;
 }
 

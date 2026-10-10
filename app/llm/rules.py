@@ -176,6 +176,20 @@ class RuleBasedLLM:
                               expiry=expiry.group() if expiry else None, product="MIS" if "intraday" in t else "NRML",
                               **sizing)]
 
+        # futures: "buy 1 lot nifty futures", "sell 2 lots of nifty fut 2026-11-24 intraday", "sell all my nifty futures"
+        if m := re.match(
+            r"(?:please\s+)?(?P<side>buy|sell)\s+(?:(?P<lots>\d+)\s+lots?\s+(?:of\s+)?|(?P<all>all\s+(?:of\s+)?)?(?:my\s+)?)"
+            r"(?P<und>[a-z]+)\s+(?:futures?|fut)\b(?P<rest>.*)$",
+            t,
+        ):
+            expiry = re.search(r"\d{4}-\d{2}-\d{2}", m["rest"])
+            sizing = ({"lots": int(m["lots"])} if m["lots"] else
+                      {"fraction_of_holding": 1.0} if m["side"] == "sell" and m["all"] else {})
+            if sizing:  # a future must say how many lots (or "all"); otherwise fall through to the help text
+                return [_call("propose_order", action="PLACE", side=m["side"].upper(), order_type="MARKET",
+                              future_underlying=m["und"].upper(), expiry=expiry.group() if expiry else None,
+                              product="MIS" if "intraday" in t else "NRML", **sizing)]
+
         if m := re.match(r"(?:please\s+)?cancel\s+(?:my\s+)?(?:order\s+)?(?P<id>[a-z]*\d[a-z0-9]*)$", t):
             return [_call("propose_order", action="CANCEL", target_order_id=m["id"].upper())]
 

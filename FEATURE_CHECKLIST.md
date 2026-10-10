@@ -162,7 +162,8 @@ historical operational results, not evidence that all workflows are verified.
 - [ ] Read/propose-only MCP server; internal model tools are not an MCP server.
 - [ ] LangGraph-native observability integration; current in-app trace alone does not provide it.
 - [ ] Optional AgentCore hosting, only if explicitly prioritized; in-process graph is implemented.
-- [x] Option orders (10 October): buy calls/puts in whole lots and sell only what is held; no writing, no futures. Contract from 021's file, NSEFO/NRML on the wire, F&O rows read back, 021 Options charges, factual premium-loss and SEBI notice with typed acknowledgment. Mock, fake-021 and browser tests. **Live sandbox order still TODO.** Futures and option writing remain excluded by design.
+- [x] Option orders (10 October): buy calls/puts in whole lots and sell what is held. Contract from 021's file, NSEFO/NRML on the wire, F&O rows read back, 021 Options charges, factual premium-loss and SEBI notice with typed acknowledgment. Mock, fake-021 and browser tests. **Live sandbox order still TODO.**
+- [x] Futures and option writing (10 October), at the user's request: whole lots from 021's file (NIFTY lot 65), 021's Futures charges, new exposure capped per order (`MAX_FO_LOTS_PER_ORDER`, default 2) while closing is never capped, the typed `I UNDERSTAND` **enforced by the server** (`409 ACK_REQUIRED`), refused for dictated messages, rules and plans, paused while past a limit the trader set (at the card and again at the click), factual notices only, and "margin is not reported by 021, so not checked" stated on the card. Mock, fake-021 and browser tests, 13 mutation checks. **No live sandbox order yet; margin rejections from 021 are untested.**
 - [ ] Per-trade risk-to-reward ratio with explicit trader-defined downside/upside inputs; never infer these from a generic market order.
 
 Compliance audit export was originally future scope but is already completed

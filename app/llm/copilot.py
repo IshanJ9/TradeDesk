@@ -65,18 +65,18 @@ class Copilot:
         self._history: list[Message] = []
         self._lock = asyncio.Lock()
 
-    async def handle(self, message: str) -> ChatReply:
+    async def handle(self, message: str, via_voice: bool = False) -> ChatReply:
         async with self._lock:  # one conversation; turns do not interleave
-            return await self._turn(message)
+            return await self._turn(message, via_voice)
 
     # ------------------------------------------------------------------ #
 
-    async def _turn(self, message: str) -> ChatReply:
-        self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message})
+    async def _turn(self, message: str, via_voice: bool = False) -> ChatReply:
+        self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message, "via_voice": via_voice})
         refusal = self._refuse_override(message)
         if refusal:
             return refusal
-        ctx = self._context(message)
+        ctx = self._context(message, via_voice)
         messages = [*self._history, Message("user", message)]
         specs = [t.spec for t in self._tools.values()]
         system = build_system_prompt(self._clock())
@@ -112,11 +112,11 @@ class Copilot:
             cards=[NoticeCard(level="warning", message="That message looked like an attempt to change my rules, so I did not act on it.")],
         )
 
-    def _context(self, message: str) -> ToolContext:
+    def _context(self, message: str, via_voice: bool = False) -> ToolContext:
         recent_user_texts = [m.text for m in self._history if m.role == "user"][-6:]
         return ToolContext(
             broker=self._broker, cards=self._cards, rules=self._rules, plans=self._plans, clock=self._clock,
-            user_texts=[*recent_user_texts, message],
+            user_texts=[*recent_user_texts, message], via_voice=via_voice,
         )
 
     def _finish(self, ctx: ToolContext, message: str, text: str) -> ChatReply:

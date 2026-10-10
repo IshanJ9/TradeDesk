@@ -172,21 +172,56 @@ broker, with its real lot size and token), multiplies lots by the lot size, and 
 was named, which the card states. The strike and lot count must be numbers the trader typed, like every other
 figure. Options are carried as NRML (021's F&O product) or held intraday as MIS.
 
-- **Buy, or sell what you hold, nothing else.** A sale can never exceed the long option position in that product;
-  selling an option not held (writing) is refused with the reason. Futures are not offered.
+- **Buy, sell what you hold, or write.** Selling up to the long position held (in that product) is closing, and
+  buying back a short is closing too. Selling more than you hold is **writing**: see "Futures and writing" below.
 - **A factual notice on every option buy, never advice:** the whole premium can be lost if the contract expires
   worthless on its date, and "SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a
   loss". The card asks for the typed `I UNDERSTAND` before Approve.
 - **021's Options charges:** flat ₹20 brokerage, STT 0.15% on the sell side, exchange charges 0.03503% (NSE),
   stamp duty 0.003% on buys, IPFT 0.0005%, all on the premium (`app/orders/charges.py`).
-- Approval re-checks, the send log, your own limits and the hard stops apply as for shares. Options are ordered
-  one at a time: rules and plans stay shares only.
+- Approval re-checks, the send log, your own limits and the hard stops apply as for shares. Options and futures
+  are ordered one at a time: rules and plans stay shares only.
 
 Checked: tests on the mock (lots, nearest and named expiry, puts, wrong strike or size, charges worked by hand,
-writing refused, buy then sell only what is held) and on the fake 021 (the contract and lot size from 021's file,
-the order sent as `NSEFO` / `NRML` with the right token, F&O rows read back from the order book and positions),
-and in the browser (the card, the typed acknowledgment, approval, the position, the writing refusal). Not yet sent
-to the live sandbox.
+buy then sell what is held) and on the fake 021 (the contract and lot size from 021's file, the order sent as
+`NSEFO` / `NRML` with the right token, F&O rows read back from the order book and positions), and in the browser
+(the card, the typed acknowledgment, approval, the position). Not yet sent to the live sandbox.
+
+## Futures and writing options
+
+Futures (`buy 1 lot NIFTY futures`) and **writing** (selling an option you don't hold) are the two orders whose loss
+can exceed what the trader puts in, so they get their own rules, all in code and all tested:
+
+- **Whole lots, from 021's file.** Index and stock futures (219 underlyings in the 10 Oct 2026 file) come from 021's instrument file with the real
+  lot size, tick and token (NIFTY: lot 65 in the 10 Oct 2026 file). Nearest expiry unless a date is named; the card
+  states it. Carried as NRML, or intraday as MIS. A buy against a short, or a sale against a long, **closes** it.
+- **New exposure is capped per order** (`MAX_FO_LOTS_PER_ORDER`, default 2 lots). Only the part beyond what you hold
+  counts, so closing a position you hold is never capped.
+- **The server demands the typed `I UNDERSTAND`.** A card that opens new futures or short-option exposure carries
+  `risk_ack_required`; `POST /api/approvals/{id}/approve` answers `409 ACK_REQUIRED` without the exact words, sends
+  nothing, and leaves the card open. It is not just a disabled button on the screen.
+- **Never by voice.** A message dictated through the microphone is sent with `via_voice` set by the app, and the
+  card builder refuses futures and writing for it ("please type the order"); the model cannot clear that flag.
+  Closing what you hold is fine by voice.
+- **Paused while you are past a limit you set yourself** (the Discipline limits that start "You set ..."): no new
+  futures or short options until you are back inside it, checked again at the click. Closing still works.
+- **Facts on the card, never advice:** a short position's loss "can grow without limit" (a written call), or the
+  strike less the premium at worst (a written put); the premium is the most a writer can gain; "each ₹1 move changes
+  this position's value by ₹N" (futures); the contract value; the expiry; and the SEBI F&O statistic.
+- **Margin is not checked, and the card says so:** 021's API reports no margin, so TradeDesk cannot check it and the
+  card says "if margin is short, 021 will reject the order". We do not invent a margin figure.
+- **021's Futures charges** (from its pricing page): flat ₹20 brokerage, STT 0.05% on sells, NSE 0.00173%, stamp
+  duty on buys (the page prints 0.02%; followed as printed), SEBI and IPFT 0.0001%, GST 18% on brokerage, exchange
+  charges, stamp duty and IPFT (`app/orders/charges.py`). The card shows contract value and charges, not a
+  "total cost", because a future is not paid for in full.
+- **Cash estimate:** the live adapter's available-cash estimate does not count an open future's value as spent (a
+  closed one counts its gain or loss), so a futures position doesn't make share orders look unaffordable.
+
+Checked: mock tests (cards, short sale, lot caps, closing, flips through zero, charges worked by hand, the server
+refusing without the words, no voice/rule/plan, the pause at the card and at the click), fake-021 tests (contract
+from the file, `NSEFO`/`NRML` with lot 65, positions, funds), and 13 mutations (each guard removed on purpose: all
+caught). In the browser: the futures card, Approve locked until the words are typed, the fill, the position, and a
+close-out card with no acknowledgment. Not yet sent to the live sandbox.
 
 ## Orders placed in 021's own app
 
@@ -299,8 +334,6 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Option writing (selling options not held) and futures, deliberately: their losses are not limited to a premium,
-  and 021's API gives no margin figures to check them against. Options can be bought and sold to close (see Options).
 - Authentication (single demo user) and Co-Captain co-approval.
 
 ## Demo controls

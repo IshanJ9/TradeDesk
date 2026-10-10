@@ -17,13 +17,13 @@ export function useChat() {
   const next = useRef(1);
   const busyRef = useRef(false);
 
-  const send = useCallback(async (raw: string) => {
+  const send = useCallback(async (raw: string, viaVoice = false) => {
     const text = raw.trim();
     if (!text || busyRef.current) return false;
     busyRef.current = true;
     setBusy(true);
     setMessages((m) => [...m, { id: next.current++, role: "user", text, cards: [] }]);
-    const r = await api.chat(text);
+    const r = await api.chat(text, viaVoice);
     setMessages((m) => [
       ...m,
       r.ok

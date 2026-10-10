@@ -15,6 +15,8 @@ def readback(p: PendingOrder) -> str:
     if p.instrument.is_option:  # options are counted in lots: "1 lot (75 units) of NIFTY 24,500 CE (13 Oct 2026)"
         lots = p.quantity // (p.instrument.lot_size or 1)
         return _option_readback(p, verb, lots, name)
+    if p.instrument.is_future:
+        return _future_readback(p, verb, p.quantity // (p.instrument.lot_size or 1), name)
     if p.order_type is OrderType.STOP_LIMIT:
         move = "falls to" if p.side is Side.SELL else "rises to"
         edge = "at least" if p.side is Side.SELL else "up to"
@@ -52,3 +54,21 @@ def _option_readback(p: PendingOrder, verb: str, lots: int, name: str) -> str:
     total = (f", total about {fmt_rupees(p.est_total)} including charges" if p.side is Side.BUY
              else f", about {fmt_rupees(p.est_total)} after charges") if p.est_total else ""
     return f"You are {verb} {size} of {name} {price}{total}."
+
+
+def _future_readback(p: PendingOrder, verb: str, lots: int, name: str) -> str:
+    """A future is not paid for in full, so the card states the contract value and the charges, not a 'total cost'."""
+    size = f"{lots} lot{'s' if lots != 1 else ''} ({p.quantity} units)"
+    if p.order_type is OrderType.STOP_LIMIT:
+        move = "falls to" if p.side is Side.SELL else "rises to"
+        return (f"You are setting a stop: if the price {move} {fmt_rupees(p.trigger_price)}, {verb} {size} of {name} "
+                f"at {'at least' if p.side is Side.SELL else 'up to'} {fmt_rupees(p.limit_price)} per unit. "
+                "Nothing is traded until then.")
+    if p.limit_price is not None:
+        price = f"at {'up to' if p.side is Side.BUY else 'at least'} {fmt_rupees(p.limit_price)} per unit"
+    else:
+        price = (f"at the market price, protected so it never fills {'above' if p.side is Side.BUY else 'below'} "
+                 f"{fmt_rupees(p.protection_price)} per unit")
+    value = (p.limit_price or p.protection_price or p.ref_ltp) * p.quantity
+    return (f"You are {verb} {size} of {name} {price}. Contract value is about {fmt_rupees(value)}; "
+            f"charges are about {fmt_rupees(p.charges.total)}.")

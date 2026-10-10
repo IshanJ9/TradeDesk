@@ -42,10 +42,13 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 }
 
 export const api = {
-  chat: (message: string) => request<ChatReply>("POST", "/api/chat", { message }),
+  chat: (message: string, viaVoice = false) => request<ChatReply>("POST", "/api/chat", { message, via_voice: viaVoice }),
 
-  approveOrder: (id: string, orderHash: string) =>
-    request<ExecutionResult>("POST", `/api/approvals/${encodeURIComponent(id)}/approve`, { order_hash: orderHash }),
+  approveOrder: (id: string, orderHash: string, acknowledgment?: string) =>
+    request<ExecutionResult>("POST", `/api/approvals/${encodeURIComponent(id)}/approve`, {
+      order_hash: orderHash,
+      ...(acknowledgment ? { acknowledgment } : {}),
+    }),
   declineOrder: (id: string) => request<PendingOrder>("POST", `/api/approvals/${encodeURIComponent(id)}/reject`),
 
   approvePlan: (id: string, planHash: string) =>

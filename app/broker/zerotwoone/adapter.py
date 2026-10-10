@@ -292,6 +292,11 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         listing = self.master.find_option(underlying, strike, option_type, expiry, self._clock().date())
         return listing.instrument if listing else None
 
+    async def find_future(self, underlying: str, expiry: date | None = None) -> Instrument | None:
+        """From 021's instrument file: the contract's real lot size, tick and token (NSE F&O)."""
+        listing = self.master.find_future(underlying, expiry, self._clock().date())
+        return listing.instrument if listing else None
+
     # ------------------------------------------------------------------------------------------ #
     # prices
     # ------------------------------------------------------------------------------------------ #
@@ -391,11 +396,19 @@ class ZeroTwoOneAdapter(BrokerAdapter):
 
     async def get_funds(self) -> Funds:
         """An estimate: 021 has no funds endpoint. See the module note."""
-        trades, orders = await asyncio.gather(self._read("GET", "/trades"), self._orders(with_fills=False))
+        trades, orders, positions = await asyncio.gather(
+            self._read("GET", "/trades"), self._orders(with_fills=False), self._read("GET", "/portfolio/positions")
+        )
         spent = sum(int(t["quantity"]) * int(t["price"]) for t in trades or [])  # buys positive, sells negative
+        # A future is not paid for in full: an open one moves no cash until it is closed (021 reports no margin
+        # figure). Take the open part's value back out, so closed futures count as their gain or loss only.
+        for row in positions or []:
+            listing = self.master.by_token(row.get("exchange", ""), int(row.get("token") or 0))
+            if listing is not None and listing.instrument.is_future:
+                spent -= int(row.get("netQuantity") or 0) * int(row.get("netPrice") or 0)
         tied_up = 0
         for o in orders:
-            if o.side is Side.BUY and o.status in LIVE:
+            if o.side is Side.BUY and o.status in LIVE and not o.instrument.is_future:
                 tied_up += o.pending_quantity * (o.limit_price or 0)
         return Funds(available_cash=max(self._starting_funds - spent - tied_up, 0), used_margin=tied_up)
 

@@ -27,7 +27,7 @@ interface Props {
   messages: Msg[];
   busy: boolean;
   offline: boolean;
-  send: (text: string) => Promise<boolean>;
+  send: (text: string, viaVoice?: boolean) => Promise<boolean>;
   onReveal: (id: string) => void;
   trace?: TraceEvent[]; // the assistant's live steps, drawn as a strip under the conversation
 }
@@ -100,10 +100,11 @@ export function ChatPanel({ messages, busy, offline, send, onReveal, trace = [] 
 
   const submit = async (value = text) => {
     if (!value.trim() || busy || voiceActive) return;
+    const dictated = fromVoice; // futures and written options are refused for dictated text; the server enforces it
     setText("");
     setFromVoice(false);
     setVoiceFellBack(false);
-    await send(value);
+    await send(value, dictated);
     fieldRef.current?.focus();
   };
 

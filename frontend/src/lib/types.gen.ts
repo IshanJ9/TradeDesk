@@ -781,7 +781,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "HASH_MISMATCH" | "EXPIRED" | "NOT_PENDING" | "REQUOTE_REQUIRED" | "BLOCKED";
+            code: "HASH_MISMATCH" | "EXPIRED" | "NOT_PENDING" | "REQUOTE_REQUIRED" | "BLOCKED" | "ACK_REQUIRED";
             /** Message */
             message: string;
             pending: components["schemas"]["PendingOrder"] | null;
@@ -794,6 +794,8 @@ export interface components {
         ApproveRequest: {
             /** Order Hash */
             order_hash: string;
+            /** Acknowledgment */
+            acknowledgment?: string | null;
         };
         /** AuditEvent */
         AuditEvent: {
@@ -946,6 +948,11 @@ export interface components {
         ChatRequest: {
             /** Message */
             message: string;
+            /**
+             * Via Voice
+             * @default false
+             */
+            via_voice?: boolean;
         };
         /** ClosedTrade */
         ClosedTrade: {
@@ -1198,6 +1205,26 @@ export interface components {
             used_margin: number;
             /** Total */
             readonly total: number;
+        };
+        /**
+         * FutureRef
+         * @description Which futures contract the trader named. Code finds the exact contract.
+         */
+        "FutureRef-Input": {
+            /** Underlying */
+            underlying: string;
+            /** Expiry */
+            expiry?: string | null;
+        };
+        /**
+         * FutureRef
+         * @description Which futures contract the trader named. Code finds the exact contract.
+         */
+        "FutureRef-Output": {
+            /** Underlying */
+            underlying: string;
+            /** Expiry */
+            expiry: string | null;
         };
         /** Goal */
         Goal: {
@@ -1552,6 +1579,7 @@ export interface components {
             /** Instrument Ref */
             instrument_ref?: string | null;
             option?: components["schemas"]["OptionRef-Input"] | null;
+            future?: components["schemas"]["FutureRef-Input"] | null;
             side?: components["schemas"]["Side"] | null;
             /** Quantity */
             quantity?: number | null;
@@ -1572,6 +1600,11 @@ export interface components {
             validity?: components["schemas"]["Validity"];
             /** Target Order Id */
             target_order_id?: string | null;
+            /**
+             * Via Voice
+             * @default false
+             */
+            via_voice?: boolean;
         };
         /**
          * OrderIntent
@@ -1582,6 +1615,7 @@ export interface components {
             /** Instrument Ref */
             instrument_ref: string | null;
             option: components["schemas"]["OptionRef-Output"] | null;
+            future: components["schemas"]["FutureRef-Output"] | null;
             side: components["schemas"]["Side"] | null;
             /** Quantity */
             quantity: number | null;
@@ -1602,6 +1636,11 @@ export interface components {
             validity: components["schemas"]["Validity"];
             /** Target Order Id */
             target_order_id: string | null;
+            /**
+             * Via Voice
+             * @default false
+             */
+            via_voice: boolean;
         };
         /** OrderPattern */
         OrderPattern: {
@@ -1722,6 +1761,11 @@ export interface components {
             rule_id: string | null;
             /** Warnings */
             warnings: string[];
+            /**
+             * Risk Ack Required
+             * @default false
+             */
+            risk_ack_required: boolean;
             /**
              * Order Hash
              * @description Hash of the exact order. Excludes LTP, expiry and state on purpose.

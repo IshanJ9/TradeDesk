@@ -277,7 +277,13 @@ class Instrument(Model):
         return sanitize_text(v) if isinstance(v, str) else v
 
     @model_validator(mode="after")
-    def _option_fields_together(self) -> "Instrument":
+    def _contract_fields_together(self) -> "Instrument":
+        if self.series == "FUT":  # a future has an expiry and a lot but no strike or call/put
+            if self.strike is not None or self.option_type is not None:
+                raise ValueError("a future has no strike or option_type")
+            if self.underlying is None or self.expiry is None or self.lot_size is None:
+                raise ValueError("a future needs underlying, expiry and lot_size")
+            return self
         parts = [self.option_type, self.expiry, self.strike, self.lot_size]
         if any(p is not None for p in parts) and any(p is None for p in parts):
             raise ValueError("option_type, expiry, strike and lot_size must be set together")
@@ -292,8 +298,18 @@ class Instrument(Model):
         return self.option_type is not None
 
     @property
+    def is_future(self) -> bool:
+        return self.series == "FUT"
+
+    @property
+    def is_derivative(self) -> bool:
+        return self.is_option or self.is_future
+
+    @property
     def label(self) -> str:
-        """What a trader calls it: 'Infosys Ltd', or 'NIFTY 24,500 CE (13 Oct 2026)' for an option."""
+        """What a trader calls it: 'Infosys Ltd', 'NIFTY 24,500 CE (13 Oct 2026)', or 'NIFTY FUT (27 Oct 2026)'."""
+        if self.is_future:
+            return f"{self.underlying} FUT ({self.expiry:%d %b %Y})"
         if not self.is_option:
             return self.name or self.symbol
         strike = f"{self.strike // 100:,}" if self.strike % 100 == 0 else f"{self.strike / 100:,.2f}"
@@ -484,15 +500,28 @@ class OptionRef(Model):
         return sanitize_text(v, 20).upper().replace(" ", "") if isinstance(v, str) else v
 
 
+class FutureRef(Model):
+    """Which futures contract the trader named. Code finds the exact contract."""
+
+    underlying: str = Field(min_length=1, max_length=20)  # "NIFTY", "BANKNIFTY", "RELIANCE"
+    expiry: date | None = None  # None: the nearest expiry, which the card then states
+
+    @field_validator("underlying", mode="before")
+    @classmethod
+    def _clean_underlying(cls, v: Any) -> Any:
+        return sanitize_text(v, 20).upper().replace(" ", "") if isinstance(v, str) else v
+
+
 class OrderIntent(Model):
     """The only order-shaped object the LLM may emit. Not an order: code resolves and validates it."""
 
     action: OrderAction
     instrument_ref: str | None = Field(default=None, max_length=60)
     option: OptionRef | None = None  # an option contract instead of a stock (buy to open, or sell what is held)
+    future: FutureRef | None = None  # a futures contract instead of a stock
     side: Side | None = None
     quantity: Quantity | None = None
-    lots: Quantity | None = None  # options only: whole lots; code multiplies by the contract's lot size
+    lots: Quantity | None = None  # options and futures only: whole lots; code multiplies by the contract's lot size
     amount_paise: PricePaise | None = None  # "worth Rs 10k"; code converts to whole shares
     fraction_of_holding: Annotated[float, Field(gt=0, le=1)] | None = None  # SELL: "half my TCS"; code does the sum
     order_type: OrderType | None = None
@@ -501,6 +530,8 @@ class OrderIntent(Model):
     product: Product = Product.CNC
     validity: Validity = Validity.DAY
     target_order_id: str | None = None  # for MODIFY / CANCEL
+    # Set by code from where the message came from, never by the model: high-risk orders are not started by voice.
+    via_voice: bool = False
 
     @field_validator("instrument_ref", mode="before")
     @classmethod
@@ -510,18 +541,18 @@ class OrderIntent(Model):
     @model_validator(mode="after")
     def _check(self) -> "OrderIntent":
         if self.action is OrderAction.PLACE:
-            if not self.instrument_ref and self.option is None:
-                raise ValueError("PLACE needs instrument_ref or option")
+            if sum(x is not None for x in (self.instrument_ref or None, self.option, self.future)) != 1:
+                raise ValueError("PLACE needs exactly one of instrument_ref, option or future")
             if self.side is None:
                 raise ValueError("PLACE needs side")
             if self.order_type is None:
                 raise ValueError("PLACE needs order_type")
             if sum(x is not None for x in (self.quantity, self.lots, self.amount_paise, self.fraction_of_holding)) != 1:
                 raise ValueError("give exactly one of quantity, lots, amount_paise or fraction_of_holding")
-            if self.lots is not None and self.option is None:
-                raise ValueError("lots only applies to an option")
-            if self.option is not None and self.amount_paise is not None:
-                raise ValueError("an option is sized in lots, not a rupee amount")
+            if self.lots is not None and self.option is None and self.future is None:
+                raise ValueError("lots only applies to an option or a future")
+            if (self.option is not None or self.future is not None) and self.amount_paise is not None:
+                raise ValueError("an option or future is sized in lots, not a rupee amount")
             if self.fraction_of_holding is not None and self.side is not Side.SELL:
                 raise ValueError("fraction_of_holding only applies to a SELL")
             if self.order_type is OrderType.LIMIT and self.limit_price is None:
@@ -615,6 +646,9 @@ class PendingOrder(Model):
     plan_id: str | None = None
     rule_id: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    # Set by code for orders whose loss can exceed what the trader puts in (futures, a sold option not
+    # held): Approve is refused unless the request carries the typed acknowledgment (see ApprovalService).
+    risk_ack_required: bool = False
 
     @model_validator(mode="after")
     def _check(self) -> "PendingOrder":

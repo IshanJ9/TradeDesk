@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { actionTitle, chargeLines, outcomeOf, priceLine, productWord, STATE_NOTE, validityWord } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
-import { buysAnOption, crossesOwnLimit, riskAcknowledged } from "../lib/limits";
-import { isOption } from "../lib/instrument";
+import { buysAnOption, crossesOwnLimit, needsTypedAck, riskAcknowledged } from "../lib/limits";
+import { isFuture, isOption } from "../lib/instrument";
 import type { Note } from "../lib/store";
 import type { ExecutionResult, PendingOrder } from "../lib/types";
 import { Fingerprint } from "./Fingerprint";
@@ -30,7 +30,7 @@ interface Props {
   note?: Note;
   result?: ExecutionResult;
   sending: boolean;
-  onApprove: () => void;
+  onApprove: (acknowledgment?: string) => void;
   onDecline: () => void;
   onDismiss: () => void;
 }
@@ -46,11 +46,16 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
   const outcome = result ? outcomeOf(result) : null;
   const ownLimit = crossesOwnLimit(o.warnings); // needs a deliberate tick before Approve (lib/limits.ts)
   const optionBuy = buysAnOption(o); // the whole premium can be lost: always acknowledged in words
-  const needsAck = ownLimit || optionBuy;
+  const serverAck = needsTypedAck(o); // futures and opened shorts: the server will not take Approve without the words
+  const needsAck = ownLimit || optionBuy || serverAck;
   const ackKey = JSON.stringify([o.id, o.order_hash, o.warnings]);
   const [ack, setAck] = useState({ key: "", text: "" });
   const acknowledged = ack.key === ackKey && riskAcknowledged(ack.text);
-  const ackWhy = [optionBuy && "You can lose the whole premium.", ownLimit && "This crosses a limit you set."].filter(Boolean).join(" ");
+  const ackWhy = [
+    optionBuy && "You can lose the whole premium.",
+    serverAck && "You can lose more than the money you put in.",
+    ownLimit && "This crosses a limit you set.",
+  ].filter(Boolean).join(" ");
 
   return (
     <article
@@ -69,7 +74,9 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
           </div>
           <h3 className="mt-1.5 font-serif text-[21px] leading-tight text-ink [font-variant-numeric:tabular-nums]">{actionTitle(o)}</h3>
           <p className="text-[13px] text-muted">
-            {isOption(o.instrument)
+            {isFuture(o.instrument)
+              ? <>Future &middot; {o.instrument.exchange} &middot; 1 lot = {o.instrument.lot_size} units</>
+              : isOption(o.instrument)
               ? <>Option &middot; {o.instrument.exchange} &middot; 1 lot = {o.instrument.lot_size} units</>
               : <>{o.instrument.name || o.instrument.symbol} &middot; {o.instrument.exchange}</>}
             {!isCancel && <> &middot; {productWord(o.product)}</>}
@@ -92,10 +99,17 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
         <dl className="mx-4 mt-3 border-y border-line py-1.5 text-[13px]">
           <Row label="Price"><span className="num">{priceLine(o)}</span></Row>
           <Row label="Price right now"><span className="num">{rupees(o.ref_ltp)}</span></Row>
-          <Row label={o.side === "SELL" ? "Estimated proceeds" : "Estimated total"}>
-            <span className="num font-medium">{rupees(o.est_total)}</span>
-            <span className="ml-1 text-muted">{o.side === "SELL" ? "after charges" : "with charges"}</span>
-          </Row>
+          {isFuture(o.instrument) ? (
+            <Row label="Contract value">
+              <span className="num font-medium">{rupees((o.limit_price ?? o.protection_price ?? o.ref_ltp) * (o.quantity ?? 0))}</span>
+              <span className="ml-1 text-muted">the size of the contract, not the cash it needs</span>
+            </Row>
+          ) : (
+            <Row label={o.side === "SELL" ? "Estimated proceeds" : "Estimated total"}>
+              <span className="num font-medium">{rupees(o.est_total)}</span>
+              <span className="ml-1 text-muted">{o.side === "SELL" ? "after charges" : "with charges"}</span>
+            </Row>
+          )}
           <Row label="Order lasts">{validityWord(o.validity)}</Row>
         </dl>
       )}
@@ -136,7 +150,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             <Fingerprint hash={o.order_hash} />
             <div className="flex gap-2">
               <Button onClick={onDecline} disabled={sending}>Decline</Button>
-              <Button variant="primary" onClick={onApprove} disabled={sending || expired || (needsAck && !acknowledged)}>
+              <Button variant="primary" onClick={() => onApprove(serverAck ? ack.text.trim() : undefined)} disabled={sending || expired || (needsAck && !acknowledged)}>
                 {sending ? "Sending…" : isCancel ? "Approve this cancellation" : "Approve this order"}
               </Button>
             </div>

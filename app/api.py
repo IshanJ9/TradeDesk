@@ -86,7 +86,7 @@ async def preview_order(intent: OrderIntent, request: Request):
 )
 async def approve(pending_id: str, body: ApproveRequest, request: Request):
     try:
-        return await request.app.state.approvals.approve(pending_id, body.order_hash)
+        return await request.app.state.approvals.approve(pending_id, body.order_hash, body.acknowledgment)
     except ApprovalNotFound:
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
@@ -219,7 +219,7 @@ async def reconcile(request: Request):
 @rest.post("/chat", response_model=ChatReply, responses={503: {"description": "Assistant or broker unavailable"}})
 async def chat(body: ChatRequest, request: Request):
     """Ask the copilot. Order requests come back as cards; nothing is ever sent from here."""
-    return await request.app.state.copilot.handle(body.message)
+    return await request.app.state.copilot.handle(body.message, body.via_voice)
 
 
 @rest.get("/ws-events", response_model=list[WsEvent], summary="Shape of messages on /ws (documentation only)")

@@ -17,9 +17,9 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
   const note = (id: string, tone: "warn" | "error" | "info", text: string) =>
     dispatch({ type: "note", id, note: { tone, text } });
 
-  async function approveOrder(id: string, hash: string) {
+  async function approveOrder(id: string, hash: string, acknowledgment?: string) {
     busy(id, true);
-    const r = await api.approveOrder(id, hash);
+    const r = await api.approveOrder(id, hash, acknowledgment);
     busy(id, false);
     if (r.ok) return dispatch({ type: "result", id, result: r.data });
     const c = r.conflict;
@@ -76,7 +76,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
             note={state.notes[o.id]}
             result={state.results[o.id]}
             sending={!!sending[o.id]}
-            onApprove={() => approveOrder(o.id, o.order_hash)}
+            onApprove={(acknowledgment) => approveOrder(o.id, o.order_hash, acknowledgment)}
             onDecline={() => decline("order", o.id)}
             onDismiss={() => dispatch({ type: "hide", id: o.id })}
           />

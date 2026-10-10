@@ -36,6 +36,7 @@ from app.trace import Tracer
 
 class TurnState(TypedDict, total=False):
     message: str
+    via_voice: bool
     tracer: Tracer
     ctx: ToolContext
     route: Route
@@ -72,10 +73,12 @@ class GraphCopilot(Copilot):
         g.add_edge("output_guard", END)
         return g.compile()
 
-    async def _turn(self, message: str) -> ChatReply:
-        self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message})
+    async def _turn(self, message: str, via_voice: bool = False) -> ChatReply:
+        self._audit.record(AuditKind.USER_MESSAGE, "user", message, data={"message": message, "via_voice": via_voice})
         tracer = Tracer(self._hub)
-        state = await self._graph.ainvoke({"message": message, "tracer": tracer, "steps": 0, "final": ""})
+        state = await self._graph.ainvoke(
+            {"message": message, "via_voice": via_voice, "tracer": tracer, "steps": 0, "final": ""}
+        )
         return state["reply"]
 
     # ---- nodes ---------------------------------------------------------------------------------- #
@@ -94,7 +97,7 @@ class GraphCopilot(Copilot):
         s["tracer"].emit("router", "node", "end", f"{r} · {describe(r)}")
         return {
             "route": r,
-            "ctx": self._context(s["message"]),
+            "ctx": self._context(s["message"], s.get("via_voice", False)),
             "messages": [*self._history, Message("user", s["message"])],
         }
 

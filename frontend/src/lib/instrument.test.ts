@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { instrumentLabel, isOption, sizeText } from "./instrument";
-import { buysAnOption } from "./limits";
+import { instrumentLabel, isDerivative, isFuture, isOption, sizeText } from "./instrument";
+import { buysAnOption, needsTypedAck, riskAcknowledged } from "./limits";
 import type { Instrument } from "./types";
 
 const share = { symbol: "INFY", exchange: "NSE", name: "Infosys Ltd" } as Instrument;
@@ -24,5 +24,26 @@ describe("instrument names", () => {
     expect(buysAnOption({ side: "BUY", instrument: call })).toBe(true);
     expect(buysAnOption({ side: "SELL", instrument: call })).toBe(false);
     expect(buysAnOption({ side: "BUY", instrument: share })).toBe(false);
+  });
+});
+
+const fut = {
+  symbol: "NIFTY261027FUT", exchange: "NSE", name: "", series: "FUT", underlying: "NIFTY", lot_size: 65, expiry: "2026-10-27",
+} as Instrument;
+
+describe("futures", () => {
+  it("names a future by its contract and counts it in lots", () => {
+    expect(instrumentLabel(fut)).toBe("NIFTY FUT (27 Oct 2026)");
+    expect(isFuture(fut) && !isFuture(share) && !isFuture(call)).toBe(true);
+    expect(isDerivative(fut) && isDerivative(call) && !isDerivative(share)).toBe(true);
+    expect(isOption(fut)).toBe(false);
+    expect(sizeText(130, fut)).toBe("2 lots (130 units)");
+  });
+  it("asks for the typed words only when the server says the card needs them", () => {
+    expect(needsTypedAck({ risk_ack_required: true })).toBe(true);
+    expect(needsTypedAck({ risk_ack_required: false })).toBe(false);
+    expect(needsTypedAck({})).toBe(false);
+    expect(riskAcknowledged(" I UNDERSTAND ")).toBe(true);
+    expect(riskAcknowledged("i understand")).toBe(false);
   });
 });

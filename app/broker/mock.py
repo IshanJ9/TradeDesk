@@ -65,6 +65,7 @@ _STRIKE_STEP = paise(50)
 _NIFTY_LOT = 75  # NIFTY lot size used by the mock; the live adapter reads each contract's lot from 021's file
 # Mock expiry dates. A real adapter reads these from the instrument master.
 _EXPIRIES = [date(2026, 10, 13), date(2026, 10, 20), date(2026, 10, 27)]
+_FUTURE_EXPIRIES = [date(2026, 10, 27), date(2026, 11, 24)]  # monthly, like 021's file; the mock has NIFTY only
 
 # symbol -> (quantity, average price in Rs)
 _HOLDINGS: dict[str, tuple[int, str]] = {
@@ -143,7 +144,7 @@ class MockBroker(BrokerAdapter):
             self._positions[f"NSE:{symbol}"] = (qty, paise(avg))
 
     def _add_instrument(self, inst: Instrument, prev_close: int, ltp: int) -> None:
-        if inst.series not in ("INDEX", "OPT"):  # option premiums can move far in a day: no stock-style band
+        if inst.series not in ("INDEX", "OPT", "FUT"):  # derivative prices get no stock-style band here
             band_low = (prev_close * 80 // 100) // inst.tick_size * inst.tick_size
             band_high = (prev_close * 120 // 100) // inst.tick_size * inst.tick_size
             inst = inst.model_copy(update={"price_band_low": band_low, "price_band_high": band_high})
@@ -314,6 +315,24 @@ class MockBroker(BrokerAdapter):
             self._add_instrument(inst, premium, premium)
         return self._instruments[key]
 
+    async def find_future(self, underlying: str, expiry: date | None = None) -> Instrument | None:
+        """NIFTY futures for the seeded monthly expiries, lot size 75, priced a little above the index."""
+        self._check_network()
+        upcoming = [e for e in _FUTURE_EXPIRIES if e >= self._clock().date()]
+        chosen = expiry or (upcoming[0] if upcoming else None)
+        if underlying != "NIFTY" or chosen not in upcoming:
+            return None
+        key = f"NSE:{underlying}{chosen:%y%m%d}FUT"
+        if key not in self._instruments:
+            spot = self._prices["NSE:NIFTY"]
+            price = (spot + spot // 500) // 10 * 10  # about 0.2% above spot, on the 10-paise tick
+            inst = Instrument(
+                symbol=key.split(":", 1)[1], exchange=Exchange.NSE, series="FUT", name=f"NIFTY FUT {chosen:%d %b %Y}",
+                tick_size=10, underlying=underlying, lot_size=_NIFTY_LOT, expiry=chosen,
+            )
+            self._add_instrument(inst, price, price)
+        return self._instruments[key]
+
     @staticmethod
     def _option_key(underlying: str, expiry: date, strike: int, kind: OptionType) -> str:
         return f"NSE:{underlying}{expiry:%y%m%d}{strike // 100}{kind.value}"
@@ -435,9 +454,9 @@ class MockBroker(BrokerAdapter):
         if p.order_type is OrderType.STOP_LIMIT:
             self._validate_trigger(p, inst, p.trigger_price)
         ref = p.limit_price or p.protection_price or self._prices[inst.key]
-        if p.side is Side.BUY and ref * p.quantity > self._cash:
+        if p.side is Side.BUY and not inst.is_future and ref * p.quantity > self._cash:  # the mock has no margin model
             self._reject(p, RejectionReason.INSUFFICIENT_FUNDS, "not enough funds")
-        if inst.is_option and p.quantity % (inst.lot_size or 1):
+        if inst.is_derivative and p.quantity % (inst.lot_size or 1):
             self._reject(p, RejectionReason.INVALID_QUANTITY, "quantity must be a multiple of the lot size")
         if p.side is Side.SELL and p.product is Product.CNC:
             held = self._holdings.get(inst.key, (0, 0))[0]
@@ -588,7 +607,12 @@ class MockBroker(BrokerAdapter):
 
         key = o.instrument.key
         signed = qty if o.side is Side.BUY else -qty
-        self._cash += -price * qty if o.side is Side.BUY else price * qty
+        if o.instrument.is_future:  # a future moves no cash on entry; closing settles the gain or loss
+            held = self._positions.get(key, (0, 0))
+            closing = min(qty, abs(held[0])) if held[0] and (held[0] > 0) != (signed > 0) else 0
+            self._cash += (price - held[1]) * closing * (1 if held[0] > 0 else -1)
+        else:
+            self._cash += -price * qty if o.side is Side.BUY else price * qty
         to_holdings = o.product is Product.CNC and not (self.delivery_as_positions and o.side is Side.BUY)
         if o.product is Product.CNC and o.side is Side.SELL:  # sells use holdings first, then today's delivery buys
             todays = self._position_product.get(key) is Product.CNC and self._positions.get(key, (0, 0))[0] > 0

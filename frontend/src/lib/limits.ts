@@ -10,6 +10,12 @@ export function buysAnOption(o: { side?: string | null; instrument: { option_typ
   return o.side === "BUY" && o.instrument.option_type != null;
 }
 
+// The server marks cards whose loss can exceed what the trader puts in (futures, an opened short). Approve is
+// refused there without the typed words, whatever this screen does; the screen just asks first.
+export function needsTypedAck(o: { risk_ack_required?: boolean | null }): boolean {
+  return o.risk_ack_required === true;
+}
+
 export function riskAcknowledged(value: string): boolean {
   return value.trim() === "I UNDERSTAND";
 }

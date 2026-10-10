@@ -143,6 +143,9 @@ class ReadOnlyView:
     async def find_option(self, underlying: str, strike: int, option_type: OptionType, expiry: date | None = None) -> Instrument | None:
         return await self._broker.find_option(underlying, strike, option_type, expiry)
 
+    async def find_future(self, underlying: str, expiry: date | None = None) -> Instrument | None:
+        return await self._broker.find_future(underlying, expiry)
+
     async def get_account_locks(self) -> AccountLocks:
         return await self._broker.get_account_locks()
 
@@ -206,6 +209,11 @@ class BrokerAdapter(ABC):
     ) -> Instrument | None:
         """The exact option contract (None: no such contract). `expiry` None means the nearest one.
         A broker without options keeps this default."""
+        return None
+
+    async def find_future(self, underlying: str, expiry: date | None = None) -> Instrument | None:
+        """The exact futures contract (None: no such contract). `expiry` None means the nearest one.
+        A broker without futures keeps this default."""
         return None
 
     @abstractmethod
