@@ -57,7 +57,8 @@ interface Props {
 }
 
 export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, onDismiss, accountKind }: Props) {
-  const waiting = plan.state === "PENDING";
+  const awaitingCo = plan.state === "AWAITING_CO_APPROVAL"; // the trader has approved; their Co-Captain has not yet
+  const waiting = plan.state === "PENDING" || awaitingCo;
   const expired = waiting && secondsLeft(plan.expires_at, Date.now()) === 0;
   const running = plan.state === "APPROVED" || plan.state === "RUNNING";
   const n = plan.legs.length;
@@ -79,6 +80,14 @@ export function PlanTicket({ plan, report, note, sending, onApprove, onDecline, 
         {waiting && <div className="shrink-0 pt-1 text-right text-xs"><Countdown expiresAt={plan.expires_at} /></div>}
       </header>
 
+      {awaitingCo && (
+        <div className="px-4 pt-3">
+          <Banner tone="info" role="status">
+            Waiting for your Co-Captain, {plan.co_captain_name ?? plan.co_captain}, to approve this same plan. Nothing has been sent.
+            <ul className="mt-1 list-disc pl-4">{plan.co_reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+          </Banner>
+        </div>
+      )}
       {note && waiting && <div className="px-4 pt-3"><Banner tone={note.tone} role="status">{note.text}</Banner></div>}
 
       {waiting ? (

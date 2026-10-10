@@ -45,6 +45,8 @@ export function describe(e: WsEvent): string {
       return `placed outside this app: ${e.order.order_id}`;
     case "discipline_update":
       return `orders today ${e.summary.orders_today}, risk ${e.summary.risk_score ?? "-"}`;
+    case "cocaptain_update":
+      return `co-captain: ${e.action}`; // the Co-Captain tab refreshes at once
     default: {
       const unhandled: never = e;
       return unhandled;

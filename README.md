@@ -256,27 +256,41 @@ invite one other account by its email, and anyone can be invited. Each person ke
   funds, price drift and the broker. A hard stop still voids it. One more look runs right before the broker call, so a
   pairing that ended in the meantime stops it. If you are back inside your limit by then, your Co-Captain's click does
   not send it: you must click Approve yourself on that card.
+- **A whole plan is one reviewed object.** A multi-step plan past your limit (the plan counts as its steps and the sum of
+  its step values) goes to the Co-Captain as a single review bound to the plan's hash: you approve, it waits, they
+  approve the same plan, and only then does it start. Every rule above applies to it. Once it is running, the plan checks
+  before each step that the pairing still stands, so ending the pairing stops every step not yet sent, whatever the
+  plan's failure policy says.
 - **Ending the pairing is immediate**, by either side: it cancels every card still waiting on that Co-Captain, and an
   approval given under an earlier pairing never counts again.
 - **The Co-Captain reaches one thing of yours: the cards sent to them.** The only code that touches another user's desk
   is the review route (`app/cocaptain/review_api.py`), and it goes through the review's owner and that owner's own
   approval service. Your portfolio, orders, rules, audit and chat stay on your desk (tested), and Co-Captain events are
   written to the trader's own audit log with the real person who acted.
-- In the desk: the **Co-Captain** tab (invite by email, remove, accept an invitation, and the inbox with Approve and
-  Decline), and a ticket that says up front "after you approve it also needs your Co-Captain", then "Waiting for ...".
+- **The Co-Captain's desk is told at once.** An invitation, a card or a plan waiting for them, and a pairing that ends are
+  pushed over the live feed every desk already has open (one event per person, delivered only to them), so the tab
+  updates in a fraction of a second, even in a background tab; a 5-second poll stays as the safety net.
+- In the desk: the **Co-Captain** tab (invite by email, remove, accept an invitation, and the inbox of orders and plans with
+  Approve and Decline), and a ticket that says up front "after you approve it also needs your Co-Captain", then
+  "Waiting for ...".
 - **Checked:** zone boundaries and agreement with the existing "You set ..." warnings; the whole two-person flow over
   HTTP between signed-in users; paused with no Co-Captain; decline; cancel; expiry; re-quote; wrong hash; leaving the
   zone while waiting; ending the pairing (also racing an approval, and between the last checks and the broker call);
   a hard stop and Anchor after both approvals; simultaneous approvals sending once; restart with a card waiting; no
-  model tool able to approve; GETs changing nothing; the review store's own 18 tests; and 11 mutations (each guard
-  removed on purpose, all caught). In the browser: two real accounts, one on `localhost` and one on `127.0.0.1` (separate
+  model tool able to approve; GETs changing nothing; the review store's own 18 tests; plans (waiting, decline, cancel, wrong hash,
+  leaving the zone, ending the pairing while waiting and after it started, the last look before it starts, a hard stop);
+  the live push (an invitation, an order and a plan reach the Co-Captain's feed and no one else's); and 21 mutations (each
+  guard removed on purpose, all caught). In the browser: two real accounts, one on `localhost` and one on `127.0.0.1` (separate
   cookies): an invitation sent, accepted in the other account's desk, a past-limit order waiting, approved from the
-  Co-Captain's own desk and filled, while the Co-Captain's desk showed none of the trader's orders.
+  Co-Captain's own desk and filled, while the Co-Captain's desk showed none of the trader's orders. A whole plan was then approved the same way: it appeared
+in the Co-Captain's inbox within a fraction of a second while that tab was in the background, and ran to COMPLETED after
+their click.
 
-**What it is not yet:** a **plan** past your limit is refused outright rather than approved by two people. You can
-remove your own Co-Captain at once. Closing orders are counted like any other. The Co-Captain finds out by opening
-their desk (it checks every few seconds), not by email or push. Real-world use needs the accounts feature deployed with
-a real `TRADEDESK_SECRET_KEY` and origins set.
+**What it is not yet:** the Co-Captain is told over the live feed only while their desk is open; there is no email,
+WhatsApp or phone push, so a Co-Captain who never opens TradeDesk will not see a waiting card (it expires after its
+normal time and nothing is sent). You can remove your own Co-Captain at once. Closing orders are counted like any other.
+Real-world use needs the accounts feature deployed with a real `TRADEDESK_SECRET_KEY` and origins set. It has not been
+run against the live 021 sandbox (see "Live sandbox checks" below).
 
 ## Orders placed in 021's own app
 
@@ -313,6 +327,14 @@ fails. Before trusting it, run the read-only check, which places no orders:
 To check order actions on the live sandbox (1 share of ITC at a time, virtual money; prints its plan and places
 nothing without `--yes`): `scripts\live_actions.py` (modify, cancel, selling today's buy, exit-losers card) and
 `scripts\chaos_live.py` (the four network failures).
+
+## Live sandbox checks still to run
+
+Everything below under "Verified on the live sandbox" was run for real. These were **not**, and are listed in
+`LIVE_CHECKS.md` with exact steps, what to expect and a table to fill in: an option buy and sell-to-close; a futures
+order (with `ALLOW_UNLIMITED_RISK_FO=true`); an order placed in 021's own app arriving over the orders socket within
+about a second; a real sell fill; a rate-limit (429) response; and Hindi voice. Until someone runs them, treat options,
+futures, the orders socket and Co-Captain as tested against our simulator and a replica of 021's API only.
 
 **Status: the adapter (`app/broker/zerotwoone/`) was built from 021's API guide, tested against a fake 021
 that follows the guide (`tests/fake021.py`), and then checked against the live sandbox with our own account.**
@@ -389,8 +411,8 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Email sign-in recovery (password reset), and telling a Co-Captain by email or push.
-- Two-person approval of a whole plan (a plan past your limit is refused for now).
+- Email sign-in recovery (password reset), and telling a Co-Captain by email, WhatsApp or phone push (the live feed
+  already tells an open desk at once).
 
 ## Demo controls
 

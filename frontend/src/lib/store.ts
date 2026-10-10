@@ -94,7 +94,7 @@ function applyEvent(s: State, e: WsEvent): State {
     case "snapshot": {
       // keep cards that already resolved on screen; take everything live from the snapshot
       const keptOrders = Object.fromEntries(Object.entries(s.pending).filter(([, p]) => !isLive(p)));
-      const keptPlans = Object.fromEntries(Object.entries(s.plans).filter(([, p]) => p.state !== "PENDING"));
+      const keptPlans = Object.fromEntries(Object.entries(s.plans).filter(([, p]) => !isLivePlan(p)));
       return {
         ...s,
         loaded: true,
@@ -139,6 +139,8 @@ function applyEvent(s: State, e: WsEvent): State {
       return { ...s, external: upsert(s.external, e.order, (o) => o.order_id === e.order.order_id) };
     case "discipline_update":
       return { ...s, discipline: e.summary };
+    case "cocaptain_update":
+      return s; // the Co-Captain tab refreshes itself when lib/ws.ts passes this on (lib/cocaptain.ts)
   }
 }
 
@@ -177,13 +179,14 @@ const oldestFirst = <T extends { created_at: string }>(a: T, b: T) => Date.parse
 // A plan's steps are orders internally. They belong inside their plan's ticket, never on their own.
 const standalone = (p: PendingOrder) => !p.plan_id;
 /** Still waiting on someone: the trader's click, or (past their own limit) the Co-Captain's as well. */
+export const isLivePlan = (p: Plan) => p.state === "PENDING" || p.state === "AWAITING_CO_APPROVAL";
 export const isLive = (p: PendingOrder) => p.state === "PENDING" || p.state === "AWAITING_CO_APPROVAL";
 
 /** Cards waiting for the trader's decision, oldest first. */
 export function awaiting(s: State): { orders: PendingOrder[]; plans: Plan[] } {
   return {
     orders: Object.values(s.pending).filter((p) => isLive(p) && standalone(p)).sort(oldestFirst),
-    plans: Object.values(s.plans).filter((p) => p.state === "PENDING").sort(oldestFirst),
+    plans: Object.values(s.plans).filter(isLivePlan).sort(oldestFirst),
   };
 }
 
@@ -192,6 +195,6 @@ export function resolved(s: State, limit = 6): { orders: PendingOrder[]; plans: 
   const shown = (id: string) => !s.hidden[id];
   return {
     orders: Object.values(s.pending).filter((p) => !isLive(p) && standalone(p) && shown(p.id)).sort(newestFirst).slice(0, limit),
-    plans: Object.values(s.plans).filter((p) => p.state !== "PENDING" && shown(p.id)).sort(newestFirst).slice(0, limit),
+    plans: Object.values(s.plans).filter((p) => !isLivePlan(p) && shown(p.id)).sort(newestFirst).slice(0, limit),
   };
 }

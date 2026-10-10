@@ -165,6 +165,19 @@ describe("store", () => {
     expect(resolved(s).orders.map((p) => p.id)).toEqual(["p1"]);
   });
 
+  it("keeps a plan on the trader's desk while it waits for their Co-Captain, and passes the live co-captain event through", () => {
+    let s = apply(initialState, { type: "plan_created", seq: 1, plan: plan("pl1") });
+    s = apply(s, { type: "plan_updated", seq: 2, plan: plan("pl1", "AWAITING_CO_APPROVAL") });
+    expect(awaiting(s).plans.map((p) => p.id)).toEqual(["pl1"]);
+    expect(resolved(s).plans).toEqual([]);
+    const before = s;
+    s = apply(s, { type: "cocaptain_update", seq: 3, action: "review_requested", card_id: "pl1" });
+    expect(s).toEqual(before); // nothing on the trader's own screen changes: the Co-Captain tab refreshes itself
+    s = apply(s, { type: "plan_updated", seq: 4, plan: plan("pl1", "VOID") });
+    expect(awaiting(s).plans).toEqual([]);
+    expect(resolved(s).plans.map((p) => p.id)).toEqual(["pl1"]);
+  });
+
   it("lets the trader dismiss a resolved card, and remembers what happened to it", () => {
     let s = apply(initialState, { type: "pending_updated", seq: 1, pending: pending("p1", "SENT") });
     s = reducer(s, { type: "result", id: "p1", result: fx({ outcome: "SENT" }) });

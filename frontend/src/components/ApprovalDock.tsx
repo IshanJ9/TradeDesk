@@ -35,7 +35,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
     busy(id, false);
     if (r.ok) return dispatch({ type: "report", report: r.data });
     const c = r.conflict;
-    note(id, c?.code === "REQUOTE_REQUIRED" ? "warn" : "error", r.message);
+    note(id, c?.code === "REQUOTE_REQUIRED" ? "warn" : c?.code === "AWAITING_CO_CAPTAIN" ? "info" : "error", r.message);
     if (c?.code === "REQUOTE_REQUIRED" && c.plan) note(c.plan.id, "warn", r.message);
   }
 

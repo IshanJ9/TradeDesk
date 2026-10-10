@@ -98,3 +98,17 @@ header, the Co-Captain websocket) are gone: people are the real signed-in accoun
 - Tests ported: `test_cocaptain_pairing.py` (real accounts), `test_cocaptain_store.py` (a plain list of accounts),
   `test_cocaptain.py` (28 tests, three signed-in users). Still open: whole-plan two-person approval, notifying the
   reviewer, and the simulated Anchor/Co-Captain lock wording.
+
+## Plans and live notification checkpoint (10 October)
+
+- `PlanState.AWAITING_CO_APPROVAL`; `Plan` gains `co_captain`, `co_captain_name`, `co_reasons` (not in the plan hash).
+- `PlanService.approve` / `co_approve` / `co_decline` / `void_waiting_on` mirror the order flow: one review of kind PLAN
+  bound to `plan_hash`, the zone re-evaluated when the Co-Captain clicks, a last `ready()` look right before the start,
+  and `link_holds()` before every step so a pairing that ends mid-run stops the steps not yet sent (it ignores the card's
+  expiry on purpose: a running plan is stopped by the pairing ending, never by the clock).
+- `app/cocaptain/review_api.py`: `/plan-inbox`, `/plans/{id}/approve|decline` (404 for anyone but the Co-Captain).
+- `UserNotifier` (app/cocaptain/events.py) replaces the standalone websocket: pairing and review notifications now go over the
+  per-user live feed as `cocaptain_update` events, so the Co-Captain's desk refreshes at once (a poll remains as backup).
+- Tests: 37 in `tests/test_cocaptain.py`; 21 gate/plan/notification mutations, all caught.
+- Still open: email/WhatsApp/phone push when the desk is closed, real-session acceptance on the live sandbox, and the
+  simulated Anchor/Co-Captain lock wording.

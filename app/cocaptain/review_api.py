@@ -14,13 +14,18 @@ from pydantic import Field
 from app.api_models import ApprovalConflict, ExecutionResult
 from app.auth.deps import CurrentUser, protected_router
 from app.orders.approval import ApprovalError, ApprovalNotFound
-from app.schemas import Model, PendingOrder, PendingState
+from app.plans.service import PlanApprovalError, PlanNotFound
+from app.schemas import Model, PendingOrder, PendingState, Plan, PlanReport, PlanState
 
 router = protected_router(prefix="/api/cocaptain")
 
 
 class ReviewRequest(Model):
     order_hash: str = Field(min_length=64, max_length=64)
+
+
+class PlanReviewRequest(Model):
+    plan_hash: str = Field(min_length=64, max_length=64)
 
 
 def _enabled(request: Request) -> None:
@@ -83,3 +88,51 @@ async def decline(pending_id: str, request: Request, actor: CurrentUser):
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
         return _conflict(err)
+
+
+# ---- whole plans: the same review, bound to the plan's hash ------------------------------------------------------- #
+
+
+def _plan_conflict(err: PlanApprovalError) -> JSONResponse:
+    body = ApprovalConflict(code=err.code, message=err.message, plan=err.plan)
+    return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+
+
+@router.get("/plan-inbox", response_model=list[Plan])
+async def plan_inbox(request: Request, actor: CurrentUser):
+    """Plans waiting for THIS person as a Co-Captain."""
+    _enabled(request)
+    found: list[Plan] = []
+    for link in request.app.state.cocaptain_pairing.for_actor(actor):
+        if link.reviewer_id != actor.id or link.status != "ACTIVE":
+            continue
+        ws = request.app.state.workspaces.peek(link.owner_id)
+        if ws is None:
+            continue
+        found += [p for p in ws.plan_store.all()
+                  if p.state is PlanState.AWAITING_CO_APPROVAL and ws.cocaptain.is_reviewer_of(actor, p)]
+    return sorted(found, key=lambda p: p.created_at)
+
+
+@router.post("/plans/{plan_id}/approve", response_model=PlanReport,
+             responses={404: {"description": "Not a plan you may review"}, 409: {"model": ApprovalConflict}})
+async def approve_plan(plan_id: str, body: PlanReviewRequest, request: Request, actor: CurrentUser):
+    ws = await _owners_desk(request, plan_id, actor)
+    try:
+        return await ws.plans.co_approve(plan_id, body.plan_hash, actor)
+    except PlanNotFound:
+        raise HTTPException(404, "unknown plan id")
+    except PlanApprovalError as err:
+        return _plan_conflict(err)
+
+
+@router.post("/plans/{plan_id}/decline", response_model=Plan,
+             responses={404: {"description": "Not a plan you may review"}, 409: {"model": ApprovalConflict}})
+async def decline_plan(plan_id: str, request: Request, actor: CurrentUser):
+    ws = await _owners_desk(request, plan_id, actor)
+    try:
+        return await ws.plans.co_decline(plan_id, actor)
+    except PlanNotFound:
+        raise HTTPException(404, "unknown plan id")
+    except PlanApprovalError as err:
+        return _plan_conflict(err)

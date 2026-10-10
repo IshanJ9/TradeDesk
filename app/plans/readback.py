@@ -78,6 +78,8 @@ def render_report(plan: Plan, state: PlanState, legs: list[PlanLegResult]) -> st
         head = f"{plan.title}: in progress."
     elif state is PlanState.PENDING:
         head = f"{plan.title}: waiting for your approval. Nothing has been sent."
+    elif state is PlanState.AWAITING_CO_APPROVAL:
+        head = f"{plan.title}: waiting for your Co-Captain's approval too. Nothing has been sent."
     elif state in (PlanState.REQUOTE_REQUIRED, PlanState.EXPIRED, PlanState.VOID, PlanState.REJECTED):
         head = f"{plan.title}: not run. Nothing was sent."
     elif all(r.status is LegStatus.FILLED for r in legs):

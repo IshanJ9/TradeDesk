@@ -62,6 +62,10 @@ export const cocaptainApi = {
   approve: (id: string, orderHash: string) =>
     request<ExecutionResult>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/approve`, { order_hash: orderHash }),
   decline: (id: string) => request<PendingOrder>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/decline`, {}),
+  planInbox: () => request<Plan[]>("GET", "/api/cocaptain/plan-inbox"),
+  approvePlan: (id: string, planHash: string) =>
+    request<PlanReport>("POST", `/api/cocaptain/plans/${encodeURIComponent(id)}/approve`, { plan_hash: planHash }),
+  declinePlan: (id: string) => request<Plan>("POST", `/api/cocaptain/plans/${encodeURIComponent(id)}/decline`, {}),
 };
 
 // Which account the desk is on, and linking your own 021 account. The server's own words are shown as they are.

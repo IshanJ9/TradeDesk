@@ -9,7 +9,7 @@ import type { Action } from "../lib/store";
 import { Banner, Button, Chip, Empty } from "./ui";
 
 export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispatch: Dispatch<Action> }) {
-  const { enabled, settings, inbox, refresh } = view;
+  const { enabled, settings, inbox, planInbox, refresh } = view;
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -31,6 +31,16 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
     setBusy(null);
     if (!r.ok) setProblem(r.message);
     else dispatch({ type: "toast", toast: { kind: "info", message: approve ? "You approved it. The order was sent." : "You declined it. Nothing was sent." } });
+    await refresh();
+  }
+
+  async function reviewPlan(id: string, hash: string, approve: boolean) {
+    setBusy(id);
+    setProblem(null);
+    const r = approve ? await cocaptainApi.approvePlan(id, hash) : await cocaptainApi.declinePlan(id);
+    setBusy(null);
+    if (!r.ok) setProblem(r.message);
+    else dispatch({ type: "toast", toast: { kind: "info", message: approve ? "You approved the plan. It is running." : "You declined the plan. Nothing was sent." } });
     await refresh();
   }
 
@@ -88,12 +98,28 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
       {reviewing.length > 0 && (
         <section aria-label="Waiting for your review" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-medium text-ink">Waiting for your review{inbox.length ? ` (${inbox.length})` : ""}</h3>
+            <h3 className="font-medium text-ink">Waiting for your review{inbox.length + planInbox.length ? ` (${inbox.length + planInbox.length})` : ""}</h3>
             {reviewing.map((l) => (
               <Button key={l.id} onClick={() => run("leave", () => cocaptainApi.revoke(l))} disabled={busy === "leave"}>Stop being {name(l.owner_id)}&rsquo;s Co-Captain</Button>
             ))}
           </div>
-          {inbox.length === 0 && <Empty title="Nothing to review right now.">When {reviewing.map((l) => name(l.owner_id)).join(", ")} goes past a limit, the order waits here for you.</Empty>}
+          {inbox.length + planInbox.length === 0 && <Empty title="Nothing to review right now.">When {reviewing.map((l) => name(l.owner_id)).join(", ")} goes past a limit, the order waits here for you.</Empty>}
+          {planInbox.map((pl) => (
+            <article key={pl.id} aria-label={pl.title} className="rounded-xl border border-line bg-surface p-3">
+              <h4 className="font-serif text-lg text-ink">{pl.title}</h4>
+              <p className="text-muted">A plan of {pl.legs.length} steps, approved together &middot; asked {clock(pl.created_at)}</p>
+              <ol className="mt-1 list-decimal pl-5 text-ink">
+                {pl.legs.map((leg) => <li key={leg.index}>{actionTitle(leg.order)}</li>)}
+              </ol>
+              <p className="mt-2 text-ink">This is past limits they set for themselves:</p>
+              <ul className="list-disc pl-5 text-muted">{pl.co_reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+              <p className="mt-2 text-xs text-muted">Nothing runs unless you approve this exact plan. Each step is still checked against their hard stops and locks, and the plan stops if you end the pairing.</p>
+              <div className="mt-3 flex gap-2">
+                <Button onClick={() => reviewPlan(pl.id, pl.plan_hash, false)} disabled={busy === pl.id}>Decline</Button>
+                <Button variant="primary" onClick={() => reviewPlan(pl.id, pl.plan_hash, true)} disabled={busy === pl.id}>Approve this plan</Button>
+              </div>
+            </article>
+          ))}
           {inbox.map((o) => (
             <article key={o.id} aria-label={actionTitle(o)} className="rounded-xl border border-line bg-surface p-3">
               <h4 className="font-serif text-lg text-ink">{actionTitle(o)}</h4>

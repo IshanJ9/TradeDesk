@@ -925,6 +925,9 @@
                       },
                       {
                         "$ref": "#/components/schemas/DisciplineUpdateEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/CoCaptainUpdateEvent"
                       }
                     ],
                     "discriminator": {
@@ -946,7 +949,8 @@
                         "chaos_status": "#/components/schemas/ChaosStatusEvent",
                         "trace": "#/components/schemas/TraceEvent",
                         "external_order": "#/components/schemas/ExternalOrderEvent",
-                        "discipline_update": "#/components/schemas/DisciplineUpdateEvent"
+                        "discipline_update": "#/components/schemas/DisciplineUpdateEvent",
+                        "cocaptain_update": "#/components/schemas/CoCaptainUpdateEvent"
                       }
                     }
                   },
@@ -1738,6 +1742,143 @@
           },
           "404": {
             "description": "Not a card you may review"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/plan-inbox": {
+      "get": {
+        "summary": "Plan Inbox",
+        "description": "Plans waiting for THIS person as a Co-Captain.",
+        "operationId": "plan_inbox_api_cocaptain_plan_inbox_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Plan"
+                  },
+                  "type": "array",
+                  "title": "Response Plan Inbox Api Cocaptain Plan Inbox Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/plans/{plan_id}/approve": {
+      "post": {
+        "summary": "Approve Plan",
+        "operationId": "approve_plan_api_cocaptain_plans__plan_id__approve_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a plan you may review"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/plans/{plan_id}/decline": {
+      "post": {
+        "summary": "Decline Plan",
+        "operationId": "decline_plan_api_cocaptain_plans__plan_id__decline_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a plan you may review"
           },
           "409": {
             "content": {
@@ -2939,6 +3080,45 @@
           "enabled"
         ],
         "title": "CoCaptainConfig"
+      },
+      "CoCaptainUpdateEvent": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "type": {
+            "type": "string",
+            "const": "cocaptain_update",
+            "title": "Type",
+            "default": "cocaptain_update"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "card_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "action",
+          "card_id"
+        ],
+        "title": "CoCaptainUpdateEvent",
+        "description": "Something changed in a Co-Captain pairing or a review sent to this person: their desk refreshes at once."
       },
       "Comparator": {
         "type": "string",
@@ -5690,6 +5870,35 @@
             "format": "date-time",
             "title": "Expires At"
           },
+          "co_captain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Captain"
+          },
+          "co_captain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Captain Name"
+          },
+          "co_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Co Reasons"
+          },
           "plan_hash": {
             "type": "string",
             "title": "Plan Hash",
@@ -5707,6 +5916,9 @@
           "state",
           "created_at",
           "expires_at",
+          "co_captain",
+          "co_captain_name",
+          "co_reasons",
           "plan_hash"
         ],
         "title": "Plan",
@@ -6081,10 +6293,27 @@
         "title": "PlanReportUpdateEvent",
         "description": "Progress of an approved plan: sent after every step finishes."
       },
+      "PlanReviewRequest": {
+        "properties": {
+          "plan_hash": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Plan Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_hash"
+        ],
+        "title": "PlanReviewRequest"
+      },
       "PlanState": {
         "type": "string",
         "enum": [
           "PENDING",
+          "AWAITING_CO_APPROVAL",
           "REQUOTE_REQUIRED",
           "APPROVED",
           "RUNNING",

@@ -6,6 +6,9 @@ import { sessionLost } from "./session";
 import type { Action } from "./store";
 import type { WsEvent } from "./types";
 
+/** Dispatched on `window` when the server says something changed in a Co-Captain pairing or review for this user. */
+export const COCAPTAIN_EVENT = "tradedesk:cocaptain";
+
 export function wsUrl(loc: Pick<Location, "protocol" | "host"> = window.location): string {
   return `${loc.protocol === "https:" ? "wss" : "ws"}://${loc.host}/ws`;
 }
@@ -45,6 +48,7 @@ export function useLiveFeed(dispatch: (a: Action) => void): void {
         }
         last = event.seq;
         if (event.type === "snapshot") dispatch({ type: "conn", status: "live" });
+        if (event.type === "cocaptain_update") window.dispatchEvent(new CustomEvent(COCAPTAIN_EVENT)); // refresh now, not at the next poll
         dispatch({ type: "event", event });
       };
       socket.onclose = () => {

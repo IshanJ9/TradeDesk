@@ -67,9 +67,10 @@ class CoCaptainGate:
         person = self.pairing.directory.by_id(user_id)
         return person.label if person else user_id
 
-    def bindings(self, p: PendingOrder) -> dict:
-        """What a review is bound to: the exact card, its account, and its expiry."""
-        return dict(owner_id=self.owner_id, account_id=self.account_id, order_hash=p.order_hash, expires_at=p.expires_at)
+    def bindings(self, p: PendingOrder | Plan) -> dict:
+        """What a review is bound to: the exact card (or plan), its account, and its expiry."""
+        fingerprint = p.plan_hash if isinstance(p, Plan) else p.order_hash
+        return dict(owner_id=self.owner_id, account_id=self.account_id, order_hash=fingerprint, expires_at=p.expires_at)
 
     # ---- the question every approval asks -------------------------------------------------------- #
 
@@ -87,15 +88,27 @@ class CoCaptainGate:
 
     # ---- reviews -------------------------------------------------------------------------------- #
 
-    def open_review(self, p: PendingOrder) -> Review:
-        return self.reviews.open(card_id=p.id, kind="ORDER", owner_id=self.owner_id, account_id=self.account_id,
-                                 order_hash=p.order_hash, expires_at=p.expires_at)
+    def open_review(self, p: PendingOrder | Plan) -> Review:
+        b = self.bindings(p)
+        return self.reviews.open(card_id=p.id, kind="PLAN" if isinstance(p, Plan) else "ORDER", **b)
 
-    def is_reviewer_of(self, actor: Actor, p: PendingOrder) -> bool:
+    def is_reviewer_of(self, actor: Actor, p: PendingOrder | Plan) -> bool:
         review = self.reviews.get(p.id)
         return bool(review and review.status == "OPEN" and actor.id == review.reviewer_id and actor.id != review.owner_id)
 
-    def ready(self, p: PendingOrder) -> bool:
+    def link_holds(self, card_id: str) -> bool:
+        """The review is still open and the pairing it was made under is still active. Unlike `ready` this ignores
+        the card's expiry, so a plan that is already running is only stopped by the pairing ending, never by the clock."""
+        review = self.reviews.get(card_id)
+        if review is None or review.status != "OPEN":
+            return False
+        try:
+            self.reviews._active_link(review)
+        except ReviewError:
+            return False
+        return True
+
+    def ready(self, p: PendingOrder | Plan) -> bool:
         """Both people have approved this exact card under an active link. Necessary, never sufficient to send."""
         try:
             return self.reviews.ready(p.id, **self.bindings(p))

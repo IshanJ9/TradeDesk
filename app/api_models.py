@@ -257,6 +257,14 @@ class _Event(Model):
     user_id: str | None = Field(default=None, exclude=True)
 
 
+class CoCaptainUpdateEvent(_Event):
+    """Something changed in a Co-Captain pairing or a review sent to this person: their desk refreshes at once."""
+
+    type: Literal["cocaptain_update"] = "cocaptain_update"
+    action: str  # invited | accepted | revoked | review_requested | ...
+    card_id: str | None = None
+
+
 class SnapshotEvent(_Event):
     type: Literal["snapshot"] = "snapshot"
     account: AccountSnapshot
@@ -394,6 +402,7 @@ WsEvent = Annotated[
         TraceEvent,
         ExternalOrderEvent,
         DisciplineUpdateEvent,
+        CoCaptainUpdateEvent,
     ],
     Field(discriminator="type"),
 ]

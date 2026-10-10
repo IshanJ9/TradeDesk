@@ -43,6 +43,7 @@ from app.broker.base import BrokerAdapter, BrokerTimeout
 from app.broker.disconnected import RECONNECT_MESSAGE
 from app.config import Settings
 from app.events import EventHub
+from app.cocaptain.store import ReviewError
 from app.orders.builder import OrderBuilder
 from app.orders.charges import compute_charges
 from app.orders.executor import DuplicateExecution, Executor
@@ -197,7 +198,7 @@ class PlanService:
         if plan is None:
             raise PlanNotFound(plan_id)
 
-        if plan.state is not PlanState.PENDING:
+        if plan.state not in (PlanState.PENDING, PlanState.AWAITING_CO_APPROVAL):
             self._refuse(plan, "NOT_PENDING", f"This plan is already {plan.state.value.lower().replace('_', ' ')}.")
         if getattr(self._broker, "needs_reconnect", False):  # the plan stays open; nothing is claimed or sent
             self._refuse(plan, "BLOCKED", RECONNECT_MESSAGE)
@@ -211,17 +212,117 @@ class PlanService:
                 PlanState.VOID,
             )
 
-        if self.cocaptain is not None and self.cocaptain.enabled:
-            # A plan is several orders at once. Two-person approval of a whole plan is not built yet, so while the
-            # trader is past their own limit a plan is not approved at all (never a way round the Co-Captain).
+        gate = self.cocaptain
+        review_required = False
+        if gate is not None and gate.enabled:
             try:
-                assessment = await self.cocaptain.assess(plan)
+                assessment = await gate.assess(plan)
             except BrokerTimeout:
                 self._void(plan, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
-            if assessment.blocked or assessment.required:
-                self._refuse(plan, "BLOCKED", assessment.blocked or (
-                    "You are past a limit you set and have a Co-Captain. A plan can't be approved by two people yet, "
-                    "so please ask for single orders instead. Nothing was sent."))
+            plan = self._fresh(plan)  # the check awaited: look again before acting on what we read earlier
+            if assessment.blocked:
+                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", assessment.blocked, subject_id=plan.id,
+                                   data={"reason": "NO_COCAPTAIN"})
+                self._refuse(plan, "BLOCKED", assessment.blocked)
+            if assessment.required:
+                try:
+                    gate.open_review(plan)  # the whole plan is ONE reviewed object, bound to its plan hash
+                    if plan.state is PlanState.PENDING:
+                        gate.reviews.decide(plan.id, gate.owner, "APPROVE", **gate.bindings(plan))
+                except ReviewError as err:
+                    self._refuse(plan, "BLOCKED", str(err))
+                if plan.state is PlanState.PENDING:  # the trader's approval is saved; the plan now waits for the second
+                    waiting = self._store.put(plan.model_copy(update={
+                        "state": PlanState.AWAITING_CO_APPROVAL, "co_captain": assessment.reviewer_id,
+                        "co_captain_name": gate.name_of(assessment.reviewer_id), "co_reasons": assessment.reasons}))
+                    self._hub.publish(PlanUpdatedEvent, plan=waiting)
+                    gate.pairing.hub.publish(assessment.reviewer_id, "review_requested", waiting.id)
+                    self._audit.record(
+                        AuditKind.COCAPTAIN, "user", f"Trader approved plan: {plan.title}; waiting for {assessment.reviewer_id}",
+                        subject_id=plan.id, data={"actor_id": gate.owner_id, "reasons": assessment.reasons})
+                    raise PlanApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(waiting.co_captain_name), waiting)
+                if not gate.ready(plan):  # the trader clicked again before the Co-Captain has
+                    raise PlanApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(plan.co_captain_name), plan)
+                review_required = True
+            elif plan.state is PlanState.AWAITING_CO_APPROVAL:
+                # back inside the limit: this click is the trader's fresh approval, and the old review stops counting
+                gate.close(plan.id, "The trader is back inside their limit and approved again themselves.")
+        return await self._start(plan, review_required)
+
+    @staticmethod
+    def _waiting_text(reviewer: str | None) -> str:
+        return (f"Waiting for your Co-Captain, {reviewer or 'the person you chose'}, to approve the same plan. "
+                "Nothing has been sent.")
+
+    def _fresh(self, plan: Plan, only: PlanState | None = None) -> Plan:
+        """The stored plan as it is right now, or a refusal if it is no longer waiting. No await inside."""
+        current = self._store.get(plan.id)
+        waiting = (PlanState.PENDING, PlanState.AWAITING_CO_APPROVAL) if only is None else (only,)
+        if current is None or current.state not in waiting:
+            state = current.state.value.lower().replace("_", " ") if current else "gone"
+            self._refuse(current or plan, "NOT_PENDING", f"This plan is already {state}.")
+        return current
+
+    async def co_approve(self, plan_id: str, plan_hash: str, actor) -> PlanReport:
+        """The Co-Captain's click on a whole plan. It adds their approval; the plan starts only if everything holds."""
+        gate = self.cocaptain
+        plan = self._store.get(plan_id)
+        if plan is None or gate is None or not gate.enabled or not gate.is_reviewer_of(actor, plan):
+            raise PlanNotFound(plan_id)  # not theirs to see: the same answer as "no such plan"
+        if plan.state is not PlanState.AWAITING_CO_APPROVAL:
+            self._refuse(plan, "NOT_PENDING", f"This plan is {plan.state.value.lower().replace('_', ' ')}, not waiting for you.")
+        if self._clock() >= plan.expires_at:
+            self._refuse(plan, "EXPIRED", "This plan expired. Ask for a fresh one.", PlanState.EXPIRED)
+        if not hmac.compare_digest(plan_hash, plan.plan_hash):
+            self._refuse(plan, "HASH_MISMATCH", "What you approved doesn't match this plan, so it has been cancelled. "
+                         "Nothing was sent.", PlanState.VOID)
+        try:
+            gate.reviews.decide(plan.id, actor, "APPROVE", **gate.bindings(plan))
+        except ReviewError as err:
+            self._refuse(plan, "BLOCKED", str(err))
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {actor.id} approved plan: {plan.title}",
+                           subject_id=plan.id, data={"actor_id": actor.id, "plan_hash": plan.plan_hash})
+        try:
+            assessment = await gate.assess(plan)
+        except BrokerTimeout:
+            self._void(plan, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
+        plan = self._fresh(plan, only=PlanState.AWAITING_CO_APPROVAL)  # a revoke or another click may have landed
+        if not gate.is_reviewer_of(actor, plan):
+            raise PlanNotFound(plan_id)
+        if not assessment.required:
+            raise PlanApprovalError("AWAITING_CO_CAPTAIN", "Thanks. The trader is back inside their limit, so they will "
+                                    "need to approve it again themselves. Nothing has been sent.", plan)
+        if not gate.ready(plan):
+            raise PlanApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(plan.co_captain_name), plan)
+        return await self._start(plan, review_required=True)
+
+    async def co_decline(self, plan_id: str, actor) -> Plan:
+        gate = self.cocaptain
+        plan = self._store.get(plan_id)
+        if plan is None or gate is None or not gate.enabled or not gate.is_reviewer_of(actor, plan):
+            raise PlanNotFound(plan_id)
+        if plan.state is not PlanState.AWAITING_CO_APPROVAL:
+            self._refuse(plan, "NOT_PENDING", f"This plan is {plan.state.value.lower().replace('_', ' ')}, not waiting for you.")
+        try:
+            gate.reviews.decide(plan.id, actor, "DECLINE", **gate.bindings(plan))
+        except ReviewError as err:
+            self._refuse(plan, "BLOCKED", str(err))
+        rejected = self._set_state(plan, PlanState.REJECTED)
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {actor.id} declined plan: {plan.title}",
+                           subject_id=plan.id, data={"actor_id": actor.id})
+        return rejected
+
+    def void_waiting_on(self, reviewer_id: str, message: str) -> None:
+        """The pairing ended: every plan still waiting for that Co-Captain is cancelled, and nothing was sent."""
+        for plan in self._store.all():
+            if plan.state is PlanState.AWAITING_CO_APPROVAL and plan.co_captain == reviewer_id:
+                self._set_state(plan, PlanState.VOID)
+                self._audit.record(AuditKind.APPROVAL_REFUSED, "system", f"BLOCKED: {message}", subject_id=plan.id,
+                                   data={"code": "BLOCKED"})
+
+    async def _start(self, plan: Plan, review_required: bool) -> PlanReport:
+        """Claim the plan, re-check every step, and start it. The same path whether one person approved or two."""
+        plan = self._fresh(plan)  # a second click that raced this one finds the plan already claimed
         legs = [leg.model_copy(update={"order": leg.order.transition(PendingState.APPROVED)}) for leg in plan.legs]
         approved = self._store.put(plan.model_copy(update={"state": PlanState.APPROVED, "legs": legs}))  # claim: no await above
         self._hub.publish(PlanUpdatedEvent, plan=approved)
@@ -239,15 +340,20 @@ class PlanService:
         except BrokerTimeout:
             self._void(approved, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
 
+        if review_required and not self.cocaptain.ready(approved):
+            # the last look, with no await between it and the start: a pairing that ended or a plan that changed
+            self._void(approved, "Your Co-Captain's approval no longer holds (the link ended or the plan changed), so "
+                       "nothing was sent. Ask again for a fresh plan.")
+
         report = self._store.put_report(self._store.report(approved.id).model_copy(update={"state": PlanState.APPROVED}))
-        self._tasks[approved.id] = asyncio.create_task(self._run(approved))
+        self._tasks[approved.id] = asyncio.create_task(self._run(approved, review_required))
         return report
 
     async def reject(self, plan_id: str) -> Plan:
         plan = self._store.get(plan_id)
         if plan is None:
             raise PlanNotFound(plan_id)
-        if plan.state is not PlanState.PENDING:
+        if plan.state not in (PlanState.PENDING, PlanState.AWAITING_CO_APPROVAL):
             self._refuse(plan, "NOT_PENDING", f"This plan is already {plan.state.value.lower().replace('_', ' ')}.")
         rejected = self._set_state(plan, PlanState.REJECTED)
         self._audit.record(AuditKind.APPROVAL_REFUSED, "user", f"Trader declined plan: {plan.title}", subject_id=plan.id)
@@ -360,7 +466,7 @@ class PlanService:
             halted.append(plan.id)
         return halted
 
-    async def _run(self, plan: Plan) -> None:
+    async def _run(self, plan: Plan, review_required: bool = False) -> None:
         results = {r.index: r for r in self._store.report(plan.id).legs}
         sent: dict[int, Order] = {}
         stop_reason: str | None = None
@@ -384,6 +490,13 @@ class PlanService:
                             stop_reason = f"Step {leg.proceeds_from_leg + 1} did not complete"
                         self._leg_done(plan, results)
                         continue
+
+                if review_required and not self.cocaptain.link_holds(plan.id):
+                    # the Co-Captain pairing ended after the plan started: no further step goes out, whatever the policy
+                    stop_reason = "Your Co-Captain's approval no longer holds (the pairing ended)"
+                    results[i] = self._skipped(leg, f"{stop_reason}.")
+                    self._leg_done(plan, results)
+                    continue
 
                 try:
                     await self._recheck_leg(leg)
@@ -568,6 +681,8 @@ class PlanService:
     # ------------------------------------------------------------------ #
 
     def _set_state(self, plan: Plan, state: PlanState) -> Plan:
+        if state in (PlanState.EXPIRED, PlanState.VOID, PlanState.REJECTED, PlanState.REQUOTE_REQUIRED) and self.cocaptain is not None:
+            self.cocaptain.close(plan.id, f"The plan is now {state.value.lower().replace('_', ' ')}.")
         updated = self._store.put(self._store.get(plan.id).model_copy(update={"state": state}))
         self._hub.publish(PlanUpdatedEvent, plan=updated)
         report = self._store.report(plan.id)

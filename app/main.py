@@ -17,7 +17,7 @@ from app.auth.store import AuthStore, UserRow
 from app.cocaptain.actors import AccountDirectory
 from app.cocaptain.api import router as cocaptain_router
 from app.cocaptain.audit import OwnerAudit
-from app.cocaptain.events import ReviewHub
+from app.cocaptain.events import UserNotifier
 from app.cocaptain.pairing import Pairing
 from app.cocaptain.review_api import router as review_router
 from app.cocaptain.store import ReviewStore
@@ -132,7 +132,7 @@ def create_app(
     # Co-Captain: the pairing between two accounts and the reviews of cards sent to a Co-Captain are the only things
     # two people share. Each trader's own gate lives in their workspace (app/workspace.py).
     shared_audit = OwnerAudit(db, clock, events)
-    review_hub = ReviewHub()
+    review_hub = UserNotifier(events)  # a pairing change or a card sent for review reaches that person's desk at once
     pairing = Pairing(db, AccountDirectory(auth_store), shared_audit, review_hub, clock)
     reviews = ReviewStore(db, pairing, shared_audit, clock)
 
@@ -144,8 +144,9 @@ def create_app(
         reviews.revoke_link(link, actor)
         desk = registry.peek(link.owner_id)
         if desk is not None:
-            desk.approvals.void_waiting_on(link.reviewer_id, "Your Co-Captain link ended, so this card is cancelled. "
-                                           "Nothing was sent. Ask again for a fresh one.")
+            note = "Your Co-Captain link ended, so this card is cancelled. Nothing was sent. Ask again for a fresh one."
+            desk.approvals.void_waiting_on(link.reviewer_id, note)
+            desk.plans.void_waiting_on(link.reviewer_id, note)
 
     pairing.on_revoke = on_revoke
 

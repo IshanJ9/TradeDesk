@@ -23,3 +23,16 @@ class ReviewHub:
                 while not queue.empty():
                     queue.get_nowait()
                 queue.put_nowait(None)
+
+
+class UserNotifier:
+    """Delivers the same notifications as ReviewHub, but over the app's per-user live feed (the /ws every desk already
+    has open), so a Co-Captain's desk hears about a waiting card at once instead of on its next poll."""
+
+    def __init__(self, events):
+        self._events = events
+
+    def publish(self, actor_id: str, action: str, card_id: str | None = None):
+        from app.api_models import CoCaptainUpdateEvent
+
+        self._events.publish(actor_id, CoCaptainUpdateEvent, action=action, card_id=card_id)

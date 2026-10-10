@@ -300,4 +300,4 @@ def test_ws_event_union_is_discriminated(client):
     spec = client.get("/openapi.json").json()
     items = spec["paths"]["/api/ws-events"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["items"]
     assert items["discriminator"]["propertyName"] == "type"
-    assert len(items["discriminator"]["mapping"]) == 17
+    assert len(items["discriminator"]["mapping"]) == 18

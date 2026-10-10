@@ -50,7 +50,8 @@ class PlanStore:
 
     def awaiting_approval(self) -> list[Plan]:
         """Plans the trader can still act on, oldest first."""
-        return sorted((p for p in self._plans.values() if p.state is PlanState.PENDING), key=lambda p: p.created_at)
+        return sorted((p for p in self._plans.values() if p.state in (PlanState.PENDING, PlanState.AWAITING_CO_APPROVAL)),
+                      key=lambda p: p.created_at)
 
     def latest(self) -> Plan | None:
         return max(self._plans.values(), key=lambda p: p.created_at, default=None)

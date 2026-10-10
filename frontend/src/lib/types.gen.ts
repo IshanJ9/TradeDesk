@@ -804,6 +804,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cocaptain/plan-inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Inbox
+         * @description Plans waiting for THIS person as a Co-Captain.
+         */
+        get: operations["plan_inbox_api_cocaptain_plan_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/plans/{plan_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Plan */
+        post: operations["approve_plan_api_cocaptain_plans__plan_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/plans/{plan_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline Plan */
+        post: operations["decline_plan_api_cocaptain_plans__plan_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/status": {
         parameters: {
             query?: never;
@@ -1301,6 +1355,23 @@ export interface components {
         CoCaptainConfig: {
             /** Enabled */
             enabled: boolean;
+        };
+        /**
+         * CoCaptainUpdateEvent
+         * @description Something changed in a Co-Captain pairing or a review sent to this person: their desk refreshes at once.
+         */
+        CoCaptainUpdateEvent: {
+            /** Seq */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cocaptain_update";
+            /** Action */
+            action: string;
+            /** Card Id */
+            card_id: string | null;
         };
         /**
          * Comparator
@@ -2245,6 +2316,12 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            /** Co Captain */
+            co_captain: string | null;
+            /** Co Captain Name */
+            co_captain_name: string | null;
+            /** Co Reasons */
+            co_reasons: string[];
             /**
              * Plan Hash
              * @description Binds the approval to every leg, its caps, and the failure policy.
@@ -2393,11 +2470,16 @@ export interface components {
             type: "plan_report_update";
             report: components["schemas"]["PlanReport"];
         };
+        /** PlanReviewRequest */
+        PlanReviewRequest: {
+            /** Plan Hash */
+            plan_hash: string;
+        };
         /**
          * PlanState
          * @enum {string}
          */
-        PlanState: "PENDING" | "REQUOTE_REQUIRED" | "APPROVED" | "RUNNING" | "COMPLETED" | "HALTED" | "EXPIRED" | "VOID" | "REJECTED";
+        PlanState: "PENDING" | "AWAITING_CO_APPROVAL" | "REQUOTE_REQUIRED" | "APPROVED" | "RUNNING" | "COMPLETED" | "HALTED" | "EXPIRED" | "VOID" | "REJECTED";
         /**
          * PlanUpdatedEvent
          * @description A plan changed state (approved, running, completed, halted, expired, voided, re-quoted).
@@ -3751,7 +3833,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"])[];
+                    "application/json": (components["schemas"]["SnapshotEvent"] | components["schemas"]["TickEvent"] | components["schemas"]["AccountUpdateEvent"] | components["schemas"]["OrderUpdateEvent"] | components["schemas"]["PendingCreatedEvent"] | components["schemas"]["PendingUpdatedEvent"] | components["schemas"]["PlanCreatedEvent"] | components["schemas"]["PlanUpdatedEvent"] | components["schemas"]["PlanReportUpdateEvent"] | components["schemas"]["RuleUpdateEvent"] | components["schemas"]["RuleFiredEvent"] | components["schemas"]["LockUpdateEvent"] | components["schemas"]["AuditEventMessage"] | components["schemas"]["ChaosStatusEvent"] | components["schemas"]["TraceEvent"] | components["schemas"]["ExternalOrderEvent"] | components["schemas"]["DisciplineUpdateEvent"] | components["schemas"]["CoCaptainUpdateEvent"])[];
                 };
             };
         };
@@ -4413,6 +4495,124 @@ export interface operations {
                 };
             };
             /** @description Not a card you may review */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_inbox_api_cocaptain_plan_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"][];
+                };
+            };
+        };
+    };
+    approve_plan_api_cocaptain_plans__plan_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanReport"];
+                };
+            };
+            /** @description Not a plan you may review */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_plan_api_cocaptain_plans__plan_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Not a plan you may review */
             404: {
                 headers: {
                     [name: string]: unknown;

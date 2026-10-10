@@ -173,6 +173,7 @@ class PendingState(str, Enum):
 
 class PlanState(str, Enum):
     PENDING = "PENDING"
+    AWAITING_CO_APPROVAL = "AWAITING_CO_APPROVAL"  # the trader approved the whole plan; their Co-Captain must too
     REQUOTE_REQUIRED = "REQUOTE_REQUIRED"  # prices moved; a fresh plan replaces this one
     APPROVED = "APPROVED"
     RUNNING = "RUNNING"
@@ -847,6 +848,10 @@ class Plan(Model):
     state: PlanState = PlanState.PENDING
     created_at: AwareDatetime
     expires_at: AwareDatetime
+    # Set while the plan waits for the Co-Captain (app/cocaptain); shown on the ticket, not part of the plan hash.
+    co_captain: str | None = None
+    co_captain_name: str | None = None
+    co_reasons: list[str] = Field(default_factory=list)
 
     @field_validator("title", mode="before")
     @classmethod
