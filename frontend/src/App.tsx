@@ -1,4 +1,5 @@
 import { useCallback, useReducer, useState } from "react";
+import { AccountMenu } from "./components/AccountMenu";
 import { AccountPanel } from "./components/AccountPanel";
 import { ApprovalDock } from "./components/ApprovalDock";
 import { ChatPanel } from "./components/ChatPanel";
@@ -59,6 +60,7 @@ export default function App() {
         <div className="flex items-center gap-3 text-xs">
           <DemoControls notify={(message) => dispatch({ type: "toast", toast: { kind: "info", message } })} />
           <ThemeToggle className="text-muted hover:bg-surface2" />
+          <AccountMenu />
           {locks?.anchor_active && <span className="rounded-full border border-[var(--info-line)] bg-[var(--info-bg)] px-2 py-0.5 text-[var(--info-ink)]">Anchor on</span>}
           {locks?.buffett_mode && <span className="rounded-full border border-line px-2 py-0.5 text-muted">Buffett Mode</span>}
           {locks?.co_captain_locked && <span className="rounded-full border border-[var(--info-line)] bg-[var(--info-bg)] px-2 py-0.5 text-[var(--info-ink)]">Co-Captain lock</span>}

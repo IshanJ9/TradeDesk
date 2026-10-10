@@ -1,5 +1,6 @@
 // Typed calls to the backend. Money only ever moves through the two approve calls, and each one
 // must echo the hash of the exact card the trader is looking at.
+import { csrfHeaders, sessionLost } from "./session";
 import type { ApprovalConflict, ChatReply, ExecutionResult, Plan, PlanReport, PendingOrder, Rule } from "./types";
 
 export type Result<T> =
@@ -11,7 +12,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   try {
     res = await fetch(url, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      credentials: "include", // the session cookie
+      headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...csrfHeaders() },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -27,6 +29,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   if (res.ok) return { ok: true, data: json as T };
 
   const obj = (json ?? {}) as Record<string, unknown>;
+  if (res.status === 401) {
+    sessionLost(); // signed out somewhere else, or the session ran out
+    return { ok: false, status: 401, message: "You've been signed out. Please log in again." };
+  }
   if (res.status === 409 && typeof obj.code === "string") {
     const conflict = obj as unknown as ApprovalConflict;
     return { ok: false, status: 409, message: conflict.message, conflict };
@@ -82,9 +88,10 @@ export async function transcribe(
   const timer = setTimeout(cancel, 25_000);
   try {
     const response = await fetch(`/api/voice/transcribe${language ? `?language=${language}` : ""}`, {
-      method: "POST", body: audio, signal: controller.signal,
-      headers: { "Content-Type": audio.type || "application/octet-stream" },
+      method: "POST", body: audio, signal: controller.signal, credentials: "include",
+      headers: { "Content-Type": audio.type || "application/octet-stream", ...csrfHeaders() },
     });
+    if (response.status === 401) { sessionLost(); return { ok: false, status: 401, message: "You've been signed out. Please log in again." }; }
     if (!response.ok) return { ok: false, status: response.status, message: voiceError(response.status) };
     const data: unknown = await response.json();
     if (typeof data !== "object" || data === null || !("text" in data) ||

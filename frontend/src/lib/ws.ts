@@ -1,7 +1,8 @@
-// The live feed. One WebSocket; the server sends a snapshot first, then events with a global,
-// increasing `seq`. If a seq is ever skipped we drop the connection and reconnect, which gives a
+// The live feed. One WebSocket, opened with the session cookie (the server refuses it without one); it sends a
+// snapshot first, then this user's events with an increasing `seq`. If a seq is ever skipped we drop the connection and reconnect, which gives a
 // fresh snapshot, so the screen can never silently drift away from the server.
 import { useEffect } from "react";
+import { sessionLost } from "./session";
 import type { Action } from "./store";
 import type { WsEvent } from "./types";
 
@@ -25,8 +26,10 @@ export function useLiveFeed(dispatch: (a: Action) => void): void {
       dispatch({ type: "conn", status: "connecting" });
       socket = new WebSocket(wsUrl());
       let last: number | null = null;
+      let opened = false;
 
       socket.onopen = () => {
+        opened = true;
         attempt = 0;
       };
       socket.onmessage = (msg) => {
@@ -46,6 +49,9 @@ export function useLiveFeed(dispatch: (a: Action) => void): void {
       };
       socket.onclose = () => {
         if (stopped) return;
+        // A socket the server refuses before opening looks like any dropped connection. Ask whether we are still
+        // signed in: if not, the call below answers 401 and sends the user to the log-in page.
+        if (!opened) void fetch("/api/auth/me", { credentials: "include" }).then((r) => { if (r.status === 401) sessionLost(); }).catch(() => {});
         dispatch({ type: "conn", status: "offline" });
         attempt += 1;
         timer = setTimeout(connect, Math.min(1000 * 2 ** Math.min(attempt, 3), 8000));
