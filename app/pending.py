@@ -46,9 +46,10 @@ class PendingStore:
         return self._orders.get(order_id)
 
     def awaiting_approval(self) -> list[PendingOrder]:
-        """Cards the trader can still act on, oldest first."""
+        """Cards the trader can still act on, oldest first (including ones waiting for their Co-Captain)."""
         return sorted(
-            (o for o in self._orders.values() if o.state is PendingState.PENDING),
+            (o for o in self._orders.values()
+             if o.state in (PendingState.PENDING, PendingState.AWAITING_CO_APPROVAL)),
             key=lambda o: o.created_at,
         )
 

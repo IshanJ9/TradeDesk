@@ -1,17 +1,25 @@
 // Typed calls to the backend. Money only ever moves through the two approve calls, and each one
 // must echo the hash of the exact card the trader is looking at.
+import type { components } from "./types.gen";
 import type { ApprovalConflict, ChatReply, ExecutionResult, Plan, PlanReport, PendingOrder, Rule } from "./types";
 
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; conflict?: ApprovalConflict };
 
+// Who is calling. Only a demo build with DEV_ACTORS honours it (open /app?as=ravi in a second tab to play the
+// Co-Captain); a real deployment ignores the header, so this can never name anyone.
+const actor = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("as");
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<Result<T>> {
   let res: Response;
   try {
     res = await fetch(url, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(actor ? { "X-Actor": actor } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -40,6 +48,19 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   const detail = typeof obj.detail === "string" ? obj.detail : `Request failed (${res.status}).`;
   return { ok: false, status: res.status, message: detail };
 }
+
+export type CoCaptainStatus = components["schemas"]["CoCaptainStatus"];
+
+export const cocaptainApi = {
+  status: () => request<CoCaptainStatus>("GET", "/api/cocaptain/status"),
+  invite: (reviewer: string) => request<CoCaptainStatus>("POST", "/api/cocaptain/invite", { reviewer }),
+  accept: () => request<CoCaptainStatus>("POST", "/api/cocaptain/accept", {}),
+  revoke: () => request<CoCaptainStatus>("POST", "/api/cocaptain/revoke", {}),
+  inbox: () => request<PendingOrder[]>("GET", "/api/cocaptain/inbox"),
+  approve: (id: string, orderHash: string) =>
+    request<ExecutionResult>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/approve`, { order_hash: orderHash }),
+  decline: (id: string) => request<PendingOrder>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/decline`, {}),
+};
 
 export const api = {
   chat: (message: string, viaVoice = false) => request<ChatReply>("POST", "/api/chat", { message, via_voice: viaVoice }),

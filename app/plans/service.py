@@ -126,6 +126,7 @@ class PlanService:
         risk: RiskGuard | None = None,
     ):
         self._risk = risk or NoRiskGuard()
+        self.cocaptain = None  # set by app/main.py
         self._store = store
         self._builder = builder
         self._orders = orders
@@ -207,6 +208,19 @@ class PlanService:
                 PlanState.VOID,
             )
 
+        if self.cocaptain is not None:
+            # A plan is several orders at once. Two-person approval of a whole plan is not built yet, so while the
+            # trader is past their own limit AND has a Co-Captain, a plan is not approved at all (never a way round it).
+            total = sum((leg.order.quantity or 0) * (leg.order.limit_price or leg.order.protection_price or leg.order.ref_ltp)
+                        for leg in plan.legs)
+            try:
+                gate = await self.cocaptain.gate(orders=len(plan.legs), value=total)
+            except BrokerTimeout:
+                self._void(plan, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
+            if gate.blocked or gate.required:
+                self._refuse(plan, "BLOCKED", gate.blocked or (
+                    "You are past a limit you set and have a Co-Captain. A plan can't be approved by two people yet, "
+                    "so please ask for single orders instead. Nothing was sent."))
         legs = [leg.model_copy(update={"order": leg.order.transition(PendingState.APPROVED)}) for leg in plan.legs]
         approved = self._store.put(plan.model_copy(update={"state": PlanState.APPROVED, "legs": legs}))  # claim: no await above
         self._hub.publish(PlanUpdatedEvent, plan=approved)

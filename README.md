@@ -233,6 +233,38 @@ from the file, `NSEFO`/`NRML` with lot 65, positions, funds), and 13 mutations (
 caught). In the browser: the futures card, Approve locked until the words are typed, the fill, the position, and a
 close-out card with no acknowledgment. Not yet sent to the live sandbox.
 
+## Co-Captain (a second person, only past your own limits)
+
+A **Co-Captain** is someone you trust who must approve an order too, but only when you are past a limit **you set
+yourself**. Inside your limits nothing changes: one approval, as before. It is TradeDesk's own feature (021's API has
+no Co-Captain), and a person, never the assistant, approves by clicking in the app.
+
+- **The zone** (`app/cocaptain/zone.py`, plain arithmetic, no model): an order is "past your limit" when it would take
+  you strictly over your orders-a-day, your 20-minute allowance or your daily turnover allowance (the Discipline
+  limits), counting the order itself. A limit you did not set is ignored. It uses the same comparisons as the
+  "You set ..." warnings, and a test checks the two agree. A plan counts as its steps and its total value.
+- **Two approvals on the same card.** You approve; the card waits ("Waiting for your Co-Captain, ravi"); they approve
+  the **same exact card** (bound to its order hash and the rule version); only then does it go, through the same send
+  path and the same "never twice" log as every order. A re-quote makes a new card that starts again. A repeat click
+  changes nothing; the trader and strangers are refused (404); the Co-Captain's decline ends it.
+- **It never overrides anything.** After both approvals the order is checked again (your hard stops, Anchor, price
+  band, funds, price drift, the broker); a hard stop still voids it. If you are back inside your limit by then, your
+  Co-Captain's click does not send it: you must click Approve yourself on that card.
+- **Revoking is immediate**, by either side, and an approval given under an earlier pairing never counts again.
+- **Opt-in.** With no Co-Captain set, past your own limits is a warning as before (`COCAPTAIN_BLOCK_WITHOUT_REVIEWER=true`
+  pauses such orders instead). Settings are in the desk's **Co-Captain** tab: invite, remove, accept, and the
+  reviewer's inbox with Approve and Decline.
+- **Checked:** zone arithmetic and boundaries, the two-person flow over HTTP, decline, expiry, re-quote, leaving the
+  zone while waiting, revoke (and a revoke racing an approval), simultaneous approvals sending once, hard stop and
+  Anchor after both approvals, restart with a card waiting, no model tool able to approve, GETs changing nothing, and
+  12 mutations (each guard removed on purpose, the two layers of the race guard together: all caught). In the browser: past a limit the card says it also needs
+  the Co-Captain, the trader's click moves it to "Waiting", and the reviewer's tab approves it and it fills.
+
+**What it is not yet:** there are no real accounts, so a second person is played with an `X-Actor` header that only
+works with `DEMO_MODE=true` and `DEV_ACTORS=true` (open `/app?as=ravi`); in a real deployment there is nobody who can
+be a Co-Captain until login exists. A **plan** past your limit with a Co-Captain is refused outright rather than
+approved by two people. You can remove your own Co-Captain at once. Closing orders are counted like any other.
+
 ## Orders placed in 021's own app
 
 The trader may also trade in 021's own app, on the same account. Every 5 seconds the backend reads the same order
@@ -344,7 +376,8 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Authentication (single demo user) and Co-Captain co-approval.
+- Authentication (single demo user): so Co-Captain has no real second person outside the demo header yet.
+- Two-person approval of a whole plan, and telling the Co-Captain by email or push (they see it when they open the desk).
 
 ## Demo controls
 

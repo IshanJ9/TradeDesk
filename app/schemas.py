@@ -162,6 +162,7 @@ class RejectionReason(str, Enum):
 
 class PendingState(str, Enum):
     PENDING = "PENDING"
+    AWAITING_CO_APPROVAL = "AWAITING_CO_APPROVAL"  # the trader approved; the Co-Captain must too (app/cocaptain)
     APPROVED = "APPROVED"
     SENT = "SENT"
     REQUOTE_REQUIRED = "REQUOTE_REQUIRED"  # price moved; a fresh PendingOrder replaces this
@@ -246,6 +247,7 @@ class AuditKind(str, Enum):
     INJECTION_BLOCKED = "INJECTION_BLOCKED"
     LIMIT_BLOCKED = "LIMIT_BLOCKED"
     LOCK_BLOCKED = "LOCK_BLOCKED"
+    COCAPTAIN = "COCAPTAIN"  # invites, accepts, revokes and each second-person decision
     CHAOS = "CHAOS"
 
 
@@ -600,8 +602,18 @@ class ResolutionResult(Model):
 
 
 _PENDING_TRANSITIONS: dict[PendingState, frozenset[PendingState]] = {
+    PendingState.AWAITING_CO_APPROVAL: frozenset(
+        {
+            PendingState.APPROVED,
+            PendingState.REQUOTE_REQUIRED,
+            PendingState.EXPIRED,
+            PendingState.VOID,
+            PendingState.REJECTED,
+        }
+    ),
     PendingState.PENDING: frozenset(
         {
+            PendingState.AWAITING_CO_APPROVAL,
             PendingState.APPROVED,
             PendingState.REQUOTE_REQUIRED,
             PendingState.EXPIRED,
@@ -649,6 +661,9 @@ class PendingOrder(Model):
     # Set by code for orders whose loss can exceed what the trader puts in (futures, a sold option not
     # held): Approve is refused unless the request carries the typed acknowledgment (see ApprovalService).
     risk_ack_required: bool = False
+    # Set while the card waits for the Co-Captain (app/cocaptain): who, and why a second approval is needed.
+    co_captain: str | None = None
+    co_reasons: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check(self) -> "PendingOrder":

@@ -61,7 +61,7 @@ class ApproveRequest(Model):
 class ApprovalConflict(Model):
     """Body of a 409 from the approve route. Nothing was sent."""
 
-    code: Literal["HASH_MISMATCH", "EXPIRED", "NOT_PENDING", "REQUOTE_REQUIRED", "BLOCKED", "ACK_REQUIRED"]
+    code: Literal["HASH_MISMATCH", "EXPIRED", "NOT_PENDING", "REQUOTE_REQUIRED", "BLOCKED", "ACK_REQUIRED", "AWAITING_CO_CAPTAIN"]
     message: str
     # Set for REQUOTE_REQUIRED: the fresh card the trader must look at again.
     pending: PendingOrder | None = None

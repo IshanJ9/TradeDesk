@@ -55,7 +55,7 @@ export function describe(e: WsEvent): string {
 /** Fields the server always sends must not be optional in the generated types. */
 declare const pending: S["PendingOrder"];
 export const approvalHash: string = pending.order_hash; // computed field
-export const pendingState: "PENDING" | "APPROVED" | "SENT" | "REQUOTE_REQUIRED" | "EXPIRED" | "VOID" | "REJECTED" =
+export const pendingState: "PENDING" | "AWAITING_CO_APPROVAL" | "APPROVED" | "SENT" | "REQUOTE_REQUIRED" | "EXPIRED" | "VOID" | "REJECTED" =
   pending.state; // defaulted field, still required in responses
 
 declare const holding: S["Holding"];
@@ -99,6 +99,7 @@ export function describeConflict(c: S["ApprovalConflict"]): string {
     case "NOT_PENDING":
     case "BLOCKED":
     case "ACK_REQUIRED":
+    case "AWAITING_CO_CAPTAIN":
       return c.message;
   }
 }

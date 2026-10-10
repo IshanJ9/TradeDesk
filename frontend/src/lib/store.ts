@@ -93,7 +93,7 @@ function applyEvent(s: State, e: WsEvent): State {
   switch (e.type) {
     case "snapshot": {
       // keep cards that already resolved on screen; take everything live from the snapshot
-      const keptOrders = Object.fromEntries(Object.entries(s.pending).filter(([, p]) => p.state !== "PENDING"));
+      const keptOrders = Object.fromEntries(Object.entries(s.pending).filter(([, p]) => !isLive(p)));
       const keptPlans = Object.fromEntries(Object.entries(s.plans).filter(([, p]) => p.state !== "PENDING"));
       return {
         ...s,
@@ -176,11 +176,13 @@ const oldestFirst = <T extends { created_at: string }>(a: T, b: T) => Date.parse
 
 // A plan's steps are orders internally. They belong inside their plan's ticket, never on their own.
 const standalone = (p: PendingOrder) => !p.plan_id;
+/** Still waiting on someone: the trader's click, or (past their own limit) the Co-Captain's as well. */
+export const isLive = (p: PendingOrder) => p.state === "PENDING" || p.state === "AWAITING_CO_APPROVAL";
 
 /** Cards waiting for the trader's decision, oldest first. */
 export function awaiting(s: State): { orders: PendingOrder[]; plans: Plan[] } {
   return {
-    orders: Object.values(s.pending).filter((p) => p.state === "PENDING" && standalone(p)).sort(oldestFirst),
+    orders: Object.values(s.pending).filter((p) => isLive(p) && standalone(p)).sort(oldestFirst),
     plans: Object.values(s.plans).filter((p) => p.state === "PENDING").sort(oldestFirst),
   };
 }
@@ -189,7 +191,7 @@ export function awaiting(s: State): { orders: PendingOrder[]; plans: Plan[] } {
 export function resolved(s: State, limit = 6): { orders: PendingOrder[]; plans: Plan[] } {
   const shown = (id: string) => !s.hidden[id];
   return {
-    orders: Object.values(s.pending).filter((p) => p.state !== "PENDING" && standalone(p) && shown(p.id)).sort(newestFirst).slice(0, limit),
+    orders: Object.values(s.pending).filter((p) => !isLive(p) && standalone(p) && shown(p.id)).sort(newestFirst).slice(0, limit),
     plans: Object.values(s.plans).filter((p) => p.state !== "PENDING" && shown(p.id)).sort(newestFirst).slice(0, limit),
   };
 }

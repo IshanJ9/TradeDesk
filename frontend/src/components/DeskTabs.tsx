@@ -6,11 +6,13 @@ import { instrumentLabel, sizeText } from "../lib/instrument";
 import type { Action, State } from "../lib/store";
 import type { AuditEvent, Order, Rule } from "../lib/types";
 import { AssistantTrace } from "./AssistantTrace";
+import { CoCaptainPanel } from "./CoCaptainPanel";
 import { DisciplinePanel } from "./DisciplinePanel";
+import { useCoCaptain } from "../lib/cocaptain";
 import { ExternalOrders } from "./ExternalOrders";
 import { Button, Chip, Empty, Section } from "./ui";
 
-type Tab = "orders" | "rules" | "assistant" | "external" | "discipline" | "log";
+type Tab = "orders" | "rules" | "assistant" | "external" | "discipline" | "cocaptain" | "log";
 
 function OrderRow({ o, ask }: { o: Order; ask: (text: string) => void }) {
   const open = o.status === "OPEN" || o.status === "PARTIAL";
@@ -72,6 +74,7 @@ function LogRow({ e }: { e: AuditEvent }) {
 
 export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dispatch<Action>; ask: (t: string) => void }) {
   const [tab, setTab] = useState<Tab>("orders");
+  const co = useCoCaptain();
   const activeRules = state.rules.filter((r) => r.status === "ACTIVE").length;
 
   async function cancelRule(id: string) {
@@ -85,6 +88,7 @@ export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dis
     ["assistant", "Assistant"],
     ["external", `021 app${state.external.length ? ` (${state.external.length})` : ""}`],
     ["discipline", "Discipline"],
+    ["cocaptain", `Co-Captain${co.attention ? ` (${co.attention})` : ""}`],
     ["log", "Session log"],
   ];
 
@@ -124,6 +128,7 @@ export function DeskTabs({ state, dispatch, ask }: { state: State; dispatch: Dis
         {tab === "assistant" && <AssistantTrace state={state} />}
         {tab === "external" && <ExternalOrders state={state} />}
         {tab === "discipline" && <DisciplinePanel state={state} />}
+        {tab === "cocaptain" && <CoCaptainPanel view={co} dispatch={dispatch} />}
 
         {tab === "log" && (
           <>

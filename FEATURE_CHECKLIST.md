@@ -151,7 +151,7 @@ historical operational results, not evidence that all workflows are verified.
 ## TODO — expanded scope (now included by user request)
 
 - [ ] Real authentication, account/user isolation and permissions; current login/signup is presentation only.
-- [ ] Co-Captain second-user review with **both approvals required only in the overtrading zone**. Use configured daily order, turnover and 20-minute activity limits; evaluate again at approval, bind both approvals to exact content/expiry, and never override hard stops. Requires authenticated distinct users first. Outside that zone, normal trader approval is enough.
+- [~] Co-Captain second-user review with **both approvals required only in the overtrading zone** (10 October: built and tested with demo-only test identities; **needs real accounts**, and whole-plan two-person approval is not built, a plan past the limit is refused instead). See README "Co-Captain". Original spec: Use configured daily order, turnover and 20-minute activity limits; evaluate again at approval, bind both approvals to exact content/expiry, and never override hard stops. Requires authenticated distinct users first. Outside that zone, normal trader approval is enough.
 - [ ] Calendar/time-scheduled orders and generalized GTT workflow through the same approval boundary; existing price-trigger rules are only a foundation.
 - [ ] Comprehensive before/after cash and stock-concentration impact preview on cards.
 - [ ] **Email/SMTP rule notifications** using an existing account (no additional paid notification service). Disabled until configured; durable delivery/retry status and private credentials required. Provider sending quotas still apply. WhatsApp is not the selected first channel.

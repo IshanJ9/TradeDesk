@@ -32,6 +32,8 @@ class Settings:
     rule_card_ttl_seconds: int = 900  # a card made by a fired rule waits longer: the trader may be away
     max_active_rules: int = 50
     max_fo_lots_per_order: int = 2  # new futures exposure per order, in lots (closing what you hold is never capped)
+    cocaptain_block_without_reviewer: bool = False  # past your own limit with no Co-Captain: pause the order (default: warn only)
+    dev_actors: bool = False  # demo only: an X-Actor header picks who is calling, so two people can be tried without accounts
     allow_unlimited_risk_fo: bool = False  # opening futures or writing options: refused unless the operator switches this on
     plan_fill_timeout_seconds: float = 15.0  # how long a plan waits for a step to fill before reporting it open
     plan_poll_interval: float = 0.5
@@ -76,5 +78,7 @@ class Settings:
             max_order_quantity=int(env.get("MAX_ORDER_QUANTITY", "100000")),
             max_order_value_rupees=int(env.get("MAX_ORDER_VALUE_RUPEES", "10000000")),
             max_fo_lots_per_order=max(1, int(env.get("MAX_FO_LOTS_PER_ORDER", "2"))),
+            cocaptain_block_without_reviewer=_flag("COCAPTAIN_BLOCK_WITHOUT_REVIEWER", False),
+            dev_actors=_flag("DEV_ACTORS", False),
             allow_unlimited_risk_fo=env.get("ALLOW_UNLIMITED_RISK_FO", "").strip().lower() in ("1", "true", "yes", "on"),
         )

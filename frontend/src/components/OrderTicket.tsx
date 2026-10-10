@@ -38,7 +38,8 @@ interface Props {
 /** One order, on a ticket. While it is waiting the trader can approve or decline it; afterwards it
  *  keeps its place on screen with what happened. */
 export function OrderTicket({ order: o, note, result, sending, onApprove, onDecline, onDismiss }: Props) {
-  const waiting = o.state === "PENDING";
+  const awaitingCo = o.state === "AWAITING_CO_APPROVAL"; // the trader has approved; their Co-Captain has not yet
+  const waiting = o.state === "PENDING" || awaitingCo;
   const expired = waiting && secondsLeft(o.expires_at, Date.now()) === 0;
   const isCancel = o.action === "CANCEL";
   const sideTone = o.side === "SELL" ? "loss" : o.side === "BUY" ? "gain" : "plain";
@@ -88,6 +89,17 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
           </div>
         )}
       </header>
+
+      {o.co_captain && waiting && (
+        <div className="px-4 pt-3">
+          <Banner tone="info" role="status">
+            {awaitingCo
+              ? `Waiting for your Co-Captain, ${o.co_captain}, to approve this same order. Nothing has been sent.`
+              : `This order is past a limit you set, so after you approve it also needs your Co-Captain, ${o.co_captain}.`}
+            <ul className="mt-1 list-disc pl-4">{o.co_reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+          </Banner>
+        </div>
+      )}
 
       {note && waiting && (
         <div className="px-4 pt-3">

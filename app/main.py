@@ -33,6 +33,9 @@ from app.plans.builder import PlanBuilder
 from app.plans.service import PlanAssistant, PlanService
 from app.plans.store import PlanStore
 # risk-goals: profile/goal persistence, routes and trader-selected limits.
+from app.cocaptain.api import router as cocaptain_router
+from app.cocaptain.service import CoCaptainService
+from app.cocaptain.store import CoCaptainStore
 from app.risk.engine import ProfileGuard
 from app.risk.api import router as risk_router
 from app.risk.store import ProfileStore
@@ -233,6 +236,8 @@ def create_app(
     else:
         raise RuntimeError(f"ORCHESTRATOR={settings.orchestrator!r}: use classic or langgraph")
     app.state.approvals = ApprovalService(store, builder, executor, the_broker, audit, hub, settings, clock, risk)
+    cocaptain = CoCaptainService(CoCaptainStore(db), risk, audit, clock, settings.cocaptain_block_without_reviewer)
+    app.state.cocaptain = app.state.approvals.cocaptain = plans.cocaptain = cards.cocaptain = cocaptain
 
     app.add_middleware(
         CORSMiddleware,
@@ -255,6 +260,7 @@ def create_app(
     app.include_router(sync_dev_router)  # voice-live: returns 404 outside demo mode
     app.include_router(activity_router)  # voice-live: read-only persisted history
     app.include_router(risk_router)  # risk-goals
+    app.include_router(cocaptain_router)  # a second person's approval, only past the trader's own limits
     from app.demo import router as demo_router  # demo controls: 404 unless DEMO_MODE and the mock broker
 
     app.include_router(demo_router)

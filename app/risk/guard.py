@@ -28,7 +28,14 @@ class RiskVerdict:
 class RiskGuard(Protocol):
     async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict: ...
 
+    async def zone(self, *, orders: int, value: int): ...  # app.cocaptain.zone.ZoneDecision
+
 
 class NoRiskGuard:
     async def check(self, pending: PendingOrder, stage: Stage, *, extra_orders: int = 0) -> RiskVerdict:
         return RiskVerdict()
+
+    async def zone(self, *, orders: int, value: int):
+        from app.cocaptain.zone import ZoneDecision  # no limits are set, so none can be crossed
+
+        return ZoneDecision(in_zone=False)

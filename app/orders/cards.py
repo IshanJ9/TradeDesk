@@ -15,7 +15,7 @@ from app.orders.limits import HIGH_RISK_PAUSED, OrderBlocked, crosses_own_limit
 from app.orders.readback import readback
 from app.pending import PendingStore
 from app.risk.guard import NoRiskGuard, RiskGuard
-from app.schemas import AuditKind, Instrument, OrderIntent, PendingOrder, RejectionReason
+from app.schemas import AuditKind, Instrument, OrderAction, OrderIntent, PendingOrder, RejectionReason
 
 _LOCK_REASONS = {RejectionReason.ANCHOR_ACTIVE, RejectionReason.CO_APPROVAL_REQUIRED}
 
@@ -38,6 +38,7 @@ class CardService:
         self._hub = hub
         self._audit = audit
         self._risk = risk or NoRiskGuard()
+        self.cocaptain = None  # set by app/main.py: lets a card say up front that it will need a second approval
 
     async def resolve(self, query: str):
         return await self._builder.resolve(query)
@@ -93,6 +94,11 @@ class CardService:
                 ChatReply(text=HIGH_RISK_PAUSED, cards=[NoticeCard(level="blocked", message=HIGH_RISK_PAUSED)]),
                 HIGH_RISK_PAUSED,
             )
+        if self.cocaptain is not None and pending.action is OrderAction.PLACE:
+            price = pending.limit_price or pending.protection_price or pending.ref_ltp
+            gate = await self.cocaptain.gate(orders=1, value=(pending.quantity or 0) * price)
+            if gate.required:  # shown on the card before the trader clicks; not part of the order hash
+                pending = pending.model_copy(update={"co_captain": gate.reviewer_id, "co_reasons": list(gate.reasons)})
         extra = [*verdict.warnings, *extra_warnings]
         if extra:  # warnings are not part of the order hash
             pending = pending.model_copy(update={"warnings": [*extra, *pending.warnings]})

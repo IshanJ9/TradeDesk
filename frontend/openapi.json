@@ -1196,6 +1196,256 @@
         }
       }
     },
+    "/api/cocaptain/status": {
+      "get": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_cocaptain_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoCaptainStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/invite": {
+      "post": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Invite",
+        "operationId": "invite_api_cocaptain_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoCaptainStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/accept": {
+      "post": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Accept",
+        "operationId": "accept_api_cocaptain_accept_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoCaptainStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/revoke": {
+      "post": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Revoke",
+        "operationId": "revoke_api_cocaptain_revoke_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoCaptainStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/inbox": {
+      "get": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Inbox",
+        "description": "Cards waiting for THIS person as a Co-Captain: nothing for anyone who isn't one.",
+        "operationId": "inbox_api_cocaptain_inbox_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingOrder"
+                  },
+                  "type": "array",
+                  "title": "Response Inbox Api Cocaptain Inbox Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/cards/{pending_id}/approve": {
+      "post": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Approve",
+        "operationId": "approve_api_cocaptain_cards__pending_id__approve_post",
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a card you may review"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cocaptain/cards/{pending_id}/decline": {
+      "post": {
+        "tags": [
+          "Co-Captain"
+        ],
+        "summary": "Decline",
+        "operationId": "decline_api_cocaptain_cards__pending_id__decline_post",
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingOrder"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a card you may review"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalConflict"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/demo/status": {
       "get": {
         "tags": [
@@ -1817,7 +2067,8 @@
               "NOT_PENDING",
               "REQUOTE_REQUIRED",
               "BLOCKED",
-              "ACK_REQUIRED"
+              "ACK_REQUIRED",
+              "AWAITING_CO_CAPTAIN"
             ],
             "title": "Code"
           },
@@ -1992,6 +2243,7 @@
           "INJECTION_BLOCKED",
           "LIMIT_BLOCKED",
           "LOCK_BLOCKED",
+          "COCAPTAIN",
           "CHAOS"
         ],
         "title": "AuditKind"
@@ -2264,6 +2516,58 @@
           "closed_at"
         ],
         "title": "ClosedTrade"
+      },
+      "CoCaptainStatus": {
+        "properties": {
+          "me": {
+            "type": "string",
+            "title": "Me"
+          },
+          "as_trader": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraderLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "invitation_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitation From"
+          },
+          "reviewing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reviewing",
+            "default": []
+          },
+          "blocks_without_reviewer": {
+            "type": "boolean",
+            "title": "Blocks Without Reviewer",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "me",
+          "as_trader",
+          "invitation_from",
+          "reviewing",
+          "blocks_without_reviewer"
+        ],
+        "title": "CoCaptainStatus"
       },
       "Comparator": {
         "type": "string",
@@ -3527,6 +3831,22 @@
         ],
         "title": "Instrument"
       },
+      "InviteRequest": {
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Reviewer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reviewer"
+        ],
+        "title": "InviteRequest"
+      },
       "LegFailurePolicy": {
         "type": "string",
         "enum": [
@@ -4611,6 +4931,24 @@
             "title": "Risk Ack Required",
             "default": false
           },
+          "co_captain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Captain"
+          },
+          "co_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Co Reasons"
+          },
           "order_hash": {
             "type": "string",
             "title": "Order Hash",
@@ -4644,6 +4982,8 @@
           "rule_id",
           "warnings",
           "risk_ack_required",
+          "co_captain",
+          "co_reasons",
           "order_hash"
         ],
         "title": "PendingOrder",
@@ -4673,6 +5013,7 @@
         "type": "string",
         "enum": [
           "PENDING",
+          "AWAITING_CO_APPROVAL",
           "APPROVED",
           "SENT",
           "REQUOTE_REQUIRED",
@@ -5394,6 +5735,22 @@
           "OTHER"
         ],
         "title": "RejectionReason"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "order_hash": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Order Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "order_hash"
+        ],
+        "title": "ReviewRequest"
       },
       "RiskProfile-Input": {
         "properties": {
@@ -6374,6 +6731,29 @@
           "demo"
         ],
         "title": "TraceSampleReply"
+      },
+      "TraderLink": {
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "INVITED",
+              "ACTIVE"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reviewer",
+          "status"
+        ],
+        "title": "TraderLink"
       },
       "Transcript": {
         "properties": {

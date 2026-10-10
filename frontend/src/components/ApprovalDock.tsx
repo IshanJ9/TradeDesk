@@ -23,7 +23,7 @@ export function ApprovalDock({ state, dispatch }: { state: State; dispatch: Disp
     busy(id, false);
     if (r.ok) return dispatch({ type: "result", id, result: r.data });
     const c = r.conflict;
-    note(id, c?.code === "REQUOTE_REQUIRED" ? "warn" : "error", r.message);
+    note(id, c?.code === "REQUOTE_REQUIRED" ? "warn" : c?.code === "AWAITING_CO_CAPTAIN" ? "info" : "error", r.message);
     // the replacement card arrives on the live feed; flag it so the trader sees why it changed
     if (c?.code === "REQUOTE_REQUIRED" && c.pending) note(c.pending.id, "warn", r.message);
   }

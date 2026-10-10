@@ -153,6 +153,18 @@ describe("store", () => {
     expect(resolved(s).orders.map((p) => p.id)).toEqual(["b", "a"]);
   });
 
+  it("keeps a card on the trader's desk while it waits for their Co-Captain, and stops once it has an outcome", () => {
+    let s = apply(initialState, { type: "pending_created", seq: 1, pending: pending("p1") });
+    s = apply(s, { type: "pending_updated", seq: 2, pending: pending("p1", "AWAITING_CO_APPROVAL") });
+    expect(awaiting(s).orders.map((p) => p.id)).toEqual(["p1"]);
+    expect(resolved(s).orders).toEqual([]);
+    s = apply(s, { type: "snapshot", seq: 3, pending: { orders: [pending("p1", "AWAITING_CO_APPROVAL")], plans: [] } } as never);
+    expect(awaiting(s).orders.map((p) => p.id)).toEqual(["p1"]);
+    s = apply(s, { type: "pending_updated", seq: 4, pending: pending("p1", "REJECTED") });
+    expect(awaiting(s).orders).toEqual([]);
+    expect(resolved(s).orders.map((p) => p.id)).toEqual(["p1"]);
+  });
+
   it("lets the trader dismiss a resolved card, and remembers what happened to it", () => {
     let s = apply(initialState, { type: "pending_updated", seq: 1, pending: pending("p1", "SENT") });
     s = reducer(s, { type: "result", id: "p1", result: fx({ outcome: "SENT" }) });

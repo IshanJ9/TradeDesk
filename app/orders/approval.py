@@ -76,6 +76,7 @@ class ApprovalService:
         self._hub = hub
         self._settings = settings
         self._clock = clock
+        self.cocaptain = None  # set by app/main.py: app.cocaptain.service.CoCaptainService (None: no second approver)
 
     # ------------------------------------------------------------------ #
 
@@ -84,7 +85,7 @@ class ApprovalService:
         if p is None:
             raise ApprovalNotFound(pending_id)
 
-        if p.state is not PendingState.PENDING:
+        if p.state not in (PendingState.PENDING, PendingState.AWAITING_CO_APPROVAL):
             self._refuse(p, "NOT_PENDING", f"This card is already {p.state.value.lower()}.")
         if p.is_expired(self._clock()):
             self._refuse(p, "EXPIRED", "This card expired. Ask again for a fresh one.", PendingState.EXPIRED)
@@ -100,6 +101,85 @@ class ApprovalService:
             # the card stays open: nothing is claimed, nothing is sent, the trader can type it and try again
             self._refuse(p, "ACK_REQUIRED", f"This order needs you to type {RISK_ACK_TEXT} first. Nothing was sent.")
 
+        if self.cocaptain is not None and p.action is OrderAction.PLACE:
+            price = p.limit_price or p.protection_price or p.ref_ltp
+            try:
+                gate = await self.cocaptain.gate(orders=1, value=(p.quantity or 0) * price)
+            except BrokerTimeout:
+                self._void(p, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
+            p = self._fresh(p)  # the gate awaited: look again before acting on what we read earlier
+            if gate.blocked:
+                self._audit.record(AuditKind.LIMIT_BLOCKED, "system", gate.blocked, subject_id=p.id, data={"reason": "NO_COCAPTAIN"})
+                self._refuse(p, "BLOCKED", gate.blocked)
+            if gate.required:
+                if p.state is PendingState.PENDING:  # the trader's own approval is saved; the card now waits for the second
+                    self.cocaptain.store.record(p.id, "TRADER", "local", p.order_hash, gate.policy_version, "APPROVE", self._clock())
+                    waiting = self._store.put(
+                        p.transition(PendingState.AWAITING_CO_APPROVAL).model_copy(
+                            update={"co_captain": gate.reviewer_id, "co_reasons": list(gate.reasons)}
+                        )
+                    )
+                    self._hub.publish(PendingUpdatedEvent, pending=waiting)
+                    self._audit.record(
+                        AuditKind.COCAPTAIN, "user", f"Trader approved {p.instrument.symbol}; waiting for {gate.reviewer_id}",
+                        subject_id=p.id, data={"reasons": list(gate.reasons), "policy": gate.policy_version},
+                    )
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(gate.reviewer_id), waiting)
+                if not self.cocaptain.co_decision_counts(p.id, p.order_hash, gate.policy_version):
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(gate.reviewer_id), p)
+            # not required any more (the trader is back inside their limit): this click is the trader's fresh approval
+
+        return await self._send(p)
+
+    @staticmethod
+    def _waiting_text(reviewer: str | None) -> str:
+        return f"Waiting for your Co-Captain, {reviewer}, to approve the same order. Nothing has been sent."
+
+    async def co_approve(self, pending_id: str, order_hash: str, reviewer_id: str) -> ExecutionResult:
+        """The Co-Captain's click. It adds their approval; the order goes only if everything still holds."""
+        p = self._store.get(pending_id)
+        if p is None or self.cocaptain is None or not self.cocaptain.may_review(reviewer_id):
+            raise ApprovalNotFound(pending_id)  # not theirs to see: the same answer as "no such card"
+        if p.state is not PendingState.AWAITING_CO_APPROVAL:
+            self._refuse(p, "NOT_PENDING", f"This card is {p.state.value.lower().replace('_', ' ')}, not waiting for you.")
+        if p.is_expired(self._clock()):
+            self._refuse(p, "EXPIRED", "This card expired. Ask for a fresh one.", PendingState.EXPIRED)
+        if not hmac.compare_digest(order_hash, p.order_hash):
+            self._refuse(p, "HASH_MISMATCH", "What you approved doesn't match this card, so it has been cancelled. "
+                         "Nothing was sent.", PendingState.VOID)
+        price = p.limit_price or p.protection_price or p.ref_ltp
+        try:
+            gate = await self.cocaptain.gate(orders=1, value=(p.quantity or 0) * price)
+        except BrokerTimeout:
+            self._void(p, "I couldn't reach the broker to double-check, so nothing was sent. Please try again.")
+        p = self._fresh(p, only=PendingState.AWAITING_CO_APPROVAL)
+        if not self.cocaptain.may_review(reviewer_id):  # the link may have been revoked while we looked
+            raise ApprovalNotFound(pending_id)
+        self.cocaptain.store.record(p.id, "CO_CAPTAIN", reviewer_id, p.order_hash, gate.policy_version, "APPROVE", self._clock())
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {reviewer_id} approved {p.instrument.symbol}", subject_id=p.id,
+                           data={"by": reviewer_id, "order_hash": p.order_hash})
+        if not gate.required:
+            # the trader is no longer past their limit: they must click Approve themselves, on this card, again
+            raise ApprovalError("AWAITING_CO_CAPTAIN", "Thanks. The trader is back inside their limit, so they will "
+                                "need to approve it again themselves. Nothing has been sent.", p)
+        return await self._send(p)
+
+    async def co_decline(self, pending_id: str, reviewer_id: str) -> PendingOrder:
+        p = self._store.get(pending_id)
+        if p is None or self.cocaptain is None or not self.cocaptain.may_review(reviewer_id):
+            raise ApprovalNotFound(pending_id)
+        if p.state is not PendingState.AWAITING_CO_APPROVAL:
+            self._refuse(p, "NOT_PENDING", f"This card is {p.state.value.lower().replace('_', ' ')}, not waiting for you.")
+        self.cocaptain.store.record(p.id, "CO_CAPTAIN", reviewer_id, p.order_hash, "", "DECLINE", self._clock())
+        rejected = self._store.put(p.transition(PendingState.REJECTED))
+        self._hub.publish(PendingUpdatedEvent, pending=rejected)
+        self._audit.record(AuditKind.COCAPTAIN, "user", f"Co-Captain {reviewer_id} declined {p.instrument.symbol}", subject_id=p.id,
+                           data={"by": reviewer_id})
+        return rejected
+
+    async def _send(self, p: PendingOrder) -> ExecutionResult:
+        """Claim the card, re-check everything, and send. The same path whether one person approved or two."""
+        p = self._fresh(p)  # a second click that raced this one finds the card already claimed
         approved = self._store.put(p.transition(PendingState.APPROVED))  # claim: no await above this line
         self._audit.record(
             AuditKind.APPROVAL,
@@ -119,11 +199,20 @@ class ApprovalService:
         except DuplicateExecution:
             self._void(approved, "This exact order has already been sent.", code="NOT_PENDING")
 
+    def _fresh(self, p: PendingOrder, only: PendingState | None = None) -> PendingOrder:
+        """The stored card as it is right now, or a refusal if it is no longer waiting. No await inside."""
+        current = self._store.get(p.id)
+        waiting = (PendingState.PENDING, PendingState.AWAITING_CO_APPROVAL) if only is None else (only,)
+        if current is None or current.state not in waiting:
+            state = current.state.value.lower().replace("_", " ") if current else "gone"
+            self._refuse(current or p, "NOT_PENDING", f"This card is already {state}.")
+        return current
+
     async def reject(self, pending_id: str) -> PendingOrder:
         p = self._store.get(pending_id)
         if p is None:
             raise ApprovalNotFound(pending_id)
-        if p.state is not PendingState.PENDING:
+        if p.state not in (PendingState.PENDING, PendingState.AWAITING_CO_APPROVAL):
             self._refuse(p, "NOT_PENDING", f"This card is already {p.state.value.lower()}.")
         rejected = self._store.put(p.transition(PendingState.REJECTED))
         self._hub.publish(PendingUpdatedEvent, pending=rejected)

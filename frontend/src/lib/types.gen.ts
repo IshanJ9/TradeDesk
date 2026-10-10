@@ -511,6 +511,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cocaptain/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_cocaptain_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite */
+        post: operations["invite_api_cocaptain_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept */
+        post: operations["accept_api_cocaptain_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke */
+        post: operations["revoke_api_cocaptain_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inbox
+         * @description Cards waiting for THIS person as a Co-Captain: nothing for anyone who isn't one.
+         */
+        get: operations["inbox_api_cocaptain_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/cards/{pending_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve */
+        post: operations["approve_api_cocaptain_cards__pending_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cocaptain/cards/{pending_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline */
+        post: operations["decline_api_cocaptain_cards__pending_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/status": {
         parameters: {
             query?: never;
@@ -781,7 +903,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "HASH_MISMATCH" | "EXPIRED" | "NOT_PENDING" | "REQUOTE_REQUIRED" | "BLOCKED" | "ACK_REQUIRED";
+            code: "HASH_MISMATCH" | "EXPIRED" | "NOT_PENDING" | "REQUOTE_REQUIRED" | "BLOCKED" | "ACK_REQUIRED" | "AWAITING_CO_CAPTAIN";
             /** Message */
             message: string;
             pending: components["schemas"]["PendingOrder"] | null;
@@ -839,7 +961,7 @@ export interface components {
          * AuditKind
          * @enum {string}
          */
-        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
+        AuditKind: "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "COCAPTAIN" | "CHAOS";
         /** ChaosStatus */
         ChaosStatus: {
             /**
@@ -970,6 +1092,24 @@ export interface components {
              * Format: date-time
              */
             closed_at: string;
+        };
+        /** CoCaptainStatus */
+        CoCaptainStatus: {
+            /** Me */
+            me: string;
+            as_trader: components["schemas"]["TraderLink"] | null;
+            /** Invitation From */
+            invitation_from: string | null;
+            /**
+             * Reviewing
+             * @default []
+             */
+            reviewing: string[];
+            /**
+             * Blocks Without Reviewer
+             * @default false
+             */
+            blocks_without_reviewer: boolean;
         };
         /**
          * Comparator
@@ -1404,6 +1544,11 @@ export interface components {
             strike: number | null;
             option_type: components["schemas"]["OptionType"] | null;
         };
+        /** InviteRequest */
+        InviteRequest: {
+            /** Reviewer */
+            reviewer: string;
+        };
         /**
          * LegFailurePolicy
          * @enum {string}
@@ -1766,6 +1911,10 @@ export interface components {
              * @default false
              */
             risk_ack_required: boolean;
+            /** Co Captain */
+            co_captain: string | null;
+            /** Co Reasons */
+            co_reasons: string[];
             /**
              * Order Hash
              * @description Hash of the exact order. Excludes LTP, expiry and state on purpose.
@@ -1788,7 +1937,7 @@ export interface components {
          * PendingState
          * @enum {string}
          */
-        PendingState: "PENDING" | "APPROVED" | "SENT" | "REQUOTE_REQUIRED" | "EXPIRED" | "VOID" | "REJECTED";
+        PendingState: "PENDING" | "AWAITING_CO_APPROVAL" | "APPROVED" | "SENT" | "REQUOTE_REQUIRED" | "EXPIRED" | "VOID" | "REJECTED";
         /** PendingUpdatedEvent */
         PendingUpdatedEvent: {
             /** Seq */
@@ -2086,6 +2235,11 @@ export interface components {
          * @enum {string}
          */
         RejectionReason: "INSUFFICIENT_FUNDS" | "PRICE_BAND" | "INVALID_PRICE" | "INVALID_QUANTITY" | "MARKET_CLOSED" | "SUSPENDED" | "KYC_DORMANT" | "RISK_CHECK" | "OI_LIMIT" | "QUANTITY_LIMIT" | "VALUE_LIMIT" | "SEGMENT_NOT_ALLOWED" | "ANCHOR_ACTIVE" | "CO_APPROVAL_REQUIRED" | "OTHER";
+        /** ReviewRequest */
+        ReviewRequest: {
+            /** Order Hash */
+            order_hash: string;
+        };
         /** RiskProfile */
         "RiskProfile-Input": {
             /**
@@ -2475,6 +2629,16 @@ export interface components {
              * @default true
              */
             demo: boolean;
+        };
+        /** TraderLink */
+        TraderLink: {
+            /** Reviewer */
+            reviewer: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "INVITED" | "ACTIVE";
         };
         /** Transcript */
         Transcript: {
@@ -3480,6 +3644,217 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    status_api_cocaptain_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoCaptainStatus"];
+                };
+            };
+        };
+    };
+    invite_api_cocaptain_invite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoCaptainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_api_cocaptain_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoCaptainStatus"];
+                };
+            };
+        };
+    };
+    revoke_api_cocaptain_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoCaptainStatus"];
+                };
+            };
+        };
+    };
+    inbox_api_cocaptain_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingOrder"][];
+                };
+            };
+        };
+    };
+    approve_api_cocaptain_cards__pending_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pending_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionResult"];
+                };
+            };
+            /** @description Not a card you may review */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_api_cocaptain_cards__pending_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pending_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingOrder"];
+                };
+            };
+            /** @description Not a card you may review */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
