@@ -158,7 +158,7 @@ historical operational results, not evidence that all workflows are verified.
 - [ ] Spoken replies/text-to-speech.
 - [ ] Broader regional-language experience/localized UI; explicit en/hi transcription hints are tracked as core V2 above.
 - [ ] Installable/offline-capable phone PWA.
-- [ ] Automatically run tests/evals on every change through repository CI; suites exist, no tracked CI workflow was found.
+- [x] Repository CI (`.github/workflows/ci.yml`): backend pytest, frontend typecheck/test/build, and generated-types drift check on every PR and push to main. Not yet seen running on GitHub. The real-model eval (`scripts/model_eval.py`) is deliberately not in CI: it needs AWS credentials and costs money.
 - [ ] Read/propose-only MCP server; internal model tools are not an MCP server.
 - [ ] LangGraph-native observability integration; current in-app trace alone does not provide it.
 - [ ] Optional AgentCore hosting, only if explicitly prioritized; in-process graph is implemented.

@@ -32,6 +32,10 @@ phone width (an Ask / Desk switch appears below 1024px).
     .venv\Scripts\python -m pytest -q                 # backend
     cd frontend && npm test && npm run typecheck      # frontend
 
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`: the backend tests (which include
+the check that `PROMPT.md` matches what the model receives), the frontend typecheck, tests and build, and a check that
+`frontend/openapi.json` and `types.gen.ts` match what the backend generates. It needs no secrets.
+
 ## Frontend types
 
 Pydantic models are the single source of truth. After changing any model or route:
