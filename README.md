@@ -172,7 +172,7 @@ broker, with its real lot size and token), multiplies lots by the lot size, and 
 was named, which the card states. The strike and lot count must be numbers the trader typed, like every other
 figure. Options are carried as NRML (021's F&O product) or held intraday as MIS.
 
-- **Buy, sell what you hold, or write.** Selling up to the long position held (in that product) is closing, and
+- **Buy, sell what you hold, or write (writing needs `ALLOW_UNLIMITED_RISK_FO=true`).** Selling up to the long position held (in that product) is closing, and
   buying back a short is closing too. Selling more than you hold is **writing**: see "Futures and writing" below.
 - **A factual notice on every option buy, never advice:** the whole premium can be lost if the contract expires
   worthless on its date, and "SEBI's study of FY22 to FY24 found that 93% of individual traders in equity F&O made a
@@ -188,6 +188,12 @@ buy then sell what is held) and on the fake 021 (the contract and lot size from 
 (the card, the typed acknowledgment, approval, the position). Not yet sent to the live sandbox.
 
 ## Futures and writing options
+
+**Off by default.** Opening a futures position or selling an option you don't hold (writing) is refused in code: the
+trader gets a plain message and no card is made. Closing futures or options you already hold, and buying options,
+still work. The operator can switch the rest on with `ALLOW_UNLIMITED_RISK_FO=true` in `.env`
+(`tests/test_fo_refused_by_default.py` checks the default and that both guards fail the tests if removed). Everything
+below describes the behavior **when that switch is on**.
 
 Futures (`buy 1 lot NIFTY futures`) and **writing** (selling an option you don't hold) are the two orders whose loss
 can exceed what the trader puts in, so they get their own rules, all in code and all tested:
