@@ -46,3 +46,17 @@ Validation and mutation results will be recorded after each implemented portion.
   These do not replace the required future order-approval gate mutations.
 - No two-person order gate or UI exists yet. Feature remains disabled by default.
   Read `COCAPTAIN_HANDOVER.md` for detailed continuation steps and limitations.
+
+## Requirement 3 foundation: durable review store
+
+- Added immutable card/account/expiry/policy/link bindings and unique per-role
+  approvals. Either click order, idempotent duplicates, terminal decline,
+  invalidation and restart persistence are covered by 18 focused tests.
+- This store never sends orders and is not yet connected to main/approval paths.
+- Full backend: **1,219 passed** (91.88 seconds); frontend **95 passed**;
+  production build passed.
+- Nine independent mutations each caused the expected test failure: expiry,
+  request hash, owner binding, account binding, expiry binding, live-link check,
+  stored decision identity, stored decision hash, stored decision policy.
+  Source restored byte-for-byte. Final send re-evaluation mutation remains TODO
+  until that gate exists. These are store tests, not end-to-end trading proof.

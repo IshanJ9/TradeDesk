@@ -1,5 +1,23 @@
 # Co-Captain handover — 10 October 2026
 
+## Stop point requested by Ishan
+
+Stopped after the durable review-store checkpoint. No order-gate implementation
+is in progress and no servers or test processes are intentionally left running.
+The latest checkpoint passes **1,219 backend tests**, **95 frontend tests**, and
+the production build. The 18 new store tests and nine store guard mutations passed
+their expected checks. Mutation source was restored before the full suites.
+
+Completed concerns: zone predicate; pairing/Actor access foundation; durable
+review bindings and human decisions. **Two-person order/plan approval does not
+work end-to-end yet.** The store is intentionally not wired into application
+startup or send paths. All frontend feature work remains pending.
+
+Next chat: read this document and COCAPTAIN_IMPLEMENTATION.md, inspect git status,
+then implement the order gate using ReviewStore and the existing approval service.
+Do not restart the project inventory or repeat confirmed product questions.
+All checkpoint code is committed locally on `cocaptain`; nothing has been pushed.
+
 ## Read this first
 
 Workspace `D:\syrus7\TradeDesk`, branch `cocaptain`, baseline `2b7de11`.
@@ -66,18 +84,42 @@ Mutation daily `>` to `>=` caused two boundary failures; restored original bytes
 - `tests/test_cocaptain_pairing.py`: 15 tests for pairing, identities, privacy,
   GET safety, audit IDs, scoped notifications, persistence/restart.
 
-No settings UI, inbox, approval rows, waiting state, executor gate or plan gate
+### Durable review store — subsequent checkpoint
+
+`app/cocaptain/store.py` now implements ReviewStore, Review, Decision and
+ReviewError. It creates cocaptain_reviews and approvals tables on construction.
+Review bindings include owner, account, exact hash, expiry, policy, active link
+generation and reviewer. Both click orders work; duplicate clicks are idempotent;
+declines are terminal. Revocation callback invalidates open reviews, and readiness
+also checks the live link even if that callback was missed. A new card is needed
+after invalidation; decisions on the old object are preserved for audit.
+`ready()` is a necessary approval condition ONLY, never authority to skip fresh
+trading checks. It rechecks stored decision identities/hashes/policies too.
+
+18 focused tests in tests/test_cocaptain_store.py cover these invariants, readonly
+checks, persistence of plan bindings and restart. Nine deliberate mutations were
+detected: expiry check, request hash, owner/account/expiry bindings, live-link
+validation, stored decision actor/hash/policy. Source restored byte-for-byte.
+
+The store is not yet instantiated in main or connected to approval services.
+Integration must instantiate it using the shared database/audit/clock and set
+pairing.on_revoke = reviews.revoke_link (or compose that callback with card-state
+updates). Do not treat the store's decide method as an exposed reviewer endpoint:
+it derives TRADER or CO_CAPTAIN from actor identity, so the reviewer-specific
+endpoint must additionally refuse the owner and enforce its own role.
+
+No settings UI, inbox, waiting state, executor gate or plan gate
 has been built. Existing approval services are unchanged. README/checklist have
 not been marked complete. `.env` has not been edited. No servers started.
 
 ## Next implementation sequence
 
-### 1. Durable review object and approval store
+### 1. Integrate the durable review object and approval store
 
-Create approvals table with UNIQUE(card_id, role), TRADER/CO_CAPTAIN,
+The new store already has an approvals table with UNIQUE(card_id, role), TRADER/CO_CAPTAIN,
 APPROVE/DECLINE, actor ID, exact order_hash, policy version, decided_at.
 Bind account/owner, expiry and link generation as well (separate review metadata
-table is appropriate). Distinguish order versus plan IDs. Persist across restart.
+table is implemented). Distinguish order versus plan IDs. Persistence is tested.
 Requotes create fresh review objects and invalidate old approvals.
 Register cards from shared creation paths so rules and LLM drafts cannot bypass
 the gate. Registration is not approval. Reviewers may approve first, so discover
