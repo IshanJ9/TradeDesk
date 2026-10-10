@@ -20,7 +20,8 @@ from typing import NoReturn
 from app.api_models import ExecutionResult, PendingCreatedEvent, PendingUpdatedEvent
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
-from app.cocaptain.actors import Actor
+from app.broker.disconnected import RECONNECT_MESSAGE
+from app.identity import Actor
 from app.cocaptain.store import ReviewError
 from app.config import Settings
 from app.events import EventHub
@@ -89,6 +90,8 @@ class ApprovalService:
 
         if p.state not in (PendingState.PENDING, PendingState.AWAITING_CO_APPROVAL):
             self._refuse(p, "NOT_PENDING", f"This card is already {p.state.value.lower()}.")
+        if getattr(self._broker, "needs_reconnect", False):  # the card stays open; nothing is claimed or sent
+            self._refuse(p, "BLOCKED", RECONNECT_MESSAGE)
         if p.is_expired(self._clock()):
             self._refuse(p, "EXPIRED", "This card expired. Ask again for a fresh one.", PendingState.EXPIRED)
         if not hmac.compare_digest(order_hash, p.order_hash):
@@ -125,7 +128,8 @@ class ApprovalService:
                 if p.state is PendingState.PENDING:  # ...and the card now waits for the second person
                     waiting = self._store.put(
                         p.transition(PendingState.AWAITING_CO_APPROVAL).model_copy(
-                            update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons}
+                            update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons,
+                                    "co_captain_name": gate.name_of(assessment.reviewer_id)}
                         )
                     )
                     self._hub.publish(PendingUpdatedEvent, pending=waiting)
@@ -134,9 +138,9 @@ class ApprovalService:
                         AuditKind.COCAPTAIN, "user", f"Trader approved {p.instrument.symbol}; waiting for {assessment.reviewer_id}",
                         subject_id=p.id, data={"actor_id": gate.owner_id, "reasons": assessment.reasons},
                     )
-                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(assessment.reviewer_id), waiting)
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(waiting.co_captain_name), waiting)
                 if not gate.ready(p):  # the trader clicked again before the Co-Captain has
-                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(assessment.reviewer_id), p)
+                    raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(p.co_captain_name), p)
                 review_required = True
             elif p.state is PendingState.AWAITING_CO_APPROVAL:
                 # back inside the limit: this click is the trader's fresh approval, and the old review stops counting
@@ -146,7 +150,7 @@ class ApprovalService:
 
     @staticmethod
     def _waiting_text(reviewer: str | None) -> str:
-        return f"Waiting for your Co-Captain, {reviewer}, to approve the same order. Nothing has been sent."
+        return f"Waiting for your Co-Captain, {reviewer or 'the person you chose'}, to approve the same order. Nothing has been sent."
 
     async def co_approve(self, pending_id: str, order_hash: str, actor: Actor) -> ExecutionResult:
         """The Co-Captain's click. It adds their approval; the order goes only if everything still holds."""
@@ -179,7 +183,7 @@ class ApprovalService:
             raise ApprovalError("AWAITING_CO_CAPTAIN", "Thanks. The trader is back inside their limit, so they will "
                                 "need to approve it again themselves. Nothing has been sent.", p)
         if not gate.ready(p):
-            raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(actor.id), p)
+            raise ApprovalError("AWAITING_CO_CAPTAIN", self._waiting_text(p.co_captain_name), p)
         return await self._send(p, review_required=True)
 
     async def co_decline(self, pending_id: str, actor: Actor) -> PendingOrder:

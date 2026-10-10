@@ -40,7 +40,6 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
   if (!settings) return <Empty title="Loading…">Checking your Co-Captain settings.</Empty>;
 
   const me = settings.actor;
-  const isTrader = me.id === settings.account_owner_id;
   const name = (id: string) => settings.people.find((p) => p.id === id)?.display_name ?? id;
   const mine: CoCaptainLink | undefined = settings.links.find((l) => l.owner_id === me.id && l.status !== "REVOKED");
   const invitation = invitationFor(settings);
@@ -56,25 +55,23 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
 
       {problem && <Banner tone="warn" role="alert">{problem}</Banner>}
 
-      {isTrader && (
-        <section aria-label="Your Co-Captain" className="rounded-xl border border-line bg-surface p-3">
-          <h3 className="font-medium text-ink">Your Co-Captain</h3>
-          {mine ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="num text-ink">{name(mine.reviewer_id)}</span>
-              <Chip tone={mine.status === "ACTIVE" ? "info" : "plain"}>{mine.status === "ACTIVE" ? "Active" : "Invited, not accepted yet"}</Chip>
-              <Button onClick={() => run("revoke", () => cocaptainApi.revoke(mine))} disabled={busy === "revoke"}>Remove</Button>
-            </div>
-          ) : (
-            <form className="mt-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (email.trim()) void run("invite", () => cocaptainApi.invite(email.trim())).then((ok) => ok && setEmail("")); }}>
-              <input aria-label="Your Co-Captain's email" type="email" className="min-w-0 flex-1 rounded border border-strong bg-surface px-2 py-1.5" placeholder="Their email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <Button variant="primary" type="submit" disabled={!email.trim() || busy === "invite"}>Invite</Button>
-            </form>
-          )}
-          {!mine && <p className="mt-2 text-xs text-muted">Without one, an order that is past your own limits is paused until you add one or are back inside them.</p>}
-          {!settings.limits_configured && <p className="mt-1 text-xs text-muted">You haven&rsquo;t saved any Discipline limits yet, so no order is ever past one and a Co-Captain has nothing to do.</p>}
-        </section>
-      )}
+      <section aria-label="Your Co-Captain" className="rounded-xl border border-line bg-surface p-3">
+        <h3 className="font-medium text-ink">Your Co-Captain</h3>
+        {mine ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="num text-ink">{name(mine.reviewer_id)}</span>
+            <Chip tone={mine.status === "ACTIVE" ? "info" : "plain"}>{mine.status === "ACTIVE" ? "Active" : "Invited, not accepted yet"}</Chip>
+            <Button onClick={() => run("revoke", () => cocaptainApi.revoke(mine))} disabled={busy === "revoke"}>Remove</Button>
+          </div>
+        ) : (
+          <form className="mt-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (email.trim()) void run("invite", () => cocaptainApi.invite(email.trim())).then((ok) => ok && setEmail("")); }}>
+            <input aria-label="Your Co-Captain's email" type="email" className="min-w-0 flex-1 rounded border border-strong bg-surface px-2 py-1.5" placeholder="Their email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Button variant="primary" type="submit" disabled={!email.trim() || busy === "invite"}>Invite</Button>
+          </form>
+        )}
+        {!mine && <p className="mt-2 text-xs text-muted">Without one, an order that is past your own limits is paused until you add one or are back inside them.</p>}
+        {!settings.limits_configured && <p className="mt-1 text-xs text-muted">You haven&rsquo;t saved any Discipline limits yet, so no order is ever past one and a Co-Captain has nothing to do.</p>}
+      </section>
 
       {invitation && (
         <Banner tone="info" role="status">
@@ -92,7 +89,7 @@ export function CoCaptainPanel({ view, dispatch }: { view: CoCaptainView; dispat
         <section aria-label="Waiting for your review" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-medium text-ink">Waiting for your review{inbox.length ? ` (${inbox.length})` : ""}</h3>
-            {!isTrader && reviewing.map((l) => (
+            {reviewing.map((l) => (
               <Button key={l.id} onClick={() => run("leave", () => cocaptainApi.revoke(l))} disabled={busy === "leave"}>Stop being {name(l.owner_id)}&rsquo;s Co-Captain</Button>
             ))}
           </div>

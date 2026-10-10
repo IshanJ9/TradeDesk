@@ -11,23 +11,14 @@ from app.schemas import PendingOrder, PendingState
 
 KEEP = 500  # cards loaded back at startup, newest first: enough for any day, small enough to stay fast
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS pending_cards (
-    id         TEXT PRIMARY KEY,
-    state      TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    data       TEXT NOT NULL
-);
-"""
-
-
 class PendingStore:
-    def __init__(self, db: Database | None = None) -> None:
+    def __init__(self, db: Database | None = None, *, user_id: str) -> None:
         self._db = db
+        self._user_id = user_id
         self._orders: dict[str, PendingOrder] = {}
         if db is not None:
-            db.conn.executescript(_SCHEMA)
-            rows = db.query("SELECT data FROM pending_cards ORDER BY created_at DESC LIMIT ?", (KEEP,))
+            rows = db.query("SELECT data FROM pending_cards WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                            (user_id, KEEP))
             for row in rows:
                 order = PendingOrder.model_validate_json(row["data"])
                 self._orders[order.id] = order
@@ -37,8 +28,9 @@ class PendingStore:
         self._orders[order.id] = order
         if self._db is not None:
             self._db.execute(
-                "INSERT OR REPLACE INTO pending_cards (id, state, created_at, data) VALUES (?, ?, ?, ?)",
-                (order.id, order.state.value, order.created_at.isoformat(), order.model_dump_json(round_trip=True)),
+                "INSERT INTO pending_cards (id, user_id, state, created_at, data) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET state = excluded.state, data = excluded.data WHERE user_id = excluded.user_id",
+                (order.id, self._user_id, order.state.value, order.created_at.isoformat(), order.model_dump_json(round_trip=True)),
             )
         return order
 

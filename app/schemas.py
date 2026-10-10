@@ -249,6 +249,7 @@ class AuditKind(str, Enum):
     LIMIT_BLOCKED = "LIMIT_BLOCKED"
     LOCK_BLOCKED = "LOCK_BLOCKED"
     CHAOS = "CHAOS"
+    BROKER_LINK = "BROKER_LINK"  # a 021 account was linked, unlinked or reconnected: never any credentials
 
 
 # --------------------------------------------------------------------------- #
@@ -662,7 +663,8 @@ class PendingOrder(Model):
     # held): Approve is refused unless the request carries the typed acknowledgment (see ApprovalService).
     risk_ack_required: bool = False
     # Set while the card waits for the Co-Captain (app/cocaptain): who, and why a second approval is needed.
-    co_captain: str | None = None
+    co_captain: str | None = None  # the reviewer's user id (logic compares it)
+    co_captain_name: str | None = None  # ...and the name to show
     co_reasons: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")

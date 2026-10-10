@@ -1,13 +1,18 @@
-import asyncio
+"""Pairing routes: who is whose Co-Captain. Every route needs a signed-in user (the same guard as the rest of the app),
+and the person acting is always the session's user, never anything in the request.
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+Anyone with an account can invite one other account by email, and can be invited. The review routes (the Co-Captain's
+inbox, Approve and Decline) are in review_api.py.
+"""
+
+from fastapi import HTTPException, Request
 from pydantic import Field
 
-from app.cocaptain.actors import Actor, current_actor
+from app.auth.deps import CurrentUser, protected_router
 from app.cocaptain.pairing import Link
 from app.schemas import Model
 
-router = APIRouter(prefix="/api/cocaptain")
+router = protected_router(prefix="/api/cocaptain")
 
 
 def feature(request: Request):
@@ -25,84 +30,48 @@ class LinkAction(Model):
     link_id: str
 
 
+class Person(Model):
+    id: str
+    display_name: str
+
+
 class PairingStatus(Model):
-    actor: Actor
-    account_owner_id: str
+    actor: Person
     links: list[Link]
-    people: list[Actor]
+    people: list[Person]
     limits_configured: bool
-    dev_actors: bool
 
 
-@router.get("/config")
-async def config(request: Request):
-    s = request.app.state.settings
-    return {"enabled": s.cocaptain_enabled, "dev_actors": s.cocaptain_dev_actors and s.demo_mode}
+class CoCaptainConfig(Model):
+    enabled: bool
+
+
+@router.get("/config", response_model=CoCaptainConfig)
+async def config(request: Request, _: CurrentUser):
+    return CoCaptainConfig(enabled=request.app.state.settings.cocaptain_enabled)
 
 
 @router.get("/settings", response_model=PairingStatus)
-async def settings(request: Request, actor: Actor = Depends(current_actor)):
+async def settings(request: Request, actor: CurrentUser):
     pairing = feature(request)
     links = pairing.for_actor(actor)
     ids = {actor.id, *(person for link in links for person in (link.owner_id, link.reviewer_id))}
-    profile = request.app.state.profile_store.get_profile()
-    return PairingStatus(actor=actor, account_owner_id=request.app.state.settings.cocaptain_account_owner_id,
-                         links=links, people=[person for id in sorted(ids) if (person := pairing.directory.by_id(id))],
-                         limits_configured=profile is not None, dev_actors=request.app.state.settings.cocaptain_dev_actors)
+    people = [Person(id=p.id, display_name=p.label) for i in sorted(ids) if (p := pairing.directory.by_id(i))]
+    ws = await request.app.state.workspaces.get(actor)  # this user's own desk: their own saved limits
+    return PairingStatus(actor=Person(id=actor.id, display_name=actor.label), links=links, people=people,
+                         limits_configured=ws.profile_store.get_profile() is not None)
 
 
 @router.post("/invite", response_model=Link)
-async def invite(body: Invite, request: Request, actor: Actor = Depends(current_actor)):
-    pairing = feature(request)
-    if actor.id != request.app.state.settings.cocaptain_account_owner_id:
-        raise HTTPException(403, "Only the trader can invite a reviewer for this account")
-    return pairing.invite(actor, body.email)
+async def invite(body: Invite, request: Request, actor: CurrentUser):
+    return feature(request).invite(actor, body.email)
 
 
 @router.post("/accept", response_model=Link)
-async def accept(body: LinkAction, request: Request, actor: Actor = Depends(current_actor)):
+async def accept(body: LinkAction, request: Request, actor: CurrentUser):
     return feature(request).accept(actor, body.owner_id, body.link_id)
 
 
 @router.post("/revoke", response_model=Link)
-async def revoke(body: LinkAction, request: Request, actor: Actor = Depends(current_actor)):
+async def revoke(body: LinkAction, request: Request, actor: CurrentUser):
     return feature(request).revoke(actor, body.owner_id, body.link_id)
-
-
-@router.websocket("/ws")
-async def events(websocket: WebSocket, actor: Actor = Depends(current_actor)):
-    if not websocket.app.state.settings.cocaptain_enabled:
-        await websocket.close(code=1008)
-        return
-    protocol = "tradedesk-cocaptain" if "tradedesk-cocaptain" in websocket.scope.get("subprotocols", []) else None
-    await websocket.accept(subprotocol=protocol)
-    hub = websocket.app.state.cocaptain_hub
-    queue = hub.subscribe(actor.id)
-    receive = asyncio.create_task(websocket.receive_text())
-    getter = None
-    try:
-        await websocket.send_json({"type": "cocaptain_connected"})
-        while True:
-            getter = asyncio.create_task(queue.get())
-            done, _ = await asyncio.wait({getter, receive}, return_when=asyncio.FIRST_COMPLETED)
-            if receive in done:
-                # Incoming websocket text never records a decision.
-                receive.result()
-                receive = asyncio.create_task(websocket.receive_text())
-            if getter in done:
-                event = getter.result()
-                if event is None:
-                    await websocket.close(code=1013)
-                    break
-                await websocket.send_json(event)
-            else:
-                getter.cancel()
-                await asyncio.gather(getter, return_exceptions=True)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        hub.unsubscribe(actor.id, queue)
-        for task in (getter, receive):
-            if task:
-                task.cancel()
-        await asyncio.gather(*(t for t in (getter, receive) if t), return_exceptions=True)

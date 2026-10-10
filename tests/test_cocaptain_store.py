@@ -1,27 +1,40 @@
-from datetime import datetime, timedelta, timezone
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.audit import AuditLog
-from app.cocaptain.actors import Actor, DevDirectory
+from app.cocaptain.audit import OwnerAudit
 from app.cocaptain.events import ReviewHub
 from app.cocaptain.pairing import Pairing
 from app.cocaptain.store import ReviewError, ReviewStore
 from app.db import Database
+from app.events import EventHub
+from app.identity import Actor
 
 
 NOW = datetime(2026, 10, 10, tzinfo=timezone.utc)
-A = Actor(id="a", display_name="Trader")
-B = Actor(id="b", display_name="Reviewer")
-C = Actor(id="c", display_name="Stranger")
+A = Actor(id="a", email="a@example.invalid", display_name="Trader")
+B = Actor(id="b", email="b@example.invalid", display_name="Reviewer")
+C = Actor(id="c", email="c@example.invalid", display_name="Stranger")
+
+
+class People:
+    """A fixed list of accounts (the real directory reads the users table; the pairing only needs these two lookups)."""
+
+    def __init__(self, *actors):
+        self._by_id = {a.id: a for a in actors}
+        self._by_email = {a.email: a for a in actors}
+
+    def by_id(self, actor_id):
+        return self._by_id.get(actor_id)
+
+    def by_email(self, email):
+        return self._by_email.get(email.strip().lower())
 
 
 def setup(db, clock=lambda: NOW):
-    directory = DevDirectory(json.dumps([
-        {"id": a.id, "display_name": a.display_name, "email": f"{a.id}@example.invalid"}
-        for a in (A, B, C)]))
-    audit = AuditLog(db, clock)
+    directory = People(A, B, C)
+    audit = OwnerAudit(db, clock, EventHub())
     pairing = Pairing(db, directory, audit, ReviewHub(), clock)
     store = ReviewStore(db, pairing, audit, clock)
     pairing.on_revoke = store.revoke_link

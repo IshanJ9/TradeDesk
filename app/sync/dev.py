@@ -2,12 +2,13 @@
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import HTTPException, Request
 
+from app.desk import desk_router
 from app.schemas import Model
 from app.trace import Tracer
 
-router = APIRouter(prefix="/api/dev", tags=["demo"])
+router = desk_router(prefix="/api/dev", tags=["demo"])
 
 
 class TraceSampleReply(Model):
@@ -17,9 +18,9 @@ class TraceSampleReply(Model):
 
 @router.post("/trace-sample", response_model=TraceSampleReply)
 async def trace_sample(request: Request) -> TraceSampleReply:
-    if not request.app.state.settings.demo_mode:
+    if not request.state.ws.settings.demo_mode:
         raise HTTPException(404, "Not found")
-    tracer = Tracer(request.app.state.hub, run_id=f"demo-{uuid.uuid4().hex[:12]}")
+    tracer = Tracer(request.state.ws.hub, run_id=f"demo-{uuid.uuid4().hex[:12]}")
     # Fixed illustrative timings, explicitly labelled as demo data in the UI.
     steps = [
         ("input_guard", "guard", "end", "DEMO DATA: checked a sample account question.", 4),

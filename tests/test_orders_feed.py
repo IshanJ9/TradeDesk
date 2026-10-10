@@ -194,6 +194,7 @@ def test_a_fill_reaches_the_screen_from_the_orders_socket_without_any_price_tick
     settings = Settings(ticker_interval=None, reconcile_interval=None, external_sync_interval=None, account_push_interval=3600)
     app = create_app(settings, broker=adapter)
     with TestClient(app) as client:
+        client.get("/api/pending")  # signing in starts this user's desk, which includes the orders-socket watcher
         deadline = time.time() + 2
         while not conn.orders and time.time() < deadline:
             time.sleep(0.01)

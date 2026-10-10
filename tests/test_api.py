@@ -246,7 +246,7 @@ def tick_event_fields():
 
 
 async def test_hub_sequences_events_and_fans_out():
-    hub = EventHub()
+    hub = EventHub().for_user("u1")
     a, b = hub.subscribe(), hub.subscribe()
     e1 = hub.publish(TickEvent, **tick_event_fields())
     e2 = hub.publish(TickEvent, **tick_event_fields())
@@ -258,7 +258,7 @@ async def test_hub_sequences_events_and_fans_out():
 
 
 async def test_hub_drops_a_client_that_cannot_keep_up():
-    hub = EventHub(queue_limit=2)
+    hub = EventHub(queue_limit=2).for_user("u1")
     slow, fast = hub.subscribe(), hub.subscribe()
     for _ in range(2):
         hub.publish(TickEvent, **tick_event_fields())

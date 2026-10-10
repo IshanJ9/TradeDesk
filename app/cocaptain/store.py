@@ -78,9 +78,11 @@ class ReviewStore:
             "SELECT * FROM approvals WHERE card_id=? ORDER BY role", (card_id,))]
 
     def _event(self, card_id: str, actor_id: str, action: str, **data):
+        review = self.get(card_id)
         self.audit.record(AuditKind.COCAPTAIN, "user" if actor_id != "system" else "system",
                           action, subject_id=card_id,
-                          data={"actor_id": actor_id, "action": action, **data})
+                          data={"actor_id": actor_id, "action": action,
+                                "owner_id": review.owner_id if review else None, **data})
 
     def _active_link(self, review: Review):
         link = self.pairing.get(review.owner_id)

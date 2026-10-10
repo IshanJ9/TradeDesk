@@ -1,7 +1,8 @@
 """Explicit trader settings only. This router cannot place, modify or cancel an order."""
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import HTTPException, Request, Response
 
+from app.desk import desk_router
 from app.history.store import trading_day
 from app.risk.models import (DemoSeedResult, DisciplineReport, Goal, GoalRequest, OnboardingAnswers,
                              OnboardingSuggestion, PresetOption, RiskProfile)
@@ -9,11 +10,11 @@ from app.risk.presets import all_presets, suggest_profile
 from app.risk.store import ProfileStore
 from app.risk.valuation import portfolio_value
 
-router = APIRouter(prefix="/api", tags=["Discipline"])
+router = desk_router(prefix="/api", tags=["Discipline"])
 
 
 def profile_store(request: Request) -> ProfileStore:
-    return request.app.state.profile_store
+    return request.state.ws.profile_store
 
 
 @router.get("/profile", response_model=RiskProfile | None)
@@ -24,7 +25,7 @@ async def get_profile(request: Request):
 @router.put("/profile", response_model=RiskProfile)
 async def put_profile(body: RiskProfile, request: Request):
     saved = profile_store(request).save_profile(body)
-    await request.app.state.discipline.refresh_safely()
+    await request.state.ws.discipline.refresh_safely()
     return saved
 
 
@@ -45,12 +46,12 @@ async def get_goal(request: Request):
 
 @router.put("/goal", response_model=Goal)
 async def put_goal(body: GoalRequest, request: Request):
-    today = trading_day(request.app.state.clock())
+    today = trading_day(request.state.ws.clock())
     if body.start_date is not None and body.start_date != today:
         raise HTTPException(422, "A new goal starts today; a historical portfolio value cannot be reconstructed.")
     if body.end_date <= today:
         raise HTTPException(422, "The goal end date must be after today.")
-    value = await portfolio_value(request.app.state.broker.read_only())
+    value = await portfolio_value(request.state.ws.broker.read_only())
     if value <= 0:
         raise HTTPException(409, "A positive portfolio value is needed to start a goal.")
     if body.max_acceptable_loss_paise > value:
@@ -67,22 +68,22 @@ async def delete_goal(request: Request):
 
 @router.get("/discipline", response_model=DisciplineReport)
 async def get_discipline(request: Request):
-    return await request.app.state.discipline.refresh()
+    return await request.state.ws.discipline.refresh()
 
 
 @router.post("/discipline/demo-seed", response_model=DemoSeedResult)
 async def seed_demo(request: Request):
-    if not request.app.state.settings.demo_mode:
+    if not request.state.ws.settings.demo_mode:
         raise HTTPException(404, "Not found")
-    count = await request.app.state.discipline.seed()
-    await request.app.state.discipline.refresh_safely()
+    count = await request.state.ws.discipline.seed()
+    await request.state.ws.discipline.refresh_safely()
     return DemoSeedResult(seeded_days=count)
 
 
 @router.delete("/discipline/demo-seed", status_code=204)
 async def clear_demo(request: Request):
-    if not request.app.state.settings.demo_mode:
+    if not request.state.ws.settings.demo_mode:
         raise HTTPException(404, "Not found")
-    await request.app.state.discipline.clear_demo()
-    await request.app.state.discipline.refresh_safely()
+    await request.state.ws.discipline.clear_demo()
+    await request.state.ws.discipline.refresh_safely()
     return Response(status_code=204)

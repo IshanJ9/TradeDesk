@@ -1,9 +1,11 @@
-import { useCallback, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
+import { AccountMenu } from "./components/AccountMenu";
 import { AccountPanel } from "./components/AccountPanel";
 import { ApprovalDock } from "./components/ApprovalDock";
 import { ChatPanel } from "./components/ChatPanel";
 import { DemoControls } from "./components/DemoControls";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { forgetBroker, reconnectBroker, refreshBroker, SIMULATED, useBroker } from "./lib/broker";
 import { navigate } from "./lib/router";
 import { DeskTabs } from "./components/DeskTabs";
 import { Toasts } from "./components/Toasts";
@@ -24,6 +26,20 @@ export default function App() {
   const { messages, busy, send } = useChat();
   const [view, setView] = useState<View>("ask");
   useLiveFeed(dispatch);
+  const broker = useBroker();
+  const [reconnecting, setReconnecting] = useState<string | null>(null); // null = idle, "" = working, text = last failure
+  useEffect(() => {
+    void refreshBroker();
+    const t = setInterval(() => void refreshBroker(), 20_000); // notices a session 021 revoked, or a changed account
+    return () => { clearInterval(t); forgetBroker(); };
+  }, []);
+  useEffect(() => { if (state.conn === "live") void refreshBroker(); }, [state.conn]);
+  const accountKind = state.account?.account_kind ?? broker?.kind;
+  async function reconnect() {
+    setReconnecting("");
+    const r = await reconnectBroker();
+    setReconnecting(r.ok ? null : r.message);
+  }
 
   const waiting = awaiting(state);
   const waitingCount = waiting.orders.length + waiting.plans.length;
@@ -57,8 +73,14 @@ export default function App() {
           <span className="hidden text-xs text-muted sm:inline">Out of your way. On your side.</span>
         </div>
         <div className="flex items-center gap-3 text-xs">
+          {accountKind === "mock" && (
+            <span className="inline-flex items-center rounded-full border border-[var(--info-line)] bg-[var(--info-bg)] px-2 py-0.5 text-[var(--info-ink)]" title={SIMULATED} aria-label={SIMULATED}>
+              <span className="sm:hidden">Simulated</span><span className="hidden sm:inline">{SIMULATED}</span>
+            </span>
+          )}
           <DemoControls notify={(message) => dispatch({ type: "toast", toast: { kind: "info", message } })} />
           <ThemeToggle className="text-muted hover:bg-surface2" />
+          <AccountMenu />
           {locks?.anchor_active && <span className="rounded-full border border-[var(--info-line)] bg-[var(--info-bg)] px-2 py-0.5 text-[var(--info-ink)]">Anchor on</span>}
           {locks?.buffett_mode && <span className="rounded-full border border-line px-2 py-0.5 text-muted">Buffett Mode</span>}
           {locks?.co_captain_locked && <span className="rounded-full border border-[var(--info-line)] bg-[var(--info-bg)] px-2 py-0.5 text-[var(--info-ink)]">Co-Captain lock</span>}
@@ -68,6 +90,15 @@ export default function App() {
           </span>
         </div>
       </header>
+
+      {broker?.status === "needs_reconnect" && (
+        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--warn-line)] bg-[var(--warn-bg)] px-4 py-2 text-[13px] text-[var(--warn-ink)]">
+          <span className="min-w-0 flex-1">Your 021 account isn't connected, so nothing can be sent. {reconnecting ? reconnecting : "Reconnect to carry on."}</span>
+          <button type="button" onClick={() => void reconnect()} disabled={reconnecting === ""} className="min-h-[36px] rounded-lg border border-[var(--warn-line)] px-3 font-medium disabled:opacity-60">
+            {reconnecting === "" ? "Reconnecting…" : "Reconnect"}
+          </button>
+        </div>
+      )}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(340px,5fr)_minmax(460px,6fr)]">
         <div className={`min-h-0 min-w-0 border-line bg-surface lg:border-r ${view === "ask" ? "block" : "max-lg:hidden"}`}>

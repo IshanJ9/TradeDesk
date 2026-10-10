@@ -21,22 +21,6 @@ export function invitationFor(s: CoCaptainSettings | null): CoCaptainLink | unde
   return s?.links.find((l) => l.reviewer_id === s.actor.id && l.status === "INVITED");
 }
 
-/** null while we find out; true when Co-Captain is on and the caller is not the account's trader. */
-export function useIsReviewer(): boolean | null {
-  const [reviewer, setReviewer] = useState<boolean | null>(null);
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      const c = await cocaptainApi.config();
-      if (!c.ok || !c.data.enabled) return live && setReviewer(false);
-      const s = await cocaptainApi.settings();
-      if (live) setReviewer(s.ok && s.data.actor.id !== s.data.account_owner_id);
-    })();
-    return () => { live = false; };
-  }, []);
-  return reviewer;
-}
-
 export function useCoCaptain(): CoCaptainView {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [settings, setSettings] = useState<CoCaptainSettings | null>(null);

@@ -43,6 +43,8 @@ class AccountSnapshot(Model):
     holdings: list[Holding]
     positions: list[Position]
     locks: AccountLocks
+    # Which account this is: the simulated one (no real money) or a real 021 account. Shown on the screen at all times.
+    account_kind: Literal["mock", "021"]
 
 
 class PendingList(Model):
@@ -250,7 +252,9 @@ class ChaosStatus(Model):
 
 
 class _Event(Model):
-    seq: int  # global, increasing; a gap means the client should refetch a snapshot
+    seq: int  # increasing per user; a gap means the client should refetch a snapshot
+    # Who the event is for. Set by the hub, used for delivery, never sent to the client.
+    user_id: str | None = Field(default=None, exclude=True)
 
 
 class SnapshotEvent(_Event):

@@ -1,115 +1,150 @@
+"""Pairing between real accounts: an invitation by email, accepted by the invited person, ended by either. A new link
+id is a new approval generation. Anyone with an account can invite one other account and be invited; nothing here
+lets one person act as another. (Ryan's original cases, ported from the demo identities to signed-in users.)"""
+
 import json
 from datetime import datetime, timezone
 
 import pytest
-from fastapi.testclient import TestClient
+from conftest import SignedInClient
 
 from app.config import Settings
 from app.main import create_app
 
 NOW = datetime(2026, 10, 10, 5, tzinfo=timezone.utc)
-USERS = json.dumps([dict(id=id, display_name=name, email=f"{id}@example.invalid")
-                    for id, name in [("a", "Trader"), ("b", "Ravi"), ("c", "Other")]])
-
-
-def actor(id):
-    return {"x-tradedesk-actor": id}
 
 
 def settings(**updates):
-    return Settings(**(dict(demo_mode=True, cocaptain_enabled=True, cocaptain_dev_actors=True,
-                           cocaptain_account_owner_id="a", cocaptain_dev_users=USERS,
-                           ticker_interval=None, reconcile_interval=None, external_sync_interval=None) | updates))
+    return Settings(**(dict(cocaptain_enabled=True, ticker_interval=None, reconcile_interval=None,
+                            external_sync_interval=None) | updates))
+
+
+class People:
+    def __init__(self, app, a):
+        self.app = app
+        self.a = a
+        self.b, self.c = SignedInClient(app, email="b@example.com"), SignedInClient(app, email="c@example.com")
+        self.b.portal = self.c.portal = a.portal
+        for client in (a, self.b, self.c):
+            client.sign_in()
+        self.ids = {k: v.get("/api/auth/me").json()["user"]["id"] for k, v in (("a", a), ("b", self.b), ("c", self.c))}
+
+    def who(self, key):
+        return getattr(self, key)
+
+    def invite(self, email="b@example.com", by="a"):
+        return self.who(by).post("/api/cocaptain/invite", json={"email": email})
+
+    def action(self, link, who, action):
+        return self.who(who).post(f"/api/cocaptain/{action}", json={"owner_id": link["owner_id"], "link_id": link["id"]})
 
 
 @pytest.fixture
-def client():
-    with TestClient(create_app(settings(), clock=lambda: NOW)) as c:
-        yield c
+def people():
+    app = create_app(settings(), clock=lambda: NOW)
+    with SignedInClient(app, email="a@example.com") as a:
+        yield People(app, a)
 
 
-def invite(c, email="b@example.invalid"):
-    return c.post("/api/cocaptain/invite", headers=actor("a"), json={"email": email})
-
-
-def action(c, link, who, action):
-    return c.post(f"/api/cocaptain/{action}", headers=actor(who),
-                  json={"owner_id": link["owner_id"], "link_id": link["id"]})
-
-
-def test_accept_revoke_and_reinvite_invalidate_previous_generation(client):
-    link = invite(client).json()
+def test_accept_revoke_and_reinvite_invalidate_previous_generation(people):
+    link = people.invite().json()
     assert link["status"] == "INVITED"
-    assert invite(client).json()["id"] == link["id"]
-    assert action(client, link, "a", "accept").status_code == 403
-    assert action(client, link, "c", "accept").status_code == 403
-    assert action(client, link, "b", "accept").json()["status"] == "ACTIVE"
-    assert invite(client, "c@example.invalid").status_code == 409
-    assert action(client, link, "c", "revoke").status_code == 403
-    assert action(client, link, "b", "revoke").json()["status"] == "REVOKED"
-    assert action(client, link, "b", "accept").status_code == 409
-    fresh = invite(client).json()
-    assert fresh["id"] != link["id"]
-    assert action(client, link, "b", "accept").status_code == 404
+    assert people.invite().json()["id"] == link["id"]  # inviting the same person again changes nothing
+    assert people.action(link, "a", "accept").status_code == 403  # the inviter cannot accept for them
+    assert people.action(link, "c", "accept").status_code == 403  # nor can a stranger
+    assert people.action(link, "b", "accept").json()["status"] == "ACTIVE"
+    assert people.invite("c@example.com").status_code == 409  # one Co-Captain at a time
+    assert people.action(link, "c", "revoke").status_code == 403  # only the two people in it can end it
+    assert people.action(link, "b", "revoke").json()["status"] == "REVOKED"
+    assert people.action(link, "b", "accept").status_code == 409
+    fresh = people.invite().json()
+    assert fresh["id"] != link["id"]  # a new link id: nothing approved under the old one carries over
+    assert people.action(link, "b", "accept").status_code == 404
 
 
-def test_self_invitation_unknown_and_reviewer_invitation_refused(client):
-    assert invite(client, "a@example.invalid").status_code == 403
-    assert invite(client, "nobody@example.invalid").status_code == 404
-    assert client.post("/api/cocaptain/invite", headers=actor("b"), json={"email": "c@example.invalid"}).status_code == 403
+def test_self_invitation_unknown_and_second_invitation_refused(people):
+    assert people.invite("a@example.com").status_code == 403
+    assert people.invite("nobody@example.com").status_code == 404  # only real accounts can be invited
+    link = people.invite().json()
+    people.action(link, "b", "accept")
+    assert people.invite("b@example.com", by="b").status_code == 403  # b cannot invite themselves either
+    assert people.invite("c@example.com", by="b").status_code == 200  # but b has their own desk and may invite c
 
 
-def test_gets_are_read_only_and_actions_require_post(client):
-    link = invite(client).json()
-    before = client.app.state.db.conn.total_changes
+def test_each_person_sees_only_their_own_links_and_the_names_in_them(people):
+    link = people.invite().json()
+    people.action(link, "b", "accept")
+    mine, theirs, stranger = (people.who(k).get("/api/cocaptain/settings").json() for k in ("a", "b", "c"))
+    assert [x["id"] for x in mine["links"]] == [x["id"] for x in theirs["links"]] == [link["id"]]
+    assert stranger["links"] == []
+    assert {p["id"] for p in mine["people"]} == {people.ids["a"], people.ids["b"]}
+    assert {p["id"] for p in stranger["people"]} == {people.ids["c"]}
+
+
+def test_gets_are_read_only_and_actions_require_post(people):
+    people.invite()
+    before = people.app.state.db.conn.total_changes
     for route in ("config", "settings"):
-        assert client.get(f"/api/cocaptain/{route}", headers=actor("b")).status_code == 200
+        assert people.b.get(f"/api/cocaptain/{route}").status_code == 200
     for route in ("invite", "accept", "revoke"):
-        assert client.get(f"/api/cocaptain/{route}", headers=actor("b")).status_code == 405
-    assert client.app.state.db.conn.total_changes == before
-    assert client.app.state.cocaptain_pairing.get("a").status == "INVITED"
+        assert people.b.get(f"/api/cocaptain/{route}").status_code == 405
+    assert people.app.state.db.conn.total_changes == before
+    assert people.app.state.cocaptain_pairing.get(people.ids["a"]).status == "INVITED"
 
 
 @pytest.mark.parametrize("route", ["account", "orders", "pending", "profile", "discipline", "audit", "rules", "activity"])
-def test_reviewer_cannot_read_trader_portfolio_or_history(client, route):
-    response = client.get(f"/api/{route}", headers=actor("b"))
-    assert response.status_code in (403, 404)
+def test_a_co_captain_still_cannot_read_the_traders_portfolio_or_history(people, route):
+    link = people.invite().json()
+    people.action(link, "b", "accept")
+    a_card = people.a.post("/api/orders/preview", json=dict(action="PLACE", instrument_ref="ITC", side="BUY", quantity=1,
+                                                             order_type="MARKET")).json()["cards"][0]["pending"]
+    body = json.dumps(people.b.get(f"/api/{route}").json())  # their OWN desk's answer
+    assert a_card["id"] not in body
 
 
-def test_identity_headers_are_disabled_by_default_and_without_demo():
-    with pytest.raises(ValueError, match="DEMO_MODE"):
-        create_app(settings(demo_mode=False))
-    with TestClient(create_app(settings(cocaptain_dev_actors=False))) as c:
-        assert c.get("/api/cocaptain/settings", headers=actor("a")).status_code == 503
-    with TestClient(create_app(Settings(ticker_interval=None, external_sync_interval=None))) as c:
-        assert c.get("/api/cocaptain/settings", headers=actor("a")).status_code == 404
+def test_nothing_works_without_signing_in(people):
+    from starlette.testclient import TestClient as Anonymous
+    anon = Anonymous(people.app)
+    for method, path in (("GET", "/api/cocaptain/config"), ("GET", "/api/cocaptain/settings"), ("GET", "/api/cocaptain/inbox"),
+                         ("POST", "/api/cocaptain/invite"), ("POST", "/api/cocaptain/accept"), ("POST", "/api/cocaptain/revoke")):
+        assert anon.request(method, path, json={} if method == "POST" else None).status_code == 401, path
 
 
-def test_unknown_actor_denied_and_owner_access_preserved(client):
-    assert client.get("/api/account", headers=actor("a")).status_code == 200
-    assert client.get("/api/account").status_code == 401
-    assert client.get("/api/cocaptain/settings", headers=actor("unknown")).status_code == 401
+def test_a_disabled_account_cannot_be_invited(people):
+    people.app.state.auth.store.set_disabled(people.ids["c"], True)
+    assert people.invite("c@example.com").status_code == 404
 
 
-def test_audit_actor_ids_and_actor_scoped_notifications(client):
-    hub = client.app.state.cocaptain_hub
-    qa, qb, qc = (hub.subscribe(id) for id in ("a", "b", "c"))
-    link = invite(client).json()
-    assert qa.get_nowait()["action"] == "invited"
-    assert qb.get_nowait()["action"] == "invited"
-    assert qc.empty()
-    action(client, link, "b", "accept")
-    action(client, link, "a", "revoke")
-    events = client.app.state.db.query("SELECT actor,data FROM audit_events WHERE kind='COCAPTAIN' ORDER BY seq")
-    assert all(e["actor"] == "user" for e in events)
-    assert [(json.loads(e["data"])["actor_id"], json.loads(e["data"])["action"]) for e in events] == [("a", "invited"), ("b", "accepted"), ("a", "revoked")]
+def test_the_feature_is_off_unless_switched_on():
+    app = create_app(Settings(ticker_interval=None, reconcile_interval=None, external_sync_interval=None), clock=lambda: NOW)
+    with SignedInClient(app, email="a@example.com") as c:
+        assert c.get("/api/cocaptain/config").json() == {"enabled": False}
+        for method, path in (("GET", "/api/cocaptain/settings"), ("GET", "/api/cocaptain/inbox"),
+                             ("POST", "/api/cocaptain/invite")):
+            assert c.request(method, path, json={"email": "b@example.com"} if method == "POST" else None).status_code == 404
+
+
+def test_audit_records_who_did_each_step_in_the_traders_log(people):
+    link = people.invite().json()
+    people.action(link, "b", "accept")
+    people.action(link, "a", "revoke")
+    ws = people.app.state.workspaces.peek(people.ids["a"])
+    from app.schemas import AuditKind
+    rows = list(reversed(ws.audit.list(50, kind=AuditKind.COCAPTAIN)))
+    assert all(r.actor == "user" for r in rows)
+    assert [(r.data["actor_id"], r.data["action"]) for r in rows] == [
+        (people.ids["a"], "invited"), (people.ids["b"], "accepted"), (people.ids["a"], "revoked")]
 
 
 def test_pairing_survives_restart(tmp_path):
-    config = settings(database_url="sqlite:///"+str(tmp_path/"pairing.db"))
-    with TestClient(create_app(config, clock=lambda: NOW)) as c:
-        link = invite(c).json()
-        action(c, link, "b", "accept")
-    with TestClient(create_app(config, clock=lambda: NOW)) as c:
-        restored = c.get("/api/cocaptain/settings", headers=actor("b")).json()
+    config = settings(database_url="sqlite:///" + str(tmp_path / "pairing.db"))
+    app = create_app(config, clock=lambda: NOW)
+    with SignedInClient(app, email="a@example.com") as a:
+        p = People(app, a)
+        link = p.invite().json()
+        p.action(link, "b", "accept")
+    app2 = create_app(config, clock=lambda: NOW)
+    with SignedInClient(app2, email="a@example.com") as a2:
+        p2 = People(app2, a2)
+        restored = p2.b.get("/api/cocaptain/settings").json()
         assert restored["links"][0]["id"] == link["id"] and restored["links"][0]["status"] == "ACTIVE"

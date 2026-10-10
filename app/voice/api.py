@@ -2,12 +2,13 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
+from app.desk import desk_router
 from app.schemas import AuditKind
 from app.voice.service import CONTENT_TYPES, MAX_AUDIO_BYTES, Transcriber, Transcript, VoiceError, VoiceStatus
 
-router = APIRouter(prefix="/api/voice", tags=["voice"])
+router = desk_router(prefix="/api/voice", tags=["voice"])
 
 
 async def get_transcriber(request: Request) -> Transcriber:
@@ -61,7 +62,7 @@ async def transcribe(request: Request, service: Annotated[Transcriber, Depends(g
     # This records metadata only. Even a transcript asking to approve an order
     # remains text returned to the editor; it is never submitted to chat here.
     where = "on this machine" if result.provider == "local" else "by Groq after the local model failed" if result.fell_back else ""
-    request.app.state.audit.record(
+    request.state.ws.audit.record(
         AuditKind.VOICE_TRANSCRIBED,
         "system",
         " ".join(filter(None, ["voice transcribed", where])) + ("" if result.seconds is None else f", {result.seconds:.1f} s"),

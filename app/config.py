@@ -18,9 +18,6 @@ class Settings:
     zerotwoone_cache_dir: str = ".cache"  # the instrument list is downloaded once a day and kept here
     demo_mode: bool = False  # enables /api/chaos/* and /api/locks/* toggles
     cocaptain_enabled: bool = False
-    cocaptain_dev_actors: bool = False
-    cocaptain_account_owner_id: str = ""
-    cocaptain_dev_users: str = field(default="[]", repr=False)
     database_url: str = "sqlite:///:memory:"
     llm_provider: str = "rules"  # rules = built-in keyword parser; real providers are added in app/llm/factory.py
     aws_region: str = "ap-south-1"
@@ -52,6 +49,14 @@ class Settings:
     reconcile_grace_seconds: float = 120.0
     timeout_reconcile_attempts: int = 3  # order-book lookups right after a timed-out send
     timeout_reconcile_delay: float = 0.2  # seconds between those lookups
+    # Accounts and sessions (app/auth/)
+    allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")  # browsers allowed to call the API
+    cookie_secure: bool | None = None  # None = Secure unless served from this machine; COOKIE_SECURE=true/false overrides
+    session_idle_hours: float = 12.0
+    session_absolute_days: float = 7.0
+    secret_key: str = field(default="", repr=False)  # encrypts users' linked 021 logins; empty = linking is off
+    secret_key_previous: str = field(default="", repr=False)  # the old key while changing it
+    owner_email: str = ""  # the account that inherits data saved before accounts existed (default: the first to register)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -65,9 +70,6 @@ class Settings:
             zerotwoone_cache_dir=env.get("ZEROTWOONE_CACHE_DIR", "").strip() or cls.zerotwoone_cache_dir,
             demo_mode=_flag("DEMO_MODE", False),
             cocaptain_enabled=_flag("COCAPTAIN_ENABLED", False),
-            cocaptain_dev_actors=_flag("COCAPTAIN_DEV_ACTORS", False),
-            cocaptain_account_owner_id=env.get("COCAPTAIN_ACCOUNT_OWNER_ID", "").strip(),
-            cocaptain_dev_users=env.get("COCAPTAIN_DEV_USERS", "[]"),
             database_url=env.get("DATABASE_URL", "sqlite:///./tradedesk.db"),
             llm_provider=env.get("LLM_PROVIDER", "").strip().lower() or "rules",
             aws_region=env.get("AWS_REGION", "ap-south-1").strip() or "ap-south-1",
@@ -85,4 +87,12 @@ class Settings:
             max_order_value_rupees=int(env.get("MAX_ORDER_VALUE_RUPEES", "10000000")),
             max_fo_lots_per_order=max(1, int(env.get("MAX_FO_LOTS_PER_ORDER", "2"))),
             allow_unlimited_risk_fo=env.get("ALLOW_UNLIMITED_RISK_FO", "").strip().lower() in ("1", "true", "yes", "on"),
+            allowed_origins=tuple(o.strip().rstrip("/") for o in env.get("TRADEDESK_ORIGINS", "").split(",") if o.strip())
+            or cls.allowed_origins,
+            cookie_secure=None if not env.get("COOKIE_SECURE", "").strip() else _flag("COOKIE_SECURE", True),
+            session_idle_hours=float(env.get("SESSION_IDLE_HOURS", "12")),
+            session_absolute_days=float(env.get("SESSION_ABSOLUTE_DAYS", "7")),
+            owner_email=env.get("TRADEDESK_OWNER_EMAIL", "").strip().lower(),
+            secret_key=env.get("TRADEDESK_SECRET_KEY", "").strip(),
+            secret_key_previous=env.get("TRADEDESK_SECRET_KEY_PREVIOUS", "").strip(),
         )

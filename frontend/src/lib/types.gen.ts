@@ -4,6 +4,108 @@
  */
 
 export interface paths {
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_api_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_api_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Password */
+        post: operations["change_password_api_auth_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account": {
         parameters: {
             query?: never;
@@ -328,6 +430,58 @@ export interface paths {
         get: operations["ws_events_doc_api_ws_events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Broker Status */
+        get: operations["broker_status_api_broker_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link */
+        post: operations["link_api_broker_link_post"];
+        /** Unlink */
+        delete: operations["unlink_api_broker_link_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconnect */
+        post: operations["reconnect_api_broker_reconnect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -830,6 +984,11 @@ export interface components {
             /** Positions */
             positions: components["schemas"]["Position"][];
             locks: components["schemas"]["AccountLocks"];
+            /**
+             * Account Kind
+             * @enum {string}
+             */
+            account_kind: "mock" | "021";
         };
         /** AccountUpdateEvent */
         AccountUpdateEvent: {
@@ -841,13 +1000,6 @@ export interface components {
              */
             type: "account_update";
             account: components["schemas"]["AccountSnapshot"];
-        };
-        /** Actor */
-        Actor: {
-            /** Id */
-            id: string;
-            /** Display Name */
-            display_name: string;
         };
         /**
          * AmbiguityCard
@@ -985,7 +1137,35 @@ export interface components {
          * AuditKind
          * @enum {string}
          */
-        AuditKind: "COCAPTAIN" | "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS";
+        AuditKind: "COCAPTAIN" | "VOICE_TRANSCRIBED" | "USER_MESSAGE" | "LLM_INTENT" | "RESOLUTION" | "PENDING_CREATED" | "APPROVAL" | "APPROVAL_REFUSED" | "BROKER_REQUEST" | "BROKER_RESPONSE" | "BROKER_TIMEOUT" | "RECONCILE" | "RULE_CREATED" | "RULE_FIRED" | "RULE_CANCELLED" | "PLAN_STARTED" | "PLAN_LEG_RESULT" | "INJECTION_BLOCKED" | "LIMIT_BLOCKED" | "LOCK_BLOCKED" | "CHAOS" | "BROKER_LINK";
+        /** BrokerStatus */
+        BrokerStatus: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mock" | "021";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "mock" | "connected" | "needs_reconnect";
+            /** Ucc Hint */
+            ucc_hint: string | null;
+            /** Server Account */
+            server_account: boolean;
+            /** Can Link */
+            can_link: boolean;
+            /** Link Unavailable Reason */
+            link_unavailable_reason: string | null;
+        };
+        /** ChangePasswordRequest */
+        ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /** ChaosStatus */
         ChaosStatus: {
             /**
@@ -1116,6 +1296,11 @@ export interface components {
              * Format: date-time
              */
             closed_at: string;
+        };
+        /** CoCaptainConfig */
+        CoCaptainConfig: {
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * Comparator
@@ -1595,6 +1780,16 @@ export interface components {
             /** Link Id */
             link_id: string;
         };
+        /** LinkRequest */
+        LinkRequest: {
+            /**
+             * Username
+             * @description Your 021 client id (UCC)
+             */
+            username: string;
+            /** Password */
+            password: string;
+        };
         /** LockUpdateEvent */
         LockUpdateEvent: {
             /** Seq */
@@ -1605,6 +1800,24 @@ export interface components {
              */
             type: "lock_update";
             locks: components["schemas"]["AccountLocks"];
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /** Me */
+        Me: {
+            /** Id */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /** Created At */
+            created_at: string | null;
         };
         /**
          * NoticeCard
@@ -1873,17 +2086,13 @@ export interface components {
         };
         /** PairingStatus */
         PairingStatus: {
-            actor: components["schemas"]["Actor"];
-            /** Account Owner Id */
-            account_owner_id: string;
+            actor: components["schemas"]["Person"];
             /** Links */
             links: components["schemas"]["Link"][];
             /** People */
-            people: components["schemas"]["Actor"][];
+            people: components["schemas"]["Person"][];
             /** Limits Configured */
             limits_configured: boolean;
-            /** Dev Actors */
-            dev_actors: boolean;
         };
         /** PendingCreatedEvent */
         PendingCreatedEvent: {
@@ -1963,6 +2172,8 @@ export interface components {
             risk_ack_required: boolean;
             /** Co Captain */
             co_captain: string | null;
+            /** Co Captain Name */
+            co_captain_name: string | null;
             /** Co Reasons */
             co_reasons: string[];
             /**
@@ -1998,6 +2209,13 @@ export interface components {
              */
             type: "pending_updated";
             pending: components["schemas"]["PendingOrder"];
+        };
+        /** Person */
+        Person: {
+            /** Id */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * Plan
@@ -2280,6 +2498,23 @@ export interface components {
             /** Unresolved */
             unresolved: number;
         };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name?: string;
+            /**
+             * Accepts No Advice
+             * @default false
+             */
+            accepts_no_advice?: boolean;
+        };
         /**
          * RejectionReason
          * @enum {string}
@@ -2521,6 +2756,16 @@ export interface components {
             weight: number;
         };
         /**
+         * Session
+         * @description Returned after register, login, change-password and on every page load. The CSRF token is sent back in the
+         *     X-CSRF-Token header on every request that changes something; it is not a credential on its own.
+         */
+        Session: {
+            user: components["schemas"]["Me"];
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /**
          * Side
          * @enum {string}
          */
@@ -2753,6 +2998,163 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    me_api_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_change_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_account_api_account_get: {
         parameters: {
             query?: never;
@@ -3354,6 +3756,99 @@ export interface operations {
             };
         };
     };
+    broker_status_api_broker_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+        };
+    };
+    link_api_broker_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_api_broker_link_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+        };
+    };
+    reconnect_api_broker_reconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrokerStatus"];
+                };
+            };
+        };
+    };
     status_api_voice_status_get: {
         parameters: {
             query?: never;
@@ -3702,7 +4197,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CoCaptainConfig"];
                 };
             };
         };

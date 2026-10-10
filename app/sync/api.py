@@ -2,13 +2,14 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Request
+from fastapi import Request
 
+from app.desk import desk_router
 from app.history.store import trading_day
 from app.schemas import Model, Order
 from app.sync.external import FINAL_EXECUTIONS
 
-router = APIRouter(prefix="/api/activity", tags=["activity"])
+router = desk_router(prefix="/api/activity", tags=["activity"])
 
 
 class ExternalActivity(Model):
@@ -19,13 +20,14 @@ class ExternalActivity(Model):
 
 @router.get("/external", response_model=ExternalActivity)
 async def external_activity(request: Request) -> ExternalActivity:
-    state = request.app.state
+    state = request.state.ws
+    uid = state.user_id
     day = trading_day(state.clock())
     ours = {row["broker_order_id"] for row in state.db.query(
-        "SELECT broker_order_id FROM executions WHERE broker_order_id IS NOT NULL"
+        "SELECT broker_order_id FROM executions WHERE broker_order_id IS NOT NULL AND user_id = ?", (uid,)
     )}
     records = state.history.orders_on(day)
     orders = [record.order for record in records if record.source == "external" and record.order.order_id not in ours]
-    unresolved = any(row["status"] not in FINAL_EXECUTIONS for row in state.db.query("SELECT status FROM executions"))
+    unresolved = any(row["status"] not in FINAL_EXECUTIONS for row in state.db.query("SELECT status FROM executions WHERE user_id = ?", (uid,)))
     return ExternalActivity(day=day, orders=sorted(orders, key=lambda order: order.created_at, reverse=True),
                             attribution_pending=unresolved)

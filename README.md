@@ -21,9 +21,9 @@ API docs at http://127.0.0.1:8000/docs. WebSocket at `ws://127.0.0.1:8000/ws`.
 Start the backend first. `npm run build` makes the production bundle (`npm run preview` serves it).
 
 Pages: `/` is the landing page, `/how-it-works` explains the assistant with a playable diagram of the LangGraph
-orchestrator, `/login` is the log-in and sign-up screen, and `/app` is the desk. The log-in screen is a UI only for
-now: no account is checked, nothing typed there is stored or sent, and it says so on the page. Every page has a
-theme switch (System, Light, Dark).
+orchestrator, `/login` is the log-in and sign-up screen, and `/app` is the desk, which needs a signed-in account (an
+anonymous visit is sent to `/login`). The first account to register inherits anything saved before accounts existed
+(or set `TRADEDESK_OWNER_EMAIL`). Every page has a theme switch (System, Light, Dark).
 The UI follows the system light/dark setting, bundles its fonts (no network needed), and works down to
 phone width (an Ask / Desk switch appears below 1024px).
 
@@ -134,7 +134,7 @@ setting; nothing is advice or a forecast.
 Limits: 021's API returns today's orders only, so history starts when the app first records it. With demo mode on,
 an empty history gets 20 synthetic days, labelled DEMO DATA everywhere they appear. P&L is an estimate from fills
 (approximate FIFO; missing prices or cost bases are disclosed, not invented). Orders placed in 021's own app count
-toward today's numbers but cannot be blocked by this app. One trader per database.
+toward today's numbers but cannot be blocked by this app. Each account has its own history, limits and goal.
 
 Checked: about 215 risk tests, including deliberate breaks of every guard rule (18 of 18 caught), plus the plan-step
 tests. On the live 021 sandbox with our account: onboarding, saving a profile, card warnings at live prices (a
@@ -238,7 +238,8 @@ close-out card with no acknowledgment. Not yet sent to the live sandbox.
 A **Co-Captain** is someone you trust who must approve an order too, but only when you are past a limit **you set
 yourself**. Inside your limits nothing changes: one approval, as before. It is TradeDesk's own feature (021's API has
 no Co-Captain), and a person, never the assistant, approves by clicking in the app. **Off by default**
-(`COCAPTAIN_ENABLED`); off, nothing in the order path changes.
+(`COCAPTAIN_ENABLED`); off, nothing in the order path changes. Both people are real accounts (see Accounts): anyone can
+invite one other account by its email, and anyone can be invited. Each person keeps their own desk.
 
 - **The zone** (`app/cocaptain/zone.py`, plain arithmetic, no model): an order is "past your limit" when it would take
   you strictly over your orders-a-day, your 20-minute allowance or your daily turnover allowance (the Discipline
@@ -246,8 +247,8 @@ no Co-Captain), and a person, never the assistant, approves by clicking in the a
   counts as its steps and the sum of its step values. Cancelling or changing an existing order is never a new order.
 - **Past the limit with no Co-Captain, the order is paused** ("Add a Co-Captain in Settings, or wait"), when the card
   is made and again at the click.
-- **Two approvals on the same card.** You approve; the card waits ("Waiting for your Co-Captain"); they approve the
-  **same exact card**, bound to its order hash, account, expiry, rule version and the pairing it was made under
+- **Two approvals on the same card.** You approve; the card waits ("Waiting for your Co-Captain, Ravi"); they approve
+  the **same exact card**, bound to its order hash, account, expiry, rule version and the pairing it was made under
   (`app/cocaptain/store.py`); only then does it go, through the same send path and the same "never twice" log as every
   order. A re-quote makes a new card that starts again. A repeat click changes nothing. The trader, a stranger, an
   unaccepted invitee and a former Co-Captain are all refused with a 404; their decline ends it.
@@ -257,24 +258,25 @@ no Co-Captain), and a person, never the assistant, approves by clicking in the a
   not send it: you must click Approve yourself on that card.
 - **Ending the pairing is immediate**, by either side: it cancels every card still waiting on that Co-Captain, and an
   approval given under an earlier pairing never counts again.
-- **The Co-Captain sees only their inbox** (the cards sent to them, with the reasons quoted from your own numbers),
-  never your account: your portfolio, chat, orders, risk and audit routes, and the live feed, refuse them (tested).
-- In the desk: the **Co-Captain** tab (invite by email, remove, and for the reviewer accept, inbox, Approve/Decline),
-  and a ticket that says up front "after you approve it also needs your Co-Captain", then "Waiting for ...".
+- **The Co-Captain reaches one thing of yours: the cards sent to them.** The only code that touches another user's desk
+  is the review route (`app/cocaptain/review_api.py`), and it goes through the review's owner and that owner's own
+  approval service. Your portfolio, orders, rules, audit and chat stay on your desk (tested), and Co-Captain events are
+  written to the trader's own audit log with the real person who acted.
+- In the desk: the **Co-Captain** tab (invite by email, remove, accept an invitation, and the inbox with Approve and
+  Decline), and a ticket that says up front "after you approve it also needs your Co-Captain", then "Waiting for ...".
 - **Checked:** zone boundaries and agreement with the existing "You set ..." warnings; the whole two-person flow over
-  HTTP; paused with no Co-Captain; decline; cancel; expiry; re-quote; wrong hash; leaving the zone while waiting;
-  ending the pairing (also racing an approval, and between the last checks and the broker call); a hard stop and
-  Anchor after both approvals; simultaneous approvals sending once; restart with a card waiting; no model tool able to
-  approve; GETs changing nothing; the live feed refusing a reviewer; and 12 mutations (each guard removed on purpose,
-  11 caught directly and the 12th is a duplicate check that the final look also covers). In the browser: a pairing
-  made through the tab, the trader's approval moving the card to waiting, and the reviewer's own page approving it and
-  the order filling.
+  HTTP between signed-in users; paused with no Co-Captain; decline; cancel; expiry; re-quote; wrong hash; leaving the
+  zone while waiting; ending the pairing (also racing an approval, and between the last checks and the broker call);
+  a hard stop and Anchor after both approvals; simultaneous approvals sending once; restart with a card waiting; no
+  model tool able to approve; GETs changing nothing; the review store's own 18 tests; and 11 mutations (each guard
+  removed on purpose, all caught). In the browser: two real accounts, one on `localhost` and one on `127.0.0.1` (separate
+  cookies): an invitation sent, accepted in the other account's desk, a past-limit order waiting, approved from the
+  Co-Captain's own desk and filled, while the Co-Captain's desk showed none of the trader's orders.
 
-**What it is not yet:** there are no real accounts, so the people are a configured demo directory
-(`COCAPTAIN_DEV_USERS`, with `COCAPTAIN_DEV_ACTORS=true` and `DEMO_MODE=true`) and an actor is chosen with
-`/app?as=<id>`; a real deployment needs the login adapter (Akash's work) before anyone can be a Co-Captain. A **plan**
-past your limit is refused outright rather than approved by two people. You can remove your own Co-Captain at once.
-Closing orders are counted like any other. Real-session acceptance is untested.
+**What it is not yet:** a **plan** past your limit is refused outright rather than approved by two people. You can
+remove your own Co-Captain at once. Closing orders are counted like any other. The Co-Captain finds out by opening
+their desk (it checks every few seconds), not by email or push. Real-world use needs the accounts feature deployed with
+a real `TRADEDESK_SECRET_KEY` and origins set.
 
 ## Orders placed in 021's own app
 
@@ -387,8 +389,8 @@ caught). With `DATABASE_URL=sqlite:///:memory:` (the demo setup) a restart start
 ## Not built yet (future scope)
 
 - Spoken replies and a translated interface (local speech-to-text is now optional, see Voice input).
-- Authentication (single demo user): so Co-Captain has no real second person outside the demo header yet.
-- Two-person approval of a whole plan, and telling the Co-Captain by email or push (they see it when they open the desk).
+- Email sign-in recovery (password reset), and telling a Co-Captain by email or push.
+- Two-person approval of a whole plan (a plan past your limit is refused for now).
 
 ## Demo controls
 
@@ -426,10 +428,93 @@ observed-risk/returns/patterns calculations and manual 021 acceptance steps.
 These analytics exclude mock/demo and unverified legacy records; an empty view
 means actual recorded history is still needed.
 
+## Accounts and security
+
+Sign-up and log-in are real (`app/auth/`). Each account is a separate desk: its own broker session, cards, plans,
+rules, send log, Discipline settings, history, assistant memory, audit log and live events.
+
+- **Passwords** are hashed with argon2id (`argon2-cffi` defaults) and are never stored, logged, echoed or returned.
+  Minimum 10 characters, not equal to the email, no composition rules. Hashing runs off the event loop.
+- **Sessions** are a random 256-bit token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` unless the app is served
+  from this machine, or `COOKIE_SECURE`). The server keeps only the token's SHA-256, with an idle timeout (12 h) and
+  an absolute one (7 days). Logging out deletes the row; changing the password or disabling a user deletes all of that
+  user's sessions (the device that changed it gets a fresh one).
+- **CSRF**: synchronizer token. Each session has a random token, returned in the body of log-in/register/`/api/auth/me`
+  and sent back by the page in `X-CSRF-Token` on every request that changes something; the server also refuses a
+  request whose `Origin` is not ours. The token lives in page memory, never in storage. Without it, even a valid
+  cookie cannot approve an order.
+- **Log-in throttling**: 5 failures per email and 20 per IP in 15 minutes lock that key for 5 minutes (even the right
+  password is refused while locked). The same words ("Incorrect email or password.") are used for an unknown email and
+  a wrong password, and an unknown email still costs a password hash, so neither the message nor the timing says which
+  accounts exist.
+- **Every route** needs a session unless it is listed in `app/auth/public.py` (health, register, log-in, the generated
+  API docs). `tests/test_route_coverage.py` walks the real route table and calls each route anonymously. `/ws` is
+  refused before it is accepted without a session or from a foreign Origin.
+- **Isolation**: every table that holds trader data has a `user_id` and every store filters by it
+  (`app/schema.py`); `executions.client_order_id` is still the global primary key, so an order cannot be sent twice by
+  anyone. Approving, rejecting, cancelling or reading another user's card, plan or rule answers 404 (it does not say
+  the thing exists). Events are published per user. `tests/test_multi_user.py` and `tests/test_user_scoped_stores.py`
+  cover it, and each `user_id` filter was removed on purpose to confirm a test fails (see "Checked" below).
+
+Not protected, so you know: there is no password reset, no email verification and no multi-factor sign-in; anyone who
+can reach the server can register; the throttle's counters are in memory and reset on restart; the client IP is the
+socket's address (behind a reverse proxy every user looks like one IP); the SQLite file is not encrypted at rest; and
+a user with no linked 021 account trades on a simulated account, not a real one (the screen says so everywhere).
+
+Checked: the isolation suites, a database written before accounts existed upgraded to the new shape (rows kept,
+primary keys rebuilt, owned by the first account, upgrade twice = no change), and 69 deliberate breaks (63 in the
+backend: CSRF, origin, expiry, hashing, lock-out, a `user_id` filter in every store, the hub, the route guards, the
+socket, and the 021 linking guards below; 6 in the page's session and broker handling): every one made a test fail. In a browser at 375 px and desktop width: sign-up, wrong password, reload, an order card and its Approve click,
+change password, log out, and a second account that sees an empty desk of its own.
+
+## Linking your own 021 account
+
+By default every account trades on a **simulated account** (a mock market with no real money) and the desk says so: a
+"Simulated account (not real money)" badge in the header and on every approval ticket. To trade on a real 021 account,
+a user opens **Account** (top right of the desk) and links their 021 client id and password.
+
+- **Checked for real, once.** The server logs in to 021 with those details. 021 allows one session per account, so the
+  session that checked the login is the one the desk then uses. A refused or unreachable login saves nothing.
+- **Stored encrypted.** AES-256-GCM (`app/vault.py`) with a fresh nonce per record and the user's id bound in, so a saved
+  login copied onto another user's row will not decrypt. The key is `TRADEDESK_SECRET_KEY` in `.env` (generate one with
+  the command in `.env.example`); without it linking is switched off and everything else works as before. To change
+  the key, put the old one in `TRADEDESK_SECRET_KEY_PREVIOUS`: saved logins are re-sealed under the new key at startup.
+  The password never appears in an API response, a log, an audit event or the page; the API only says "client id ends
+  …1234".
+- **One 021 account, one TradeDesk user.** A keyed fingerprint of the client id refuses a second link (two logins would
+  revoke each other), including the server's own `.env` account.
+- **The server's account** (`BROKER=zerotwoone` in `.env`) belongs to the owner (the first account, or
+  `TRADEDESK_OWNER_EMAIL`) and is managed there; the owner cannot link or unlink in the app. Everyone else starts on the
+  simulated account. A server running the mock (the default) treats the owner like any other user.
+- **Switching accounts rejects what is waiting.** Linking or unlinking rejects every pending card and plan (they were
+  priced against the other account), closes the user's open pages so they reconnect to the new account's data, and is
+  refused while an order's send is unresolved or a plan is running. Rules are kept.
+- **Reconnect, not a crash.** If 021 revokes the session (another copy of the app logged in) or a saved login stops
+  working, the desk shows a banner with a Reconnect button, and approvals are refused with "Nothing was sent" until it is
+  connected (the card stays open). Reconnect logs in with the saved login and checks it with a real read; if 021 still
+  refuses it, it says so.
+- **Unlink** deletes the saved login and goes back to the simulated account.
+
+Limits: each linked user holds their own 021 session, market socket and instrument list read, so the load grows with the
+number of linked users; the log-in attempts to link are throttled (5 failures per user per 15 minutes); the sandbox's own
+rate limits (429) have not been exercised.
+
+Checked: tests against the fake 021 (`tests/test_broker_link.py`: encryption, no plaintext in the database file, any
+response or log, a wrong or unreachable login saving nothing, duplicates, two users on two separate 021 sessions, pending
+cards rejected on link and unlink, open pages told to reconnect, a revoked session refusing card and plan approvals with
+nothing sent, a login that fails at startup, the key lost, changed and rotated), and in a browser at 375 px against a
+fake 021: the badge and labelled tickets, a wrong then a right login, the badge disappearing, the old card no longer
+approvable, the Reconnect banner (and its plain message while 021 still refuses), and Unlink. **Not yet tried against
+the live 021 sandbox.**
+
 ## Where things are
 
 | Path | What |
 |---|---|
+| `app/auth/`, `app/identity.py` | accounts, sessions, CSRF, log-in throttling; `current_user` is the one answer to "who is the caller?" |
+| `app/workspace.py`, `app/desk.py` | one desk per user (broker, stores, assistant, loops) and the route dependency that picks it from the session |
+| `app/schema.py` | every per-user table and the upgrade of older databases |
+| `app/vault.py`, `app/broker_links.py`, `app/broker_api.py` | a user's linked 021 login (encrypted), opening their session, and the link / unlink / reconnect routes |
 | `app/schemas.py` | Shared data contract (money in integer paise) |
 | `app/api_models.py` | REST and WebSocket message types |
 | `app/broker/` | `BrokerAdapter` interface, `ReadOnlyView`, `MockBroker` |

@@ -13,8 +13,9 @@ from app.schemas import AuditEvent, AuditKind
 
 
 class AuditLog:
-    def __init__(self, db: Database, clock: Callable[[], datetime], hub: EventHub | None = None):
+    def __init__(self, db: Database, clock: Callable[[], datetime], hub: EventHub | None = None, *, user_id: str):
         self._db = db
+        self._user_id = user_id  # every event is written with it and read back by it
         self._clock = clock
         self._hub = hub
 
@@ -37,9 +38,10 @@ class AuditLog:
             data=json.loads(json.dumps(data or {}, default=str)),  # force JSON-safe values
         )
         self._db.execute(
-            "INSERT INTO audit_events (id, ts, kind, actor, subject_id, summary, data) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO audit_events (id, user_id, ts, kind, actor, subject_id, summary, data) VALUES (?,?,?,?,?,?,?,?)",
             (
                 event.id,
+                self._user_id,
                 event.ts.isoformat(),
                 event.kind.value,
                 event.actor,
@@ -54,15 +56,15 @@ class AuditLog:
 
     def list(self, limit: int = 200, kind: AuditKind | None = None) -> list[AuditEvent]:
         """Newest first."""
-        sql, params = "SELECT * FROM audit_events", ()
+        sql, params = "SELECT * FROM audit_events WHERE user_id = ?", (self._user_id,)
         if kind is not None:
-            sql, params = sql + " WHERE kind = ?", (kind.value,)
+            sql, params = sql + " AND kind = ?", params + (kind.value,)
         rows = self._db.query(sql + " ORDER BY seq DESC LIMIT ?", params + (limit,))
         return [self._row(r) for r in rows]
 
     def export_jsonl(self) -> str:
         """Oldest first, one JSON object per line."""
-        rows = self._db.query("SELECT * FROM audit_events ORDER BY seq ASC")
+        rows = self._db.query("SELECT * FROM audit_events WHERE user_id = ? ORDER BY seq ASC", (self._user_id,))
         return "".join(self._row(r).model_dump_json() + "\n" for r in rows)
 
     @staticmethod

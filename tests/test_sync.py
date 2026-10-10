@@ -26,7 +26,7 @@ def rig():
     settings = Settings(broker="mock", llm_provider="rules", ticker_interval=None,
                         reconcile_interval=None, external_sync_interval=None)
     app = create_app(settings, broker=broker, clock=clock)
-    sync = ExternalOrderSync(broker, app.state.db, app.state.history, app.state.hub, clock, 120)
+    sync = ExternalOrderSync(broker, app.state.db, app.state.history, app.state.hub, clock, 120, user_id=app.state.workspaces.all()[0].user_id)
     queue = app.state.hub.subscribe()
     yield app, broker, sync, queue, time
     app.state.db.close()
@@ -50,8 +50,8 @@ async def external(app, broker, **updates):
 def execution(app, time, status="UNKNOWN", oid=None, age=0, cid="cid"):
     at = (time[0] - timedelta(seconds=age)).isoformat()
     app.state.db.execute(
-        "INSERT INTO executions(client_order_id,pending_id,action,status,broker_order_id,created_at,updated_at,detail) "
-        "VALUES (?,?,?,?,?,?,?,?)", (cid, "pending", "PLACE", status, oid, at, at, "{}"),
+        "INSERT INTO executions(client_order_id,user_id,pending_id,action,status,broker_order_id,created_at,updated_at,detail) "
+        "VALUES (?,?,?,?,?,?,?,?,?)", (cid, app.state.workspaces.all()[0].user_id, "pending", "PLACE", status, oid, at, at, "{}"),
     )
 
 
@@ -211,7 +211,7 @@ async def test_restart_preserves_source_and_suppresses_old_finals(rig):
     app, broker, sync, queue, time = rig
     await external(app, broker, limit_price=150000)
     await sync.poll()
-    restarted = ExternalOrderSync(broker, app.state.db, SqliteActivityStore(app.state.db), app.state.hub, lambda: time[0], 120)
+    restarted = ExternalOrderSync(broker, app.state.db, SqliteActivityStore(app.state.db, user_id=app.state.workspaces.all()[0].user_id), app.state.hub, lambda: time[0], 120, user_id=app.state.workspaces.all()[0].user_id)
     await restarted.poll()
     assert not events(queue)
     assert app.state.history.orders_on(NOW.date())[0].source == "external"
@@ -265,8 +265,8 @@ async def test_lifespan_enables_and_stops_sync(interval, expected):
     broker.get_orders = AsyncMock(return_value=[])
     app = create_app(Settings(broker="mock", llm_provider="rules", ticker_interval=None,
                              reconcile_interval=None, external_sync_interval=interval), broker=broker)
+    assert isinstance(app.state.history, SqliteActivityStore)  # an account exists, so its desk is started with the app
     async with app.router.lifespan_context(app):
-        assert isinstance(app.state.history, SqliteActivityStore)
         await asyncio.sleep(0.02)
         assert bool(broker.get_orders.await_count) is expected
     count = broker.get_orders.await_count
@@ -285,7 +285,7 @@ async def test_fake021_same_login_and_partial_fills(rig):
     try:
         await adapter.start()
         fake._place(dict(exchange="NSE", token=1594, qty=10, price=140000, book="RL", product="CNC", validity="Day"))
-        sync = ExternalOrderSync(adapter, app.state.db, app.state.history, app.state.hub, lambda: time[0], 120)
+        sync = ExternalOrderSync(adapter, app.state.db, app.state.history, app.state.hub, lambda: time[0], 120, user_id=app.state.workspaces.all()[0].user_id)
         await sync.poll()
         assert len(events(queue)) == 1
         fake.fill(1042, quantity=4, price=139995)

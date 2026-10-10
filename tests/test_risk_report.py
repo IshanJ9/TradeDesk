@@ -128,7 +128,7 @@ def test_demo_seed_is_deterministic_twenty_past_weekdays_with_components():
 @pytest.fixture
 def service():
     db = Database()
-    profiles, reports, history, hub = ProfileStore(db), ReportStore(db), InMemoryActivityStore(), EventHub()
+    profiles, reports, history, hub = ProfileStore(db, user_id="u1"), ReportStore(db, user_id="u1"), InMemoryActivityStore(), EventHub().for_user("u1")
     profiles.save_profile(PROFILE)
     result = DisciplineService(MockBroker(clock=lambda: NOW).read_only(), profiles, reports, lambda: history,
                                hub, lambda: NOW, True)
@@ -232,13 +232,13 @@ async def test_loop_waits_twenty_seconds_and_cancels_cleanly(service):
 def test_report_storage_survives_restart_and_clearing_is_durable(tmp_path):
     url = f"sqlite:///{tmp_path / 'reports.db'}"
     db = Database(url)
-    store = ReportStore(db)
+    store = ReportStore(db, user_id="u1")
     store.save_day(day())
     store.save_day(day(2, demo=True))
     store.clear_demo()
     db.close()
     db = Database(url)
-    reopened = ReportStore(db)
+    reopened = ReportStore(db, user_id="u1")
     assert reopened.days() == [day()] and reopened.seed_attempted()
     db.close()
 

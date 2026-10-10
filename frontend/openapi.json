@@ -5,6 +5,183 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Change Password",
+        "operationId": "change_password_api_auth_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account": {
       "get": {
         "summary": "Get Account",
@@ -782,6 +959,108 @@
         }
       }
     },
+    "/api/broker": {
+      "get": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Broker Status",
+        "operationId": "broker_status_api_broker_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/link": {
+      "post": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Link",
+        "operationId": "link_api_broker_link_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Unlink",
+        "operationId": "unlink_api_broker_link_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/broker/reconnect": {
+      "post": {
+        "tags": [
+          "broker"
+        ],
+        "summary": "Reconnect",
+        "operationId": "reconnect_api_broker_reconnect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/voice/status": {
       "get": {
         "tags": [
@@ -1205,7 +1484,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CoCaptainConfig"
+                }
               }
             }
           }
@@ -1832,6 +2113,14 @@
           },
           "locks": {
             "$ref": "#/components/schemas/AccountLocks"
+          },
+          "account_kind": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "021"
+            ],
+            "title": "Account Kind"
           }
         },
         "additionalProperties": false,
@@ -1840,7 +2129,8 @@
           "funds",
           "holdings",
           "positions",
-          "locks"
+          "locks",
+          "account_kind"
         ],
         "title": "AccountSnapshot"
       },
@@ -1868,30 +2158,6 @@
           "account"
         ],
         "title": "AccountUpdateEvent"
-      },
-      "Actor": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "pattern": "^[a-zA-Z0-9_.-]+$",
-            "title": "Id"
-          },
-          "display_name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Display Name"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "display_name"
-        ],
-        "title": "Actor"
       },
       "AmbiguityCard": {
         "properties": {
@@ -2303,9 +2569,93 @@
           "INJECTION_BLOCKED",
           "LIMIT_BLOCKED",
           "LOCK_BLOCKED",
-          "CHAOS"
+          "CHAOS",
+          "BROKER_LINK"
         ],
         "title": "AuditKind"
+      },
+      "BrokerStatus": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "021"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "connected",
+              "needs_reconnect"
+            ],
+            "title": "Status"
+          },
+          "ucc_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ucc Hint"
+          },
+          "server_account": {
+            "type": "boolean",
+            "title": "Server Account"
+          },
+          "can_link": {
+            "type": "boolean",
+            "title": "Can Link"
+          },
+          "link_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Unavailable Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "status",
+          "ucc_hint",
+          "server_account",
+          "can_link",
+          "link_unavailable_reason"
+        ],
+        "title": "BrokerStatus"
+      },
+      "ChangePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Current Password"
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "New Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest"
       },
       "ChaosStatus": {
         "properties": {
@@ -2575,6 +2925,20 @@
           "closed_at"
         ],
         "title": "ClosedTrade"
+      },
+      "CoCaptainConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "CoCaptainConfig"
       },
       "Comparator": {
         "type": "string",
@@ -3962,6 +4326,30 @@
         ],
         "title": "LinkAction"
       },
+      "LinkRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Username",
+            "description": "Your 021 client id (UCC)"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LinkRequest"
+      },
       "LockUpdateEvent": {
         "properties": {
           "seq": {
@@ -3986,6 +4374,64 @@
           "locks"
         ],
         "title": "LockUpdateEvent"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "Me": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "created_at"
+        ],
+        "title": "Me"
       },
       "NoticeCard": {
         "properties": {
@@ -4813,11 +5259,7 @@
       "PairingStatus": {
         "properties": {
           "actor": {
-            "$ref": "#/components/schemas/Actor"
-          },
-          "account_owner_id": {
-            "type": "string",
-            "title": "Account Owner Id"
+            "$ref": "#/components/schemas/Person"
           },
           "links": {
             "items": {
@@ -4828,7 +5270,7 @@
           },
           "people": {
             "items": {
-              "$ref": "#/components/schemas/Actor"
+              "$ref": "#/components/schemas/Person"
             },
             "type": "array",
             "title": "People"
@@ -4836,21 +5278,15 @@
           "limits_configured": {
             "type": "boolean",
             "title": "Limits Configured"
-          },
-          "dev_actors": {
-            "type": "boolean",
-            "title": "Dev Actors"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "actor",
-          "account_owner_id",
           "links",
           "people",
-          "limits_configured",
-          "dev_actors"
+          "limits_configured"
         ],
         "title": "PairingStatus"
       },
@@ -5079,6 +5515,17 @@
             ],
             "title": "Co Captain"
           },
+          "co_captain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Co Captain Name"
+          },
           "co_reasons": {
             "items": {
               "type": "string"
@@ -5120,6 +5567,7 @@
           "warnings",
           "risk_ack_required",
           "co_captain",
+          "co_captain_name",
           "co_reasons",
           "order_hash"
         ],
@@ -5184,6 +5632,25 @@
           "pending"
         ],
         "title": "PendingUpdatedEvent"
+      },
+      "Person": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "Person"
       },
       "Plan": {
         "properties": {
@@ -5852,6 +6319,38 @@
         ],
         "title": "ReconcileResult"
       },
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Display Name",
+            "default": ""
+          },
+          "accepts_no_advice": {
+            "type": "boolean",
+            "title": "Accepts No Advice",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest"
+      },
       "RejectionReason": {
         "type": "string",
         "enum": [
@@ -6503,6 +7002,25 @@
           "weight"
         ],
         "title": "ScoreComponent"
+      },
+      "Session": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Me"
+          },
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "title": "Session",
+        "description": "Returned after register, login, change-password and on every page load. The CSRF token is sent back in the\nX-CSRF-Token header on every request that changes something; it is not a credential on its own."
       },
       "Side": {
         "type": "string",

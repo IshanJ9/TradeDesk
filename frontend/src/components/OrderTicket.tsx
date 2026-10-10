@@ -1,3 +1,4 @@
+import { SIMULATED } from "../lib/broker";
 import { useState } from "react";
 import { actionTitle, chargeLines, outcomeOf, priceLine, productWord, STATE_NOTE, validityWord } from "../lib/describe";
 import { rupees, secondsLeft } from "../lib/format";
@@ -33,11 +34,12 @@ interface Props {
   onApprove: (acknowledgment?: string) => void;
   onDecline: () => void;
   onDismiss: () => void;
+  accountKind?: "mock" | "021"; // the simulated account is labelled on every ticket
 }
 
 /** One order, on a ticket. While it is waiting the trader can approve or decline it; afterwards it
  *  keeps its place on screen with what happened. */
-export function OrderTicket({ order: o, note, result, sending, onApprove, onDecline, onDismiss }: Props) {
+export function OrderTicket({ order: o, note, result, sending, onApprove, onDecline, onDismiss, accountKind }: Props) {
   const awaitingCo = o.state === "AWAITING_CO_APPROVAL"; // the trader has approved; their Co-Captain has not yet
   const waiting = o.state === "PENDING" || awaitingCo;
   const expired = waiting && secondsLeft(o.expires_at, Date.now()) === 0;
@@ -72,6 +74,7 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
             {o.side && <Chip tone={sideTone}>{o.side}</Chip>}
             {o.action !== "PLACE" && <Chip tone="info">{o.action === "MODIFY" ? "Change" : "Cancel"}</Chip>}
             {o.rule_id && <Chip tone="info">From your rule</Chip>}
+            {accountKind === "mock" && <Chip tone="info">{SIMULATED}</Chip>}
           </div>
           <h3 className="mt-1.5 font-serif text-[21px] leading-tight text-ink [font-variant-numeric:tabular-nums]">{actionTitle(o)}</h3>
           <p className="text-[13px] text-muted">
@@ -94,8 +97,8 @@ export function OrderTicket({ order: o, note, result, sending, onApprove, onDecl
         <div className="px-4 pt-3">
           <Banner tone="info" role="status">
             {awaitingCo
-              ? `Waiting for your Co-Captain, ${o.co_captain}, to approve this same order. Nothing has been sent.`
-              : `This order is past a limit you set, so after you approve it also needs your Co-Captain, ${o.co_captain}.`}
+              ? `Waiting for your Co-Captain, ${o.co_captain_name ?? o.co_captain}, to approve this same order. Nothing has been sent.`
+              : `This order is past a limit you set, so after you approve it also needs your Co-Captain, ${o.co_captain_name ?? o.co_captain}.`}
             <ul className="mt-1 list-disc pl-4">{o.co_reasons.map((r) => <li key={r}>{r}</li>)}</ul>
           </Banner>
         </div>

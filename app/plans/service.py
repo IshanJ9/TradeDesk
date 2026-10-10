@@ -40,6 +40,7 @@ from app.api_models import (
 )
 from app.audit import AuditLog
 from app.broker.base import BrokerAdapter, BrokerTimeout
+from app.broker.disconnected import RECONNECT_MESSAGE
 from app.config import Settings
 from app.events import EventHub
 from app.orders.builder import OrderBuilder
@@ -198,6 +199,8 @@ class PlanService:
 
         if plan.state is not PlanState.PENDING:
             self._refuse(plan, "NOT_PENDING", f"This plan is already {plan.state.value.lower().replace('_', ' ')}.")
+        if getattr(self._broker, "needs_reconnect", False):  # the plan stays open; nothing is claimed or sent
+            self._refuse(plan, "BLOCKED", RECONNECT_MESSAGE)
         if self._clock() >= plan.expires_at:
             self._refuse(plan, "EXPIRED", "This plan expired. Ask again for a fresh one.", PlanState.EXPIRED)
         if not hmac.compare_digest(plan_hash, plan.plan_hash):

@@ -79,7 +79,7 @@ were made there after that correction, and this checklist is not written there.
 - [x] SQLite order activity/daily history, profile/goals, pending cards, plans/reports, rules, audit and execution state. Historical coverage starts when the app records it; prior broker history is not reconstructed automatically.
 - [x] Audit view and downloadable NDJSON compliance export.
 - [x] Mock/demo controls for price drift, ambiguous sends, broker outages, hostile names, losing positions, external orders and simulated locks. They require mock broker plus demo mode.
-- [x] Responsive desk, landing page, how-it-works page with playable graph diagram, login/signup presentation, bundled fonts and system/light/dark themes. Login/signup is UI only; real authentication is TODO.
+- [x] Responsive desk, landing page, how-it-works page with playable graph diagram, login/signup presentation, bundled fonts and system/light/dark themes. Log-in and sign-up are real (see Accounts and security in the README).
 - [x] Simulated Anchor/Co-Captain lock behavior. Actual second-person approval is TODO; the placeholders do not constitute it.
 
 ## Completed yesterday — preserved locally in both implementation repos
@@ -150,8 +150,9 @@ historical operational results, not evidence that all workflows are verified.
 
 ## TODO — expanded scope (now included by user request)
 
-- [ ] Real authentication, account/user isolation and permissions; current login/signup is presentation only.
-- [~] Co-Captain second-user review with **both approvals required only in the overtrading zone** (10 October: built and tested with demo-only test identities; **needs real accounts**, and whole-plan two-person approval is not built, a plan past the limit is refused instead). See README "Co-Captain". Original spec: Use configured daily order, turnover and 20-minute activity limits; evaluate again at approval, bind both approvals to exact content/expiry, and never override hard stops. Requires authenticated distinct users first. Outside that zone, normal trader approval is enough.
+- [x] Real authentication and per-user isolation: argon2id log-in, cookie sessions, CSRF, throttling, a desk per user, every table keyed by user, per-user events. Tests: `test_auth.py`, `test_multi_user.py`, `test_user_scoped_stores.py`, `test_migration.py`, `test_route_coverage.py`. Roles/admin are out of scope.
+- [x] Per-user 021 credentials: link / unlink / reconnect in the Account dialog, AES-256-GCM at rest with the user bound in, a visible Reconnect state, the simulated account labelled everywhere, pending cards rejected on switch. Tests: `test_broker_link.py`, `broker.test.ts`. Not yet tried against the live sandbox.
+- [~] Co-Captain second-user review with **both approvals required only in the overtrading zone** (10 October): built on Ryan's zone/pairing/review store and tested end to end between real accounts (two signed-in users, in a browser too). **Not built:** two-person approval of a whole plan (a plan past the limit is refused instead) and telling the Co-Captain by email or push. Off by default (`COCAPTAIN_ENABLED`). See README "Co-Captain".
 - [ ] Calendar/time-scheduled orders and generalized GTT workflow through the same approval boundary; existing price-trigger rules are only a foundation.
 - [ ] Comprehensive before/after cash and stock-concentration impact preview on cards.
 - [ ] **Email/SMTP rule notifications** using an existing account (no additional paid notification service). Disabled until configured; durable delivery/retry status and private credentials required. Provider sending quotas still apply. WhatsApp is not the selected first channel.

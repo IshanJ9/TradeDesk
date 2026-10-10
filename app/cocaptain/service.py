@@ -40,8 +40,11 @@ class Assessment:
 
 class CoCaptainGate:
     def __init__(self, settings: Settings, pairing: Pairing, reviews: ReviewStore, risk: RiskGuard, audit: AuditLog,
-                 clock: Callable[[], datetime]):
+                 clock: Callable[[], datetime], owner: Actor):
+        """One gate per trader's desk: `owner` is that trader, `risk` and `audit` are theirs. The pairing and review
+        store are shared (they are the only things two people have in common)."""
         self._settings, self.pairing, self.reviews, self._risk, self._audit, self._clock = settings, pairing, reviews, risk, audit, clock
+        self.owner = owner
 
     # ---- identity ------------------------------------------------------------------------------- #
 
@@ -51,15 +54,18 @@ class CoCaptainGate:
 
     @property
     def owner_id(self) -> str:
-        return self._settings.cocaptain_account_owner_id
+        return self.owner.id
 
     @property
     def account_id(self) -> str:
-        return f"{self._settings.broker}:{self._settings.zerotwoone_username or 'demo'}"
+        return self.owner.id  # a desk's account changes only by replacing the desk, which rejects its waiting cards
 
-    @property
-    def owner(self) -> Actor:
-        return Actor(id=self.owner_id, display_name="Trader")
+    def name_of(self, user_id: str | None) -> str | None:
+        """What to call a person on screen: their name, or their email."""
+        if user_id is None:
+            return None
+        person = self.pairing.directory.by_id(user_id)
+        return person.label if person else user_id
 
     def bindings(self, p: PendingOrder) -> dict:
         """What a review is bound to: the exact card, its account, and its expiry."""

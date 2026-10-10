@@ -24,8 +24,9 @@ def _signature(order: Order) -> tuple:
 
 class ExternalOrderSync:
     def __init__(self, broker: BrokerAdapter, db: Database, history: ActivityStore,
-                 hub: EventHub, clock: Callable[[], datetime], grace_seconds: float):
+                 hub: EventHub, clock: Callable[[], datetime], grace_seconds: float, *, user_id: str):
         self._broker, self._db, self._history = broker, db, history
+        self._user_id = user_id
         self._hub, self._clock, self._grace = hub, clock, grace_seconds
         self._baseline: dict[str, tuple] | None = None
         self._seen: dict[str, tuple] = {}
@@ -36,7 +37,7 @@ class ExternalOrderSync:
         # broker await, so read the execution ledger AFTER fetching the book.
         async with self._lock:
             orders = await self._broker.get_orders()
-            executions = self._db.query("SELECT status,broker_order_id,created_at FROM executions")
+            executions = self._db.query("SELECT status,broker_order_id,created_at FROM executions WHERE user_id = ?", (self._user_id,))
             ours = {row["broker_order_id"] for row in executions if row["broker_order_id"]}
             now = self._clock()
             defer_unknown = any(
@@ -80,10 +81,3 @@ class ExternalOrderSync:
                 # Do not log raw broker exception text (it may contain outside text or credentials).
                 log.warning("External order sync pass failed; retrying on the next poll")
             await wait_or_wake(interval, wake)  # an orders-socket event (e.g. from 021's own app) wakes it early
-
-
-async def run_external_sync(app, interval: float, wake: asyncio.Event | None = None) -> None:
-    state = app.state
-    sync = ExternalOrderSync(state.broker, state.db, state.history, state.hub, state.clock,
-                             state.settings.reconcile_grace_seconds)
-    await sync.run(interval, wake)

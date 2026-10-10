@@ -81,3 +81,20 @@ The order gate, the waiting state, the reviewer inbox and the screens are now bu
 - `tests/test_cocaptain.py` (26 tests) covers the end-to-end flow; 12 gate mutations were applied, 11 caught directly.
 - Still open: whole-plan two-person approval (plans are refused instead), real-session acceptance, notifying the
   reviewer by email, and the simulated Anchor/Co-Captain lock wording.
+
+## Accounts checkpoint (10 October, after merging Akash's login and per-user desks)
+
+The demo identities (`COCAPTAIN_DEV_ACTORS`, `COCAPTAIN_DEV_USERS`, `COCAPTAIN_ACCOUNT_OWNER_ID`, the `x-tradedesk-actor`
+header, the Co-Captain websocket) are gone: people are the real signed-in accounts (`app/identity.Actor`).
+
+- `app/cocaptain/actors.py`: `AccountDirectory` reads the users table (by email to invite, by id to show a name).
+- Shared across users: the pairing and the review store only (`app.state.cocaptain_pairing`, `cocaptain_reviews`).
+  Per user: a `CoCaptainGate` in each workspace (their risk limits, their audit log), wired into that desk's cards,
+  approvals and plans (`app/workspace.py`).
+- `app/cocaptain/audit.py` `OwnerAudit`: pairing and review events are written to the trader's own audit log.
+- `app/cocaptain/review_api.py`: the one place a user reaches another user's desk (through the review's owner and that
+  owner's approval service). Every Co-Captain route uses the app's `current_user` guard (route-coverage test passes).
+- Ending a pairing also voids the owner's waiting cards (`ApprovalService.void_waiting_on`).
+- Tests ported: `test_cocaptain_pairing.py` (real accounts), `test_cocaptain_store.py` (a plain list of accounts),
+  `test_cocaptain.py` (28 tests, three signed-in users). Still open: whole-plan two-person approval, notifying the
+  reviewer, and the simulated Anchor/Co-Captain lock wording.

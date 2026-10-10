@@ -104,7 +104,8 @@ class CardService:
                     assessment.blocked,
                 )
             if assessment.required:  # shown on the card before the trader clicks; not part of the order hash
-                pending = pending.model_copy(update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons})
+                pending = pending.model_copy(update={"co_captain": assessment.reviewer_id, "co_reasons": assessment.reasons,
+                                                 "co_captain_name": self.cocaptain.name_of(assessment.reviewer_id)})
                 self.cocaptain.open_review(pending)  # the review is bound to this exact card from the start
         extra = [*verdict.warnings, *extra_warnings]
         if extra:  # warnings are not part of the order hash

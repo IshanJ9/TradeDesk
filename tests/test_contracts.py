@@ -106,7 +106,7 @@ def drain(queue):
 
 
 def test_tracer_reports_start_and_end_with_time():
-    hub = EventHub()
+    hub = EventHub().for_user("u1")
     q = hub.subscribe()
     tracer = Tracer(hub, run_id="r1")
     with tracer.step("router"):
@@ -118,7 +118,7 @@ def test_tracer_reports_start_and_end_with_time():
 
 
 def test_tracer_reports_errors_and_re_raises():
-    hub = EventHub()
+    hub = EventHub().for_user("u1")
     q = hub.subscribe()
     with pytest.raises(ValueError):
         with Tracer(hub).step("tool:get_quote", "tool"):
@@ -127,7 +127,7 @@ def test_tracer_reports_errors_and_re_raises():
 
 
 def test_tracer_keeps_detail_short():
-    hub = EventHub()
+    hub = EventHub().for_user("u1")
     q = hub.subscribe()
     Tracer(hub).emit("output_guard", "guard", "blocked", "x" * 500)
     assert len(drain(q)[0].detail) == DETAIL_LIMIT

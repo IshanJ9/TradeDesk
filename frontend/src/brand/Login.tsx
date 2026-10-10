@@ -1,7 +1,8 @@
-// Log in / create account. UI only for now: no account is checked, and nothing typed here is stored or sent.
-// Submitting opens the demo desk. The page says so, so nobody mistakes it for real sign-in.
-import { useState, type FormEvent } from "react";
+// Log in / create account, against the real endpoints (app/auth). The password is sent once, over this request, and
+// never kept: the server answers with a session cookie the page cannot read.
+import { useEffect, useState, type FormEvent } from "react";
 import { navigate } from "../lib/router";
+import { signIn, signUp, useSession } from "../lib/session";
 import { CardPreview, Link, Logo } from "./parts";
 import { ThemeToggle } from "../components/ThemeToggle";
 
@@ -21,20 +22,34 @@ export function Login() {
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const session = useSession();
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (session.status === "signedIn") navigate("app"); // already signed in: no need to see this page
+  }, [session.status]);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy) return;
     const data = new FormData(e.currentTarget);
-    const missing = [...data.entries()].some(([k, v]) => k !== "remember" && String(v).trim() === "");
-    if (missing) {
-      setError("Please fill in every field.");
+    const email = String(data.get("email") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+    const name = String(data.get("name") ?? "").trim();
+    if (!email || !password) {
+      setError("Please enter your email and password.");
       return;
     }
     if (mode === "signup" && !data.get("terms")) {
       setError("Please confirm you understand TradeDesk gives no investment advice.");
       return;
     }
-    navigate("app"); // nothing is checked or kept: the form is discarded here
+    setBusy(true);
+    setError(null);
+    const result = mode === "login" ? await signIn(email, password) : await signUp(email, password, name);
+    setBusy(false);
+    if (result.ok) navigate("app");
+    else setError(result.message);
   }
 
   const tab = (m: Mode, label: string) => (
@@ -82,20 +97,16 @@ export function Login() {
             {tab("signup", "Create account")}
           </div>
 
-          <div role="note" className="mt-5 rounded-[10px] px-3.5 py-2.5 text-[13px]" style={{ background: "var(--b-tag-ai)", color: "var(--b-ink)" }}>
-            <strong className="font-bold">Preview:</strong> sign-in isn't connected yet. Any details open the demo desk; nothing you type is checked, stored or sent.
-          </div>
-
-          <form className="mt-5 flex flex-col gap-4" onSubmit={submit} noValidate>
+          <form className="mt-5 flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
             {mode === "signup" && (
               <Field id="name" label="Your name">
                 <input id="name" name="name" className="b-input" autoComplete="name" />
               </Field>
             )}
-            <Field id="email" label={mode === "login" ? "Email or 021 client ID" : "Email"}>
-              <input id="email" name="email" className="b-input" type={mode === "login" ? "text" : "email"} autoComplete={mode === "login" ? "username" : "email"} />
+            <Field id="email" label="Email">
+              <input id="email" name="email" className="b-input" type="email" autoComplete={mode === "login" ? "username" : "email"} />
             </Field>
-            <Field id="password" label="Password" hint={mode === "signup" ? "At least 8 characters." : undefined}>
+            <Field id="password" label="Password" hint={mode === "signup" ? "At least 10 characters. Any characters you like." : undefined}>
               <div className="relative">
                 <input id="password" name="password" className="b-input pr-20" type={showPassword ? "text" : "password"} autoComplete={mode === "login" ? "current-password" : "new-password"} />
                 <button type="button" onClick={() => setShowPassword((v) => !v)} aria-pressed={showPassword} className="b-link absolute right-2 top-1/2 h-9 -translate-y-1/2 rounded-md px-2.5 text-[13px]" style={{ background: "none", border: 0 }}>
@@ -105,17 +116,14 @@ export function Login() {
             </Field>
 
             {mode === "login" ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
-                <label className="flex min-h-[40px] items-center gap-2.5"><input type="checkbox" name="remember" className="h-[18px] w-[18px]" style={{ accentColor: "var(--b-violet)" }} />Keep me signed in</label>
-                <span className="b-muted" title="Not available in the preview">Forgot password?</span>
-              </div>
+              <p className="b-muted m-0 text-[13px]">Forgot your password? Resetting it by email isn't available yet.</p>
             ) : (
               <label className="flex items-start gap-2.5 text-[13px]"><input type="checkbox" name="terms" className="mt-0.5 h-[18px] w-[18px] flex-none" style={{ accentColor: "var(--b-violet)" }} />I understand TradeDesk shows facts and my own limits, and never gives investment advice.</label>
             )}
 
             {error && <div role="alert" className="rounded-[10px] px-3.5 py-2.5 text-[13px]" style={{ background: "var(--b-tag-never)", color: "var(--b-loss)" }}>{error}</div>}
 
-            <button type="submit" className="b-btn b-btn-primary w-full">{mode === "login" ? "Log in" : "Create account"}</button>
+            <button type="submit" disabled={busy} className="b-btn b-btn-primary w-full">{busy ? "One moment…" : mode === "login" ? "Log in" : "Create account"}</button>
           </form>
 
           <p className="b-muted mb-0 mt-5 text-center text-[13px]">

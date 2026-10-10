@@ -1,25 +1,20 @@
 // Typed calls to the backend. Money only ever moves through the two approve calls, and each one
 // must echo the hash of the exact card the trader is looking at.
 import type { components } from "./types.gen";
+import { csrfHeaders, sessionLost } from "./session";
 import type { ApprovalConflict, ChatReply, ExecutionResult, Plan, PlanReport, PendingOrder, Rule } from "./types";
 
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; conflict?: ApprovalConflict };
 
-// Who is calling. Only a demo build with COCAPTAIN_DEV_ACTORS honours it (open /app?as=b in a second tab to play the
-// Co-Captain); a real deployment ignores the header, so this can never name anyone.
-const actor = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("as");
-
-async function request<T>(method: string, url: string, body?: unknown): Promise<Result<T>> {
+async function request<T>(method: string, url: string, body?: unknown, keepDetail = false): Promise<Result<T>> {
   let res: Response;
   try {
     res = await fetch(url, {
       method,
-      headers: {
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(actor ? { "x-tradedesk-actor": actor } : {}),
-      },
+      credentials: "include", // the session cookie
+      headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...csrfHeaders() },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -35,10 +30,15 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   if (res.ok) return { ok: true, data: json as T };
 
   const obj = (json ?? {}) as Record<string, unknown>;
+  if (res.status === 401) {
+    sessionLost(); // signed out somewhere else, or the session ran out
+    return { ok: false, status: 401, message: "You've been signed out. Please log in again." };
+  }
   if (res.status === 409 && typeof obj.code === "string") {
     const conflict = obj as unknown as ApprovalConflict;
     return { ok: false, status: 409, message: conflict.message, conflict };
   }
+  if (keepDetail && typeof obj.detail === "string") return { ok: false, status: res.status, message: obj.detail };
   if (res.status === 503) {
     return { ok: false, status: 503, message: "The broker or assistant isn't reachable right now. Nothing was sent." };
   }
@@ -53,7 +53,7 @@ export type CoCaptainSettings = components["schemas"]["PairingStatus"];
 export type CoCaptainLink = components["schemas"]["Link"];
 
 export const cocaptainApi = {
-  config: () => request<{ enabled: boolean; dev_actors: boolean }>("GET", "/api/cocaptain/config"),
+  config: () => request<{ enabled: boolean }>("GET", "/api/cocaptain/config"),
   settings: () => request<CoCaptainSettings>("GET", "/api/cocaptain/settings"),
   invite: (email: string) => request<CoCaptainLink>("POST", "/api/cocaptain/invite", { email }),
   accept: (link: CoCaptainLink) => request<CoCaptainLink>("POST", "/api/cocaptain/accept", { owner_id: link.owner_id, link_id: link.id }),
@@ -62,6 +62,16 @@ export const cocaptainApi = {
   approve: (id: string, orderHash: string) =>
     request<ExecutionResult>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/approve`, { order_hash: orderHash }),
   decline: (id: string) => request<PendingOrder>("POST", `/api/cocaptain/cards/${encodeURIComponent(id)}/decline`, {}),
+};
+
+// Which account the desk is on, and linking your own 021 account. The server's own words are shown as they are.
+type BrokerSchemas = import("./types.gen").components["schemas"];
+export type BrokerStatus = BrokerSchemas["BrokerStatus"];
+export const brokerApi = {
+  status: () => request<BrokerStatus>("GET", "/api/broker", undefined, true),
+  link: (username: string, password: string) => request<BrokerStatus>("POST", "/api/broker/link", { username, password }, true),
+  unlink: () => request<BrokerStatus>("DELETE", "/api/broker/link", undefined, true),
+  reconnect: () => request<BrokerStatus>("POST", "/api/broker/reconnect", undefined, true),
 };
 
 export const api = {
@@ -105,9 +115,10 @@ export async function transcribe(
   const timer = setTimeout(cancel, 25_000);
   try {
     const response = await fetch(`/api/voice/transcribe${language ? `?language=${language}` : ""}`, {
-      method: "POST", body: audio, signal: controller.signal,
-      headers: { "Content-Type": audio.type || "application/octet-stream" },
+      method: "POST", body: audio, signal: controller.signal, credentials: "include",
+      headers: { "Content-Type": audio.type || "application/octet-stream", ...csrfHeaders() },
     });
+    if (response.status === 401) { sessionLost(); return { ok: false, status: 401, message: "You've been signed out. Please log in again." }; }
     if (!response.ok) return { ok: false, status: response.status, message: voiceError(response.status) };
     const data: unknown = await response.json();
     if (typeof data !== "object" || data === null || !("text" in data) ||

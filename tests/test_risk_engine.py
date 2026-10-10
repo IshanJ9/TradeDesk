@@ -169,7 +169,7 @@ def test_market_uses_protection_price_and_warning_does_not_change_order_hash():
 @pytest.fixture
 def store():
     db = Database()
-    yield ProfileStore(db)
+    yield ProfileStore(db, user_id="u1")
     db.close()
 
 
@@ -338,7 +338,7 @@ def test_cooldown_survives_restart_day_rollover_and_streak_reset(tmp_path):
     from app.history.store import trading_day
     url = "sqlite:///" + str(tmp_path / "cooldown.db")
     db = Database(url)
-    first = ProfileStore(db)
+    first = ProfileStore(db, user_id="u1")
     profile = PROFILE.model_copy(update={"hard_cooling_off": True, "cooling_off_minutes": 60})
     first.save_profile(profile)
     late = NOW.replace(hour=18, minute=15)  # 23:45 IST
@@ -347,7 +347,7 @@ def test_cooldown_survives_restart_day_rollover_and_streak_reset(tmp_path):
     db.close()
     db = Database(url)
     try:
-        store = ProfileStore(db)
+        store = ProfileStore(db, user_id="u1")
         later = late+timedelta(minutes=30)
         reset = FACTS.model_copy(update={"day": trading_day(later), "consecutive_losses": 0, "last_loss_at": None})
         until = store.cooldown_until(store.get_profile(), reset, later)

@@ -116,6 +116,7 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         self.locks = AccountLocks()  # simulated: 021's API exposes no Anchor / Co-Captain state
         self.master = InstrumentMaster([], [], {})
         self._token: str | None = None
+        self.session_taken = False  # 021 revoked our token and logging in again did not help: see needs_reconnect
         self._login_lock = asyncio.Lock()
         self._feed = self._make_feed(mode="full", filters=None, publish=True, resolve=self._resolve_cash)
         self._chain_feed: MarketFeed | None = None
@@ -183,6 +184,15 @@ class ZeroTwoOneAdapter(BrokerAdapter):
             if r.status_code != 200 or not token:
                 raise BrokerTimeout(f"021 login failed (HTTP {r.status_code})")
             self._token = token
+            self.session_taken = False
+
+    @property
+    def needs_reconnect(self) -> bool:
+        return self.session_taken
+
+    async def relogin(self) -> None:
+        """Log in again (the Reconnect button). Raises BrokerAuthFailed if 021 refuses the saved login."""
+        await self._login()
 
     async def _ephemeral_key(self) -> str:
         data = await self._read("GET", "/websocket/ephemeral-key")
@@ -222,6 +232,7 @@ class ZeroTwoOneAdapter(BrokerAdapter):
             if r.status_code == 404 and allow_404:
                 return None
             if r.status_code == 401:  # we already logged in again once inside _send, so someone else holds the account
+                self.session_taken = True
                 raise BrokerTimeout(SESSION_TAKEN)
             if r.status_code in (429, 500, 502, 503, 504):
                 last = BrokerTimeout(f"{method} {path}: HTTP {r.status_code}")
@@ -241,6 +252,7 @@ class ZeroTwoOneAdapter(BrokerAdapter):
         payload = _json(r)
         text = _error_text(r)
         if r.status_code == 401:  # refused before it was processed, even after a fresh login: someone else holds the account
+            self.session_taken = True
             raise BrokerRejected(RejectionReason.OTHER, SESSION_TAKEN)
         if r.status_code != 200:
             raise classify_order_failure(r.status_code, text)

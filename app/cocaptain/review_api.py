@@ -1,30 +1,43 @@
 """The Co-Captain's side of the approval: the inbox, and Approve / Decline on a card sent to them.
 
-Only ever the person a trader invited and who accepted; the trader themselves, a stranger and a revoked reviewer all
-get the same 404 as a card that doesn't exist. A decision is a deliberate POST from the app: nothing here changes
-state on a GET, and incoming websocket text never decides anything.
+The caller is whoever is signed in. A review names its OWNER (the trader the card belongs to); only the person that
+trader invited, who accepted and whose link is still active, may see or decide it. Everyone else (the trader
+themselves, a stranger, a former Co-Captain) gets the same 404 as a card that does not exist. This is the one place a
+user touches another user's desk, and it reaches only that review's card, through the owner's own approval service.
+A decision is a deliberate POST: nothing here changes state on a GET.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
 from app.api_models import ApprovalConflict, ExecutionResult
-from app.cocaptain.actors import Actor, current_actor
+from app.auth.deps import CurrentUser, protected_router
 from app.orders.approval import ApprovalError, ApprovalNotFound
 from app.schemas import Model, PendingOrder, PendingState
 
-router = APIRouter(prefix="/api/cocaptain")
+router = protected_router(prefix="/api/cocaptain")
 
 
 class ReviewRequest(Model):
     order_hash: str = Field(min_length=64, max_length=64)
 
 
-def _enabled(request: Request):
+def _enabled(request: Request) -> None:
     if not request.app.state.settings.cocaptain_enabled:
         raise HTTPException(404, "Co-Captain is not enabled")
-    return request.app.state.cocaptain
+
+
+async def _owners_desk(request: Request, card_id: str, actor):
+    """The workspace of the trader this card belongs to, if (and only if) `actor` is their Co-Captain for it."""
+    _enabled(request)
+    review = request.app.state.cocaptain_reviews.get(card_id)
+    if review is None or review.status != "OPEN" or review.reviewer_id != actor.id or review.owner_id == actor.id:
+        raise HTTPException(404, "unknown approval id")
+    ws = request.app.state.workspaces.peek(review.owner_id)  # their desk is running whenever they have cards waiting
+    if ws is None:
+        raise HTTPException(404, "unknown approval id")
+    return ws
 
 
 def _conflict(err: ApprovalError) -> JSONResponse:
@@ -33,19 +46,27 @@ def _conflict(err: ApprovalError) -> JSONResponse:
 
 
 @router.get("/inbox", response_model=list[PendingOrder])
-async def inbox(request: Request, actor: Actor = Depends(current_actor)):
+async def inbox(request: Request, actor: CurrentUser):
     """Cards waiting for THIS person as a Co-Captain: nothing for anyone who isn't one."""
-    gate = _enabled(request)
-    return [p for p in request.app.state.pending.all()
-            if p.state is PendingState.AWAITING_CO_APPROVAL and gate.is_reviewer_of(actor, p)]
+    _enabled(request)
+    found: list[PendingOrder] = []
+    for link in request.app.state.cocaptain_pairing.for_actor(actor):
+        if link.reviewer_id != actor.id or link.status != "ACTIVE":
+            continue
+        ws = request.app.state.workspaces.peek(link.owner_id)
+        if ws is None:
+            continue
+        found += [p for p in ws.pending.all()
+                  if p.state is PendingState.AWAITING_CO_APPROVAL and ws.cocaptain.is_reviewer_of(actor, p)]
+    return sorted(found, key=lambda p: p.created_at)
 
 
 @router.post("/cards/{pending_id}/approve", response_model=ExecutionResult,
              responses={404: {"description": "Not a card you may review"}, 409: {"model": ApprovalConflict}})
-async def approve(pending_id: str, body: ReviewRequest, request: Request, actor: Actor = Depends(current_actor)):
-    _enabled(request)
+async def approve(pending_id: str, body: ReviewRequest, request: Request, actor: CurrentUser):
+    ws = await _owners_desk(request, pending_id, actor)
     try:
-        return await request.app.state.approvals.co_approve(pending_id, body.order_hash, actor)
+        return await ws.approvals.co_approve(pending_id, body.order_hash, actor)
     except ApprovalNotFound:
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
@@ -54,10 +75,10 @@ async def approve(pending_id: str, body: ReviewRequest, request: Request, actor:
 
 @router.post("/cards/{pending_id}/decline", response_model=PendingOrder,
              responses={404: {"description": "Not a card you may review"}, 409: {"model": ApprovalConflict}})
-async def decline(pending_id: str, request: Request, actor: Actor = Depends(current_actor)):
-    _enabled(request)
+async def decline(pending_id: str, request: Request, actor: CurrentUser):
+    ws = await _owners_desk(request, pending_id, actor)
     try:
-        return await request.app.state.approvals.co_decline(pending_id, actor)
+        return await ws.approvals.co_decline(pending_id, actor)
     except ApprovalNotFound:
         raise HTTPException(404, "unknown approval id")
     except ApprovalError as err:
